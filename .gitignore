@@ -67,10 +67,12 @@ venv.bak/
 .idea/
 *.swp
 *.swo
-
-
-
-# Ignore tensorboard logs and evaluation datasets
+*.mp4
+.agents/
+.claude/
 logs/*/
 /docs/ppts/
 models/*/
+*.mp4
+agent/
+events.out*

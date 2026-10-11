@@ -1,6 +1,6 @@
 """
 baselines/run_baselines.py
-Implementation of 4 non-RL baselines for MillingDTEnv-v0:
+Implementation of 4 non-RL baselines for MillingDTEnv:
 1. Constant-High
 2. Constant-Safe
 3. Rule-Based Degradation
@@ -11,6 +11,7 @@ Outputs:
 """
 
 import sys
+import os
 from pathlib import Path
 import numpy as np
 import pandas as pd
@@ -23,7 +24,9 @@ from pymoo.termination import get_termination
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT_ROOT))
 
-from env.milling_env import MillingDTEnv
+import env # Register environment
+from config.physics_constants import ALL_CONSTANTS
+import gymnasium as gym
 
 # ---------------------------------------------------------------------------
 # NSGA-II Problem Definition
@@ -34,123 +37,149 @@ class MillingStaticProblem(Problem):
     Objective 1: Maximize MRR (minimize -MRR)
     Objective 2: Minimize Energy
     Constraints: Ra <= Ra_max, VB <= VB_max after N parts.
-    Decision variables: [n, f_r] fixed for the entire batch.
+    Decision variables: [n, f_r, a_p] fixed for the entire batch.
     """
-    def __init__(self, env: MillingDTEnv):
+    def __init__(self):
+        machine = ALL_CONSTANTS['machine']
+        eng = ALL_CONSTANTS['engineering']
+        wp = ALL_CONSTANTS['workpiece']
+
         super().__init__(
-            n_var=2,
+            n_var=3,
             n_obj=2,
             n_ieq_constr=2,
-            xl=np.array([env.n_min, env.f_min]),
-            xu=np.array([env.n_max, env.f_max])
+            xl=np.array([machine['n_min'], machine['f_r_min'], machine.get('a_p_min', 0.1)]),
+            xu=np.array([machine['n_max'], machine['f_r_max'], machine.get('a_p_max', 2.5)])
         )
-        self.env = env
+        self.constants = ALL_CONSTANTS
 
     def _evaluate(self, x, out, *args, **kwargs):
         n_vals = x[:, 0]
         f_vals = x[:, 1]
-        
+        ap_vals = x[:, 2]
+
         mrr_out = np.zeros(len(x))
         e_out = np.zeros(len(x))
         ra_viol = np.zeros(len(x))
         vb_viol = np.zeros(len(x))
 
+        wear_cfg = self.constants['tool_wear']
+        rough_cfg = self.constants['surface_roughness']
+        energy_cfg = self.constants['energy']
+        eng_cfg = self.constants['engineering']
+        wp_cfg = self.constants['workpiece']
+
         for i in range(len(x)):
             n = n_vals[i]
             f_r = f_vals[i]
-            
-            # Simulate a full batch statically
+            a_p = ap_vals[i]
+
+            # Physics per pass
+            v_c = (np.pi * wp_cfg['D'] * n) / 1000.0
+            t_cut = wp_cfg['L_cut'] / (n * f_r)
+            MRR = v_c * a_p * f_r
+            P_cutting = energy_cfg['k_c'] * MRR
+            E_pass = (energy_cfg['P_idle'] + P_cutting) * t_cut * 60 / 1000.0
+
+            # Simulate a full batch (kappa_total / a_p passes)
+            n_passes = int(np.ceil(wp_cfg['kappa_total'] / a_p))
+
             VB = 0.0
             total_E = 0.0
             max_Ra = 0.0
-            
-            for _ in range(self.env.N):
-                phys = self.env._compute_physics(n, f_r)
-                # Need to compute Ra BEFORE wear update, exactly as environment does
-                Ra = self.env.k1 * (f_r ** 2) + self.env.k2 * VB + self.env.k3 / phys["v_c"]
+
+            for _ in range(n_passes):
+                Ra = rough_cfg['k1'] * (f_r ** 2) + rough_cfg['k2'] * VB + rough_cfg['k3'] / v_c
                 if Ra > max_Ra: max_Ra = Ra
-                VB += phys["delta_VB"]
-                total_E += phys["E"]
-                
-            mrr_out[i] = phys["MRR"]  # MRR is constant
+
+                delta_VB = wear_cfg['C_wear'] * (v_c ** wear_cfg['alpha']) * \
+                           (f_r ** wear_cfg['beta']) * (a_p ** wear_cfg['gamma_wear']) * t_cut
+                VB += delta_VB
+                total_E += E_pass
+
+            mrr_out[i] = MRR
             e_out[i] = total_E
-            
+
             # Constraints (<= 0 is valid in pymoo)
-            ra_viol[i] = max_Ra - self.env.Ra_max
-            vb_viol[i] = VB - self.env.VB_max
+            ra_viol[i] = max_Ra - eng_cfg['Ra_max']
+            vb_viol[i] = VB - eng_cfg['VB_max']
 
         # NSGA-II minimizes objectives. We want to maximize MRR -> minimize -MRR
         out["F"] = np.column_stack([-mrr_out, e_out])
         out["G"] = np.column_stack([ra_viol, vb_viol])
 
-def solve_nsga2(env: MillingDTEnv) -> np.ndarray:
-    """Finds a Pareto-optimal static action using NSGA-II and selects a balanced knee point."""
-    problem = MillingStaticProblem(env)
+def solve_nsga2() -> np.ndarray:
+    """Finds a Pareto-optimal static action and selects a balanced knee point."""
+    problem = MillingStaticProblem()
     algorithm = NSGA2(pop_size=100)
     res = minimize(
         problem,
         algorithm,
-        get_termination("n_gen", 50),
+        get_termination("n_gen", 100),
         seed=1,
         verbose=False
     )
-    
-    # If no feasible solution found
+
     if res.X is None or len(res.X) == 0:
         print("NSGA-II found no feasible solutions! Falling back to safe.")
-        return np.array([-1.0, -1.0])
-        
-    # Select the solution closest to the utopia point (knee point)
-    # F[:,0] is -MRR (we want to minimize this), F[:,1] is Energy (minimize)
-    F_norm = (res.F - res.F.min(axis=0)) / (res.F.ptp(axis=0) + 1e-9)
+        return np.array([-1.0, -1.0, -1.0], dtype=np.float32)
+
+    # Select knee point
+    ptp_val = np.ptp(res.F, axis=0)
+    F_norm = (res.F - res.F.min(axis=0)) / (ptp_val + 1e-9)
     dist = np.sum(F_norm ** 2, axis=1)
     best_idx = np.argmin(dist)
-    
+
     best_real_action = res.X[best_idx]
-    if best_real_action.ndim > 1:
-        best_real_action = best_real_action[0] # handle shape inconsistency
-        
-    # Convert real n,f to normalized [-1, 1] action for the env
-    n_norm = 2.0 * (best_real_action[0] - env.n_min) / (env.n_max - env.n_min) - 1.0
-    f_norm = 2.0 * (best_real_action[1] - env.f_min) / (env.f_max - env.f_min) - 1.0
-    
-    return np.array([n_norm, f_norm], dtype=np.float32)
+
+    # Convert real n, f_r, a_p to normalized [-1, 1] action
+    m = ALL_CONSTANTS['machine']
+    ap_max_val = m.get('a_p_max', 2.5)
+    ap_min_val = m.get('a_p_min', 0.1)
+    n_norm = 2.0 * (best_real_action[0] - m['n_min']) / (m['n_max'] - m['n_min']) - 1.0
+    f_norm = 2.0 * (best_real_action[1] - m['f_r_min']) / (m['f_r_max'] - m['f_r_min']) - 1.0
+    ap_norm = 2.0 * (best_real_action[2] - ap_min_val) / (ap_max_val - ap_min_val) - 1.0
+
+    return np.array([n_norm, f_norm, ap_norm], dtype=np.float32)
 
 # ---------------------------------------------------------------------------
 # Runner
 # ---------------------------------------------------------------------------
-def run_baseline(env: MillingDTEnv, policy_type: str, n_episodes: int = 100):
+def run_baseline(env_id: str, policy_type: str, n_episodes: int = 50):
     records = []
-    
-    # Pre-solve NSGA-II if needed
+    env = gym.make(env_id)
+
     static_nsga_action = None
     if policy_type == "nsga2":
         print("  Solving NSGA-II Pareto front...")
-        static_nsga_action = solve_nsga2(env)
+        static_nsga_action = solve_nsga2()
 
     for ep in range(n_episodes):
         obs, _ = env.reset(seed=ep)
         done = False
-        
+
         ep_reward = 0.0
         ep_steps = 0
         ep_ra_violations = 0
         ep_energy = 0.0
         ep_mrr_sum = 0.0
-        ep_tool_fail = False
+        ep_broken = False
+
+        # Access constants for violation check if needed, but we use info
+        Ra_max = ALL_CONSTANTS['engineering']['Ra_max']
 
         while not done:
             if policy_type == "constant_high":
-                action = np.array([1.0, 1.0], dtype=np.float32)
+                action = np.array([1.0, 1.0, 1.0], dtype=np.float32)
             elif policy_type == "constant_safe":
-                action = np.array([-1.0, -1.0], dtype=np.float32)
+                action = np.array([-1.0, -1.0, -1.0], dtype=np.float32)
             elif policy_type == "nsga2":
                 action = static_nsga_action
             elif policy_type == "rule_based":
-                # Max feed, but drop speed by 10% (0.2 in normalized space) every 10 parts
-                drop = (ep_steps // 10) * 0.2
+                # Max feed, but drop speed by 10% every 2 passes
+                drop = (ep_steps // 2) * 0.2
                 n_norm = max(1.0 - drop, -1.0)
-                action = np.array([n_norm, 1.0], dtype=np.float32)
+                action = np.array([n_norm, 1.0, 0.5], dtype=np.float32) # Moderate a_p
             else:
                 raise ValueError(f"Unknown policy {policy_type}")
 
@@ -159,59 +188,58 @@ def run_baseline(env: MillingDTEnv, policy_type: str, n_episodes: int = 100):
 
             ep_reward += reward
             ep_steps += 1
-            ep_ra_violations += int(info.get("Ra_violation", False))
-            ep_energy += info.get("E_kJ", 0.0)
-            ep_mrr_sum += info.get("MRR_mm3_min", 0.0)
-            ep_tool_fail = ep_tool_fail or info.get("tool_failure", False)
+            if info['Ra'] > Ra_max:
+                ep_ra_violations += 1
+            ep_energy += info['Energy']
+            ep_mrr_sum += info['MRR']
+            if info['broken']:
+                ep_broken = True
 
         records.append({
             "policy": policy_type,
             "episode": ep,
             "total_reward": ep_reward,
-            "batch_complete": ep_steps >= env.N and not ep_tool_fail,
-            "tool_failure": ep_tool_fail,
+            "passes": ep_steps,
+            "broken": ep_broken,
             "ra_violation_rate": ep_ra_violations / max(ep_steps, 1),
             "total_energy_kJ": ep_energy,
             "mean_mrr_mm3_min": ep_mrr_sum / max(ep_steps, 1),
         })
 
+    env.close()
     return records
 
 def evaluate_all_baselines():
     print("=" * 70)
     print("  Evaluating Non-RL Baselines")
     print("=" * 70)
-    
-    env = MillingDTEnv()
+
     all_records = []
-    
     baselines = ["constant_high", "constant_safe", "rule_based", "nsga2"]
-    
+
     for b in baselines:
         print(f"Running {b}...")
-        res = run_baseline(env, b, n_episodes=50)
+        res = run_baseline("MillingDTEnv-v1", b, n_episodes=50)
         all_records.extend(res)
-        
-    env.close()
-    
+
     df = pd.DataFrame(all_records)
-    
+
     # Save results
     logs_dir = PROJECT_ROOT / "logs"
     logs_dir.mkdir(parents=True, exist_ok=True)
-    out_path = logs_dir / "baseline_results.csv"
+    out_path = logs_dir / "baseline_results_v4.csv"
     df.to_csv(out_path, index=False)
     print(f"\n✓ Saved baseline results to {out_path}")
-    
+
     # Print summary
     summary = df.groupby("policy").agg({
-        "batch_complete": "mean",
-        "tool_failure": "mean",
+        "broken": "mean",
         "ra_violation_rate": "mean",
         "total_energy_kJ": "mean",
-        "mean_mrr_mm3_min": "mean"
+        "mean_mrr_mm3_min": "mean",
+        "total_reward": "mean"
     }).round(4)
-    
+
     print("\nSummary:")
     print(summary)
 

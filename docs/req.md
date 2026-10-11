@@ -10,7 +10,7 @@
 * **Course/Domain:** AI in Manufacturing (IIT Madras)
 * **Difficulty Category:** **Medium Category** *(Discrete State-Action MDP, Data-Driven & Combinatorial Optimization, Zero Physics/Continuum Mechanics)*
 * **Primary Reference Paper:** 
-  > *Wang, P., You, Y., Liu, W., Ding, D., & Xu, F. (2025). Knowledge-guided deep reinforcement learning framework for feature machining step sequencing. The International Journal of Advanced Manufacturing Technology, 140, 5617–5636.* [DOI: 10.1007/s00170-025-16606-4]
+  > *Wang, P., You, Y., Liu, W., Ding, D., & Xu, F. (2025). Knowledge-guided deep reinforcement learning framework for feature machining step sequencing. The International Journal of Advanced Manufacturing Technology, 140, 5617-5636.* [DOI: 10.1007/s00170-025-16606-4]
 * **Secondary Reference Papers (from Q1/Q2 dataset):**
   > *"A novel method based on deep reinforcement learning for machining process route planning" Robotics and Computer-Integrated Manufacturing, 86, 102688.* [Q1, IF: 12.3]  
   > *"Employing deep reinforcement learning for machining process planning: An improved framework" Journal of Manufacturing Systems, 78, 102.10.* [Q1, IF: 14.9]
@@ -85,8 +85,8 @@ Where $R_{\text{terminal}} = +R_{\text{bonus}}$ if all $N$ steps are successfull
 |  - Reads Part Feature Table (Rough/Semi-Finish/Finish Steps)            |
 |  - Constructs Precedence DAG (Directed Acyclic Graph) via NetworkX      |
 +-------------------------------------------------------------------------+
-                                    │
-                                    ▼
+                                    
+                                    
 +-------------------------------------------------------------------------+
 |                  Gymnasium Manufacturing Environment                    |
 |                      (`MachiningSequencingEnv`)                         |
@@ -94,18 +94,18 @@ Where $R_{\text{terminal}} = +R_{\text{bonus}}$ if all $N$ steps are successfull
 |  - Computes Dynamic Action Mask m(s_t) from Precedence DAG              |
 |  - Computes Multi-Objective Cost (Machine + Setup + Tool + Travel)      |
 +-------------------------------------------------------------------------+
-                                    │
-                  ┌─────────────────┴─────────────────┐
-                  ▼                                   ▼
+                                    
+                  
+                                                     
 +-----------------------------------+ +-----------------------------------+
 |       DRL Agent (Masked PPO/DQN)  | |       Baseline Metaheuristics     |
 | - MaskablePPO / Masked DQN Policy | | - Genetic Algorithm (GA)          |
 | - Custom Actor-Critic Architecture| | - Simulated Annealing (SA)        |
 | - Dynamic Action Logit Masking    | | - Priority Dispatching (SPT, FIFO)|
 +-----------------------------------+ +-----------------------------------+
-                  │                                   │
-                  └─────────────────┬─────────────────┘
-                                    ▼
+                                                     
+                  
+                                    
 +-------------------------------------------------------------------------+
 |                 Evaluation, Benchmarking & Visualization                |
 |  - Solution Quality: Total Machining Cost Comparison                    |
@@ -131,28 +131,28 @@ Where $R_{\text{terminal}} = +R_{\text{bonus}}$ if all $N$ steps are successfull
 
 ## 6. Implementation Roadmap & Milestones
 
-### Phase 1: Environment & Precedence Logic Implementation (Week 1–2)
+### Phase 1: Environment & Precedence Logic Implementation (Week 1-2)
 * [ ] Define part representation schema (JSON / CSV) for multi-feature parts (Prismatic & Rotational parts).
 * [ ] Build `MachiningSequencingEnv` adhering to Gymnasium interface.
 * [ ] Implement strict precedence checks (datum-first, roughing-before-finishing, hole-making order).
 * [ ] Implement invalid action masking function `action_masks(self)`.
 
-### Phase 2: Classical Baselines Implementation (Week 2–3)
+### Phase 2: Classical Baselines Implementation (Week 2-3)
 * [ ] Implement standard Genetic Algorithm (GA) tailored for permutation with precedence repair.
 * [ ] Implement rule-based heuristics (Min-Tool-Change, Min-Setup-Change, FIFO).
-* [ ] Validate baseline cost metrics and execution times on standard test parts (Part A: 10–15 steps, Part B: 25–40 steps).
+* [ ] Validate baseline cost metrics and execution times on standard test parts (Part A: 10-15 steps, Part B: 25-40 steps).
 
-### Phase 3: Knowledge-Guided DRL Training (Week 3–4)
+### Phase 3: Knowledge-Guided DRL Training (Week 3-4)
 * [ ] Configure `MaskablePPO` policy network with custom MLP / Feature Embedding layers.
 * [ ] Tune hyperparameters (learning rate, entropy coefficient, batch size, reward scaling).
 * [ ] Log training convergence, episode reward progression, and policy entropy.
 
-### Phase 4: Comparative Benchmarking & Analysis (Week 4–5)
+### Phase 4: Comparative Benchmarking & Analysis (Week 4-5)
 * [ ] Benchmark DRL vs GA vs SA vs Dispatching Rules on solution quality (Total Cost).
 * [ ] Benchmark computational time (decision latency per step / full sequence generation).
 * [ ] Test generalization on unseen part configurations.
 
-### Phase 5: Documentation, Visuals & Presentation (Week 5–6)
+### Phase 5: Documentation, Visuals & Presentation (Week 5-6)
 * [ ] Generate operation Gantt charts showing grouped setups and tools.
 * [ ] Generate convergence comparison curves.
 * [ ] Final project report and presentation slide deck preparation.

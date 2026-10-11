@@ -1,9 +1,7 @@
 import os
 import sys
 import time
-import subprocess
-import threading
-from queue import Empty, Queue
+from multiprocessing import Process, Queue
 from tqdm import tqdm
 from pathlib import Path
 
@@ -11,105 +9,131 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT_ROOT))
 
-def read_progress(prog_file):
+from agent.train_rl import train
+
+def worker_wrapper(worker_id, algo, seed, steps, queue):
+    """
+    Wrapper to run the train function in a separate process.
+    """
     try:
-        with open(prog_file) as f:
-            return int(f.read().strip())
-    except (OSError, ValueError, IndexError):
-        return None
+        # Redirect stdout/stderr to a log file for each worker
+        log_dir = PROJECT_ROOT / "results" / "workers"
+        log_dir.mkdir(parents=True, exist_ok=True)
 
-def slot_worker(slot_id, job_queue, lock, done_counter, total_jobs):
-    # Initialize the progress bar for this slot
-    bar = tqdm(
-        total=1,
-        position=slot_id,
-        leave=True,
-        dynamic_ncols=True,
-        desc=f"slot {slot_id} idle"
-    )
+        # Override stdout/stderr
+        sys.stdout = open(log_dir / f"worker_{algo}_{seed}.log", "w")
+        sys.stderr = sys.stdout
 
-    while True:
-        try:
-            job_args = job_queue.get_nowait()
-        except Empty:
-            break
-
-        algo = job_args["algo"]
-        seed = job_args["seed"]
-        steps = job_args["steps"]
-        prog_file = str(PROJECT_ROOT / "logs" / f"progress_{algo}_seed{seed}.txt")
-        
-        try: os.remove(prog_file)
-        except OSError: pass
-
-        bar.reset(total=steps)
-        bar.set_description(f"Running {algo} (Seed {seed})")
-        bar.refresh()
-
-        cmd = [sys.executable, str(PROJECT_ROOT / "agent" / "train_rl.py"), 
-               "--algo", algo,
-               "--steps", str(steps), 
-               "--seed", str(seed),
-               "--progress_file", prog_file]
-               
-        proc = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
-        
-        last_n = 0
-        while proc.poll() is None:
-            cur = read_progress(prog_file)
-            if cur is not None and cur > last_n:
-                bar.update(cur - last_n)
-                last_n = cur
-            time.sleep(1.0)
-            
-        rc = proc.wait()
-
-        if rc == 0:
-            bar.update(max(0, steps - last_n))
-            
-        with lock:
-            done_counter[0] += 1
-            status = "Success" if rc == 0 else f"Failed (code {rc})"
-            tqdm.write(f"  [{done_counter[0]}/{total_jobs}] {algo} Seed {seed} | {status}")
-
-    bar.set_description(f"slot {slot_id} done")
-    bar.refresh()
-    bar.close()
+        train(algo=algo, timesteps=steps, seed=seed, queue=queue)
+    except Exception as e:
+        print(f"Error in worker {worker_id}: {e}")
+        import traceback
+        traceback.print_exc()
 
 def run_experiments(jobs, parallel_slots=4):
-    q = Queue()
-    for j in jobs:
-        q.put(j)
-
-    lock = threading.Lock()
-    done_counter = [0]
     total_jobs = len(jobs)
-    n_slots = min(parallel_slots, total_jobs)
+    done_counter = 0
 
-    threads = [
-        threading.Thread(
-            target=slot_worker, 
-            args=(i, q, lock, done_counter, total_jobs),
-            daemon=True
-        ) for i in range(n_slots)
-    ]
-    
-    for t in threads: t.start()
-    for t in threads: t.join()
+    # Progress bars for each slot
+    # Note: On Windows, multiple tqdm bars in processes can be tricky.
+    # We'll use a single master bar and slot status messages.
+    master_bar = tqdm(total=total_jobs, desc="Total Progress", position=0)
 
-    sys.stdout.write("\n" * (n_slots + 1))
-    sys.stdout.flush()
+    active_processes = {} # {slot_id: (process, queue, job_info, start_time)}
+    job_queue = jobs.copy()
+
+    slots_bars = [tqdm(total=100, desc=f"Slot {i} idle", position=i+1, leave=True) for i in range(parallel_slots)]
+
+    last_update = {} # {slot_id: last_timestamp}
+
+    try:
+        while done_counter < total_jobs or active_processes:
+            # Fill empty slots
+            while len(active_processes) < parallel_slots and job_queue:
+                # Find an empty slot index
+                slot_id = None
+                for i in range(parallel_slots):
+                    if i not in active_processes:
+                        slot_id = i
+                        break
+
+                if slot_id is None: break
+
+                job = job_queue.pop(0)
+                q = Queue()
+                p = Process(target=worker_wrapper, args=(slot_id, job['algo'], job['seed'], job['steps'], q))
+                p.start()
+
+                active_processes[slot_id] = (p, q, job, time.time())
+                slots_bars[slot_id].reset(total=job['steps'])
+                slots_bars[slot_id].set_description(f"{job['algo']} S{job['seed']}")
+                last_update[slot_id] = time.time()
+
+            # Check for updates and completion
+            to_remove = []
+            for slot_id, (p, q, job, start_time) in active_processes.items():
+                # Check for progress updates
+                while not q.empty():
+                    try:
+                        msg = q.get_nowait()
+                        steps = msg['timesteps']
+                        slots_bars[slot_id].n = steps
+                        slots_bars[slot_id].refresh()
+                        last_update[slot_id] = time.time()
+                    except:
+                        break
+
+                # Check if process is done
+                if not p.is_alive():
+                    p.join()
+                    done_counter += 1
+                    master_bar.update(1)
+                    slots_bars[slot_id].set_description(f"Slot {slot_id} idle")
+                    slots_bars[slot_id].n = 0
+                    slots_bars[slot_id].refresh()
+                    to_remove.append(slot_id)
+                    tqdm.write(f"  [{done_counter}/{total_jobs}] {job['algo']} Seed {job['seed']} | Success")
+                else:
+                    # Stalled worker detection (5 mins)
+                    if time.time() - last_update[slot_id] > 300:
+                        tqdm.write(f"  [WARN] Slot {slot_id} ({job['algo']} S{job['seed']}) stalled. Terminating.")
+                        p.terminate()
+                        p.join()
+                        # Re-add to job queue if needed, or just mark as failed
+                        done_counter += 1
+                        master_bar.update(1)
+                        to_remove.append(slot_id)
+
+            for slot_id in to_remove:
+                del active_processes[slot_id]
+                del last_update[slot_id]
+
+            time.sleep(0.5)
+
+    finally:
+        for p, q, job, start_time in active_processes.values():
+            if p.is_alive():
+                p.terminate()
+                p.join()
+        for bar in slots_bars:
+            bar.close()
+        master_bar.close()
+
     print("All experiments completed.")
 
 if __name__ == "__main__":
+    import multiprocessing
+    multiprocessing.freeze_support() # For Windows
+
     # Total steps per run
-    steps = 200_000 
-    seeds = [1, 2,3, 4, 5] 
-    algos = ["PPO", "SAC"]
-    
+    steps = 200_000
+    seeds = [1, 2, 3, 4, 5]
+    algos = ["PPO"]
+
+
     jobs = []
     for algo in algos:
         for seed in seeds:
             jobs.append({"algo": algo, "seed": seed, "steps": steps})
-            
-    run_experiments(jobs=jobs, parallel_slots=8)
+
+    run_experiments(jobs=jobs, parallel_slots=min(8, multiprocessing.cpu_count()))

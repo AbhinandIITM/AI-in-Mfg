@@ -1,146 +1,130 @@
-# Multi-Process Progress Tracking with `tqdm`
+# Modern Parallel Progress Tracking (Outgrowing Disk I/O)
 
-Standard `tqdm` loops can easily break your terminal output when multiple processes print simultaneously. The most robust way to track parallel jobs without garbled terminal output is the **Slot-Worker Pattern** using progress files.
+In the past, we relied on the **Slot-Worker Pattern** where child processes wrote their progress to temporary text files (`progress_seedX.txt`) and a parent process polled those files. 
 
-## Why this approach is effective
-1. **No Process Locks Needed**: Standard multiprocessing `tqdm` requires complicated locks or queue mechanisms. This uses simple disk I/O which is universally compatible and non-blocking.
-2. **Crash Resilience**: If a process crashes, the parent script knows exactly how many steps it completed before failing.
-3. **Clean UI**: Uses `tqdm(position=slot)` to assign each running job a fixed row on your terminal, keeping bars beautifully stacked.
+While that was resilient, we have **outgrown** it for several reasons:
+1. **Disk I/O Bottlenecks**: High-frequency writes stall RL loops.
+2. **Zombie Files**: Crashes leave leftover `.txt` files.
+3. **Subprocess Overhead**: `subprocess.Popen` separates memory completely, making metrics sharing difficult.
 
-## The Child Script (The Worker Loop)
-Your actual worker script should be completely unaware of the complex parallel UI. It just needs to periodically write its current step to a text file.
+## The Modern Standard: `multiprocessing.Queue` (IPC)
 
-```python
-# train_rl.py
-import argparse
+Instead of using `subprocess.Popen` and writing to disk, we now import the training function directly and run it via `multiprocessing.Process`. Progress is communicated instantly and safely through RAM using an IPC Queue.
 
-def train_agent(total_steps, progress_file=None):
-    for step in range(1, total_steps + 1):
-        # ... Do work here ...
-        
-        # Periodically write progress to a file (e.g., every 1000 steps)
-        if progress_file and step % 1000 == 0:
-            with open(progress_file, "w") as f:
-                f.write(str(step))
-
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--steps", type=int, default=1000000)
-    parser.add_argument("--progress_file", type=str, default=None)
-    args = parser.parse_args()
-    
-    train_agent(args.steps, args.progress_file)
-```
-
-## The Parent Script (The Manager)
-The manager script creates a pool of thread "slots". Each slot runs the child script as a subprocess and monitors its progress file to update a dedicated `tqdm` bar.
+### 1. The Worker Script (`train_rl.py`)
+Modify your training function to accept an optional `queue`.
 
 ```python
-import os, sys, time, subprocess, threading
-from queue import Empty, Queue
+import time
 from tqdm import tqdm
 
-def read_progress(prog_file):
-    """Safely return current step count from worker, or None if transient failure."""
-    try:
-        with open(prog_file) as f:
-            return int(f.read().strip())
-    except (OSError, ValueError, IndexError):
-        return None
+def train_agent(total_steps, seed, queue=None):
+    # If running standalone, use a normal tqdm bar
+    pbar = tqdm(total=total_steps, desc=f"Seed {seed}") if queue is None else None
 
-def slot_worker(slot_id, job_queue, total_steps, lock, done_counter, total_jobs):
-    # Initialize the progress bar for this slot
-    bar = tqdm(
-        total=total_steps,
-        position=slot_id,        # Fixes the bar to a specific terminal row
-        leave=True,
-        dynamic_ncols=True,
-        desc=f"slot {slot_id} idle"
-    )
-
-    while True:
-        try:
-            job_args = job_queue.get_nowait()
-        except Empty:
-            break
-
-        # Setup paths for this specific job
-        seed = job_args["seed"]
-        prog_file = f"progress_seed{seed}.txt"
+    for step in range(1, total_steps + 1):
+        # ... Do work here ...
+        time.sleep(0.01) # Simulated work
         
-        # Clear out old progress files if they exist
-        try: os.remove(prog_file)
-        except OSError: pass
-
-        # Reset the bar for the new job
-        bar.reset(total=total_steps)
-        bar.set_description(f"Running Seed {seed}")
-        bar.refresh()
-
-        # Start the subprocess
-        cmd = [sys.executable, "train_rl.py", 
-               "--steps", str(total_steps), 
-               "--progress_file", prog_file]
-               
-        proc = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
+        loss = 0.5 # Example metric
         
-        # Poll the progress file while the subprocess is running
-        last_n = 0
-        while proc.poll() is None:
-            cur = read_progress(prog_file)
-            if cur is not None and cur > last_n:
-                bar.update(cur - last_n)
-                last_n = cur
-            time.sleep(1.0) # Check every second
+        if queue:
+            # Send progress & metrics directly to parent via RAM (no disk I/O!)
+            if step % 100 == 0:
+                queue.put({"seed": seed, "step": step, "loss": loss})
+        else:
+            pbar.update(1)
+            pbar.set_postfix({"loss": loss})
             
-        rc = proc.wait()
+    if queue:
+        queue.put({"seed": seed, "done": True})
+    else:
+        pbar.close()
+```
 
-        # Job finished: Fill the bar to 100% on success
-        if rc == 0:
-            bar.update(max(0, total_steps - last_n))
-            
-        # Safely log completion using tqdm.write (prevents breaking the bars)
-        with lock:
-            done_counter[0] += 1
-            status = "Success" if rc == 0 else f"Failed (code {rc})"
-            tqdm.write(f"  [{done_counter[0]}/{total_jobs}] Seed {seed} | {status}")
+### 2. The Manager Script (`run_experiments.py`)
+The manager spawns processes and listens to the shared queue, updating stacked `tqdm` bars flawlessly in real-time.
 
-    bar.set_description(f"slot {slot_id} done")
-    bar.refresh()
-    bar.close()
+```python
+import sys
+import multiprocessing as mp
+from queue import Empty
+from tqdm import tqdm
 
-def run_experiments(seeds, parallel_slots=4, total_steps=1000000):
-    q = Queue()
-    for s in seeds:
-        q.put({"seed": s})
+# Import your training function directly
+from train_rl import train_agent
 
-    lock = threading.Lock()
-    done_counter = [0]
-    total_jobs = len(seeds)
-    n_slots = min(parallel_slots, total_jobs)
-
-    # Spawn the threads
-    threads = [
-        threading.Thread(
-            target=slot_worker, 
-            args=(i, q, total_steps, lock, done_counter, total_jobs),
-            daemon=True
-        ) for i in range(n_slots)
-    ]
+def run_experiments(seeds, total_steps=1000):
+    queue = mp.Queue()
+    processes = []
     
-    for t in threads: t.start()
-    for t in threads: t.join()
+    # 1. Create a tqdm bar for each seed
+    bars = {}
+    for i, seed in enumerate(seeds):
+        bars[seed] = tqdm(
+            total=total_steps, 
+            position=i, 
+            desc=f"Seed {seed}", 
+            dynamic_ncols=True
+        )
+        
+        # 2. Spawn processes
+        p = mp.Process(target=train_agent, args=(total_steps, seed, queue))
+        p.start()
+        processes.append(p)
 
-    # Move cursor past the stacked bars before printing final logs
-    sys.stdout.write("\n" * (n_slots + 1))
+    active_jobs = len(seeds)
+    last_steps = {s: 0 for s in seeds}
+
+    # 3. Listen to the queue and update bars
+    while active_jobs > 0:
+        try:
+            msg = queue.get(timeout=0.1)
+            seed = msg.get("seed")
+            
+            if msg.get("done"):
+                bars[seed].update(total_steps - last_steps[seed])
+                bars[seed].set_description(f"Seed {seed} [DONE]")
+                active_jobs -= 1
+                continue
+                
+            # Update bar by the delta
+            cur_step = msg.get("step", 0)
+            bars[seed].update(cur_step - last_steps[seed])
+            bars[seed].set_postfix({"loss": msg.get("loss", 0)})
+            last_steps[seed] = cur_step
+            
+        except Empty:
+            # Check if any process crashed silently
+            dead_procs = [p for p in processes if not p.is_alive()]
+            if len(dead_procs) > (len(seeds) - active_jobs):
+                tqdm.write("Error: A worker process crashed unexpectedly.")
+                break
+
+    # 4. Clean up
+    for p in processes:
+        p.join()
+        
+    for b in bars.values():
+        b.close()
+        
+    # Move cursor past bars
+    sys.stdout.write("\n" * (len(seeds) + 1))
     sys.stdout.flush()
     print("All experiments completed.")
 
 if __name__ == "__main__":
-    run_experiments(seeds=[1, 2, 3, 4, 5, 6, 7, 8], parallel_slots=4)
+    mp.set_start_method('spawn') # Required for CUDA/PyTorch
+    run_experiments(seeds=[1, 2, 3, 4])
 ```
 
-## Best Practices Summary
-1. **Always use `tqdm.write()`**: If your worker threads or parent script need to print logs, NEVER use `print()`. Always use `tqdm.write()`. This prints the message neatly above the progress bars without overwriting them.
-2. **Move the cursor at the end**: At the end of execution, `sys.stdout.write("\n" * (n_slots + 1))` pushes the terminal cursor completely below the stacked parallel bars so that subsequent console output doesn't overwrite your final bars.
-3. **Limit I/O**: Don't let your child script write to the progress file every single step. Update it every `N` steps (e.g. 1000 or 5000) to avoid disk bottlenecking.
+## Bonus: Looking Forward (`rich.progress`)
+If you want to move beyond `tqdm`, the Python ecosystem has largely embraced `rich` for complex terminal UIs. 
+
+`rich.progress` allows you to render multiple progress bars alongside live tables (e.g., showing exact hyperparameter configs for each job) in a single rendering layout. It is highly recommended to migrate to `rich` if terminal dashboarding becomes a priority.
+
+## Best Practices Summary (Updated)
+1. **Never write progress to disk.** Use IPC (Inter-Process Communication) like `multiprocessing.Queue`.
+2. **Set Start Method to Spawn.** When using PyTorch/CUDA in multiprocessing, always use `mp.set_start_method('spawn')` in the `__main__` block to prevent CUDA initialization deadlocks.
+3. **Queue Polling.** Use `queue.get(timeout=X)` so the main thread doesn't block forever if a worker crashes without sending a `done` signal.
+4. **Log to File, UI to Terminal.** Workers should configure Python's `logging` module to output to `logs_seed{X}.txt`, keeping the main terminal pristine for the `tqdm` progress bars.

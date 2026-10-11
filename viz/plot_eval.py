@@ -1,64 +1,111 @@
-import pandas as pd
-import matplotlib.pyplot as plt
-import seaborn as sns
-import glob
 import os
+import sys
+import glob
+from pathlib import Path
+import pandas as pd
+
+# Add project root to sys.path
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(PROJECT_ROOT))
+
+from viz.plotting_utils import set_style, plot_kde_distribution, plot_failure_landscape
+from config.physics_constants import ENGINEERING_CONSTRAINTS
 
 def plot_mc_results():
-    os.makedirs('plots', exist_ok=True)
-    files = glob.glob('logs/monte_carlo/*.csv')
+    plots_dir = PROJECT_ROOT / "results" / "plots"
+    plots_dir.mkdir(parents=True, exist_ok=True)
+    mc_dir = PROJECT_ROOT / "results" / "monte_carlo"
+
+    # Only load PPO episode/scenario CSVs, ignore summary files
+    files = [f for f in glob.glob(str(mc_dir / "*.csv")) if "summary" not in os.path.basename(f).lower() and "ppo" in os.path.basename(f).lower()]
 
     if not files:
-        print("No Monte Carlo CSVs found in logs/monte_carlo/")
+        print(f"No PPO Monte Carlo CSVs found in {mc_dir}")
         return
 
     data = []
     for f in files:
         df = pd.read_csv(f)
-        algo = "PPO" if "PPO" in f else "SAC"
-        df['algo'] = algo
+        df['algo'] = "PPO"
+
+        # Normalize column names between v3 (Ra_um, VB_mm) and v4 (Ra_max, VB_max)
+        if 'Ra_max' in df.columns and 'Ra_um' not in df.columns:
+            df['Ra_um'] = df['Ra_max']
+        if 'VB_max' in df.columns and 'VB_mm' not in df.columns:
+            df['VB_mm'] = df['VB_max']
+
         data.append(df)
 
-    df_all = pd.concat(data)
+    df_all = pd.concat(data, ignore_index=True)
 
-    sns.set_theme(style="whitegrid")
+    set_style()
+
 
     # Group by config and algo to get the max constraints per episode
     max_constraints = df_all.groupby(['algo', 'config'])[['Ra_um', 'VB_mm']].max().reset_index()
 
-    # 1. KDE Distribution of Constraints over 100 Random Scenarios
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 6))
-    
-    sns.kdeplot(data=max_constraints, x="Ra_um", hue="algo", fill=True, ax=ax1, palette="Set1", common_norm=False, alpha=0.5)
-    ax1.axvline(x=1.6, color='red', linestyle='--', linewidth=2, label='Ra Limit (1.6 um)')
-    ax1.set_xlabel('Max Surface Roughness (um) per Scenario')
-    ax1.set_title('Robustness: Surface Roughness over 100 Random Scenarios')
-    ax1.legend()
-    
-    sns.kdeplot(data=max_constraints, x="VB_mm", hue="algo", fill=True, ax=ax2, palette="Set1", common_norm=False, alpha=0.5)
-    ax2.axvline(x=0.3, color='red', linestyle='--', linewidth=2, label='Wear Limit (0.3 mm)')
-    ax2.set_xlabel('Max Tool Wear (mm) per Scenario')
-    ax2.set_title('Robustness: Tool Wear over 100 Random Scenarios')
-    ax2.legend()
-    
-    plt.tight_layout()
-    plt.savefig('plots/monte_carlo_constraints_kde.png', dpi=150)
-    plt.close()
-    
-    # 2. Scatter plot of Ra vs VB to show Pareto front of failures
-    plt.figure(figsize=(8, 6))
-    sns.scatterplot(data=max_constraints, x="VB_mm", y="Ra_um", hue="algo", palette="Set1", alpha=0.7)
-    plt.axvline(x=0.3, color='red', linestyle='--', label='Wear Limit (0.3 mm)')
-    plt.axhline(y=1.6, color='red', linestyle='-', label='Ra Limit (1.6 um)')
-    plt.title('Failure Landscape across 100 Random Machining Scenarios')
-    plt.xlabel('Max Tool Wear (mm)')
-    plt.ylabel('Max Surface Roughness (um)')
-    plt.legend()
-    plt.tight_layout()
-    plt.savefig('plots/monte_carlo_failure_landscape.png', dpi=150)
-    plt.close()
+    ra_safe = ENGINEERING_CONSTRAINTS['Ra_max'] * ENGINEERING_CONSTRAINTS.get('safety_factor', 0.85)
+    vb_safe = ENGINEERING_CONSTRAINTS['VB_max'] * ENGINEERING_CONSTRAINTS.get('safety_factor', 0.85)
+    ra_limit = ENGINEERING_CONSTRAINTS['Ra_max']
+    vb_limit = ENGINEERING_CONSTRAINTS['VB_max']
 
-    print("Saved Monte Carlo statistical plots to plots/")
+    # 1. KDE Distributions using plotting_utils
+    # For Ra_um
+    plot_kde_distribution(
+        data=max_constraints['Ra_um'],
+        title='Robustness: Surface Roughness over Random Scenarios',
+        xlabel='Max Surface Roughness (um)',
+        ylabel='Density',
+        color='blue',
+        limit=ra_limit,
+        limit_label=f"Roughness Limit (Ra  {ra_limit:.1f} um)",
+        safety_limit=ra_safe,
+        safety_limit_label=f"Ra Safety Limit ({ra_safe:.1f} um)",
+        filename=str(plots_dir / 'monte_carlo_constraints_kde_ra.png')
+    )
+
+    # For VB_mm
+    plot_kde_distribution(
+        data=max_constraints['VB_mm'],
+        title='Robustness: Tool Wear over Random Scenarios',
+        xlabel='Max Tool Wear (mm)',
+        ylabel='Density',
+        color='red',
+        limit=vb_limit,
+        limit_label=f"Wear Breakage Limit (VB  {vb_limit:.2f} mm)",
+        safety_limit=vb_safe,
+        safety_limit_label=f"VB Safety Limit ({vb_safe:.2f} mm)",
+        filename=str(plots_dir / 'monte_carlo_constraints_kde_vb.png')
+    )
+
+    # 2. Scatter plot / Failure landscape using plotting_utils
+    # Make sure 'broken' or success logic is handled
+    if 'broken' not in max_constraints.columns:
+        max_constraints['broken'] = max_constraints['VB_mm'] > vb_limit
+    if 'Ra_violation' not in max_constraints.columns:
+        max_constraints['Ra_violation'] = max_constraints['Ra_um'] > ra_limit
+
+    plot_failure_landscape(
+        df=max_constraints,
+        x_col='VB_mm',
+        y_col='Ra_um',
+        title='Failure Landscape & Operating Envelope across Machining Scenarios',
+        x_label='Max Tool Wear VB (mm)',
+        y_label='Max Surface Roughness Ra (Im)',
+        x_limit=vb_limit,
+        y_limit=ra_limit,
+        x_limit_label=f"Wear Limit (VB %  {vb_limit:.2f} mm)",
+        y_limit_label=f"Roughness Limit (Ra %  {ra_limit:.1f} Im)",
+        x_safe=vb_safe,
+        y_safe=ra_safe,
+        x_safe_label=f"VB Safety Limit ({vb_safe:.2f} mm)",
+        y_safe_label=f"Ra Safety Limit ({ra_safe:.1f} um)",
+        filename=str(plots_dir / 'monte_carlo_failure_landscape.png')
+    )
+
+    print(f"Saved Monte Carlo statistical plots with constraint limits to {plots_dir}/")
+
+
 
 if __name__ == "__main__":
     plot_mc_results()
