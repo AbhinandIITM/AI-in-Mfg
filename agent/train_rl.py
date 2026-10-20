@@ -60,16 +60,24 @@ class ProgressQueueCallback(BaseCallback):
         else:
             print(f"[WARN] {message}", flush=True)
 
-def train(algo="PPO", timesteps=1_000_000, seed=42, queue=None, device="auto", progress_bar=None, save_dir=None, env_kwargs=None, tb_log_name=None):
+def train(algo="PPO", timesteps=1_000_000, seed=42, queue=None, device="auto", progress_bar=None, save_dir=None, env_kwargs=None, tb_log_name=None, randomize=False, policy=None, env_id="MillingDTEnv-v1"):
     """Train a PPO policy and save the policy plus its VecNormalize statistics.
 
     Args:
         env_kwargs: forwarded to MillingDTEnv (reward weights, physics overrides).
         tb_log_name: TensorBoard run name. Pass a unique name per run, otherwise
             consecutive runs append to the same TensorBoard directory.
+        randomize: draw a new machining scenario for every episode.
+        policy: an existing policy to warm start from, used by the cloning
+            experiment in agent/clone_expert.py.
+        env_id: which environment registration to train against.
     """
     # Set seed
     set_seed(seed)
+
+    env_kwargs = dict(env_kwargs or {})
+    if randomize:
+        env_kwargs['randomize'] = True
 
     log_dir = PROJECT_ROOT / "results" / "tensorboard"
     if save_dir is not None:
@@ -88,7 +96,7 @@ def train(algo="PPO", timesteps=1_000_000, seed=42, queue=None, device="auto", p
         progress_bar = (queue is None)
 
     # Create environments
-    train_env = make_vec_env("MillingDTEnv-v1", n_envs=4, seed=seed, env_kwargs=env_kwargs)
+    train_env = make_vec_env(env_id, n_envs=4, seed=seed, env_kwargs=env_kwargs)
 
     # Reward & Observation Normalization
     train_env = VecNormalize(train_env, norm_obs=True, norm_reward=True, clip_obs=10., clip_reward=10.)
@@ -97,7 +105,7 @@ def train(algo="PPO", timesteps=1_000_000, seed=42, queue=None, device="auto", p
     policy_kwargs = dict(net_arch=[256, 256])
 
     model = PPO(
-        "MlpPolicy",
+        policy if policy is not None else "MlpPolicy",
         train_env,
         verbose=0,
         learning_rate=3e-4,

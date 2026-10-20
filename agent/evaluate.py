@@ -27,48 +27,19 @@ from stable_baselines3.common.vec_env import DummyVecEnv, VecNormalize
 
 import env # Triggers registration
 from utils.seeding import set_seed
-from config.physics_constants import ALL_CONSTANTS, ENGINEERING_CONSTRAINTS
+from config.physics_constants import ENGINEERING_CONSTRAINTS
+from config.scenarios import generate_random_configs
 
-# Perturbation bands applied to the calibrated coefficients, as a fraction of
-# their nominal value. The sweep explores the neighbourhood of the operating
-# point the policy was trained on, not a regime it has never seen.
-COEFFICIENT_BANDS = {
-    'C_wear': (0.6, 1.4),
-    'k1': (0.8, 1.2),
-    'k2': (0.8, 1.2),
-    'k3': (0.8, 1.2),
-}
+from config.scenarios import generate_random_configs as _generate_random_configs
 
 def generate_random_configs(n=100, seed=42):
     """Generate randomized machining scenarios for the Monte Carlo sweep.
 
-    Randomized per scenario:
-        kappa_total, D, L_cut  workpiece and tool geometry
-        C_wear                  Taylor-expanded wear coefficient
-        k1, k2, k3              surface roughness regression coefficients
-        VB_0                    initial flank wear of the tool [mm]
-
-    The coefficient bands are applied multiplicatively around the calibrated
-    values in config/physics_constants.py.
+    Kept as a module level name for callers that import it from here. The
+    implementation lives in config/scenarios.py, which is also what the
+    environment samples its training scenarios from.
     """
-    rng = np.random.default_rng(seed)
-    wear = ALL_CONSTANTS['tool_wear']
-    rough = ALL_CONSTANTS['surface_roughness']
-    eng = ALL_CONSTANTS['engineering']
-
-    configs = {}
-    for i in range(n):
-        scenario = {
-            "kappa_total": float(rng.uniform(2.0, 15.0)),
-            "D": float(rng.uniform(40.0, 150.0)),
-            "L_cut": float(rng.uniform(50.0, 200.0)),
-            "VB_0": float(rng.uniform(0.0, 0.8 * eng['VB_max'])),
-        }
-        for key, band in COEFFICIENT_BANDS.items():
-            nominal = wear[key] if key == 'C_wear' else rough[key]
-            scenario[key] = float(nominal * rng.uniform(*band))
-        configs[f"Scenario_{i:03d}"] = scenario
-    return configs
+    return _generate_random_configs(n, seed)
 
 def evaluate_policy_on_scenarios(model, vec_norm_path, configs, seed=42, deterministic=False):
     """Run one policy over a set of scenarios, returning one row per scenario.

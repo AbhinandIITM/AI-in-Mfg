@@ -61,6 +61,39 @@ REWARD_WEIGHTS = {
     'w2': 0.4,    # Energy weight (green manufacturing — tunable)
 }
 
+# Reference cutting condition. A pass cut under these conditions draws the
+# reference energy, which is what the reward normalizes the energy term by.
+# Normalizing against the extreme instead (slowest feed, deepest cut) leaves
+# the energy term an order of magnitude less sensitive than the throughput
+# term, and the energy weight stops having a visible effect.
+REFERENCE_CUTTING_CONDITION = {
+    'n': 5000,        # Spindle speed [RPM]
+    'f_r': 0.2,       # Feed per tooth [mm/r]
+    'a_p': 2.5,       # Depth of cut [mm]
+}
+
+# Ranges of the randomized machining scenarios. The environment samples the
+# training scenarios and the Monte Carlo sweep samples the evaluation
+# scenarios from these same tables, so the policy is trained on the
+# distribution it is measured on.
+SCENARIO_RANGES = {
+    'kappa_total': (2.0, 15.0),   # Stock allowance [mm]
+    'D': (40.0, 150.0),           # Tool/workpiece diameter [mm]
+    'L_cut': (50.0, 200.0),       # Cutting length [mm]
+}
+
+# Perturbation bands for the coefficients, as a fraction of the calibrated
+# value in TOOL_WEAR_CONSTANTS and SURFACE_ROUGHNESS_CONSTANTS.
+SCENARIO_BANDS = {
+    'C_wear': (0.6, 1.4),
+    'k1': (0.8, 1.2),
+    'k2': (0.8, 1.2),
+    'k3': (0.8, 1.2),
+}
+
+# Initial flank wear of the tool, as a fraction of the wear limit VB_max.
+SCENARIO_INITIAL_WEAR = (0.0, 0.8)
+
 # Export as dict for easy access
 ALL_CONSTANTS = {
     'tool_wear': TOOL_WEAR_CONSTANTS,
@@ -71,4 +104,5 @@ ALL_CONSTANTS = {
     'workpiece': WORKPIECE_PARAMETERS,
     'batch': BATCH_PARAMETERS,
     'reward': REWARD_WEIGHTS,
+    'reference_cutting_condition': REFERENCE_CUTTING_CONDITION,
 }

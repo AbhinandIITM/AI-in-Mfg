@@ -20,6 +20,7 @@ import gymnasium as gym
 from gymnasium import spaces
 from typing import Optional, Dict, Tuple, Any
 from config.physics_constants import ALL_CONSTANTS
+from config.scenarios import SCENARIO_KEYS, sample_scenario
 
 class MillingDTEnv(gym.Env):
     """Multi-pass face milling digital twin.
@@ -38,9 +39,8 @@ class MillingDTEnv(gym.Env):
     """
     metadata = {"render_modes": ["human", "rgb_array"], "render_fps": 10}
 
-    def __init__(self, render_mode: Optional[str] = None, **kwargs):
+    def __init__(self, render_mode: Optional[str] = None, randomize: bool = False, **kwargs):
         super().__init__()
-
 
         # Load constants from central config.
         # Per-instance copies: a scenario that overrides a coefficient must not
@@ -55,13 +55,11 @@ class MillingDTEnv(gym.Env):
         self.batch_cfg = dict(ALL_CONSTANTS['batch'])
         self.reward_cfg = dict(ALL_CONSTANTS['reward'])
 
-        # Physics overrides: per-scenario material, tool and machine variation
-        for key in ('C_wear', 'alpha', 'beta', 'gamma_wear'):
-            if key in kwargs:
-                self.tool_wear_cfg[key] = float(kwargs[key])
-        for key in ('k1', 'k2', 'k3'):
-            if key in kwargs:
-                self.roughness_cfg[key] = float(kwargs[key])
+        # Physical overrides passed to the constructor. They are reapplied on
+        # every reset, so a randomized environment still honours them.
+        self.fixed_scenario = {k: v for k, v in kwargs.items() if k in SCENARIO_KEYS}
+
+        # Machine and reward settings are not part of a scenario.
         for key in ('P_idle', 'k_c'):
             if key in kwargs:
                 self.energy_cfg[key] = float(kwargs[key])
@@ -73,9 +71,6 @@ class MillingDTEnv(gym.Env):
         for key in ('VB_max', 'Ra_max'):
             if key in kwargs:
                 self.eng_cfg[key] = float(kwargs[key])
-        for key in ('kappa_total', 'D', 'L_cut'):
-            if key in kwargs:
-                self.workpiece_cfg[key] = float(kwargs[key])
         if 'w1' in kwargs:
             self.reward_cfg['w1'] = float(kwargs['w1'])
         if 'w2' in kwargs:
@@ -96,29 +91,23 @@ class MillingDTEnv(gym.Env):
         self.Ra_max = self.eng_cfg['Ra_max']
         self.Ra_safe = self.Ra_max * self.safety_factor
 
-        # Workpiece
-        self.kappa_total = self.workpiece_cfg['kappa_total']
-        self.D = self.workpiece_cfg['D']
-        self.L_cut = self.workpiece_cfg['L_cut']
-        self.VB_init = kwargs.get('VB_0', None)
-
         self.render_mode = render_mode
+        self.randomize = bool(randomize)
+        self.VB_init = None
 
-        # Pre-compute normalization constants
-        v_c_max = (np.pi * self.D * self.n_max) / 1000.0
-        self.MRR_max = v_c_max * self.ap_max * self.f_max
-        # Per-pass energy scale. One pass draws
-        #   E = (P_idle + k_c * MRR) * t_cut,   t_cut = L_cut / (n * f_r)
-        # and MRR = (pi * D * n / 1000) * a_p * f_r, so the cutting term of E
-        # does not depend on n or f_r at all. The largest possible pass energy
-        # therefore sits at the slowest feed and the deepest cut. Scaling by
-        # this per-pass maximum, instead of a whole-episode total, keeps the
-        # energy term the same order of magnitude as the MRR term, which is
-        # what makes the throughput/energy trade-off learnable.
-        self.E_max = self.L_cut * (
-            self.energy_cfg['P_idle'] / (self.n_min * self.f_min)
-            + self.energy_cfg['k_c'] * (np.pi * self.D / 1000.0) * self.ap_max
-        ) * 60 / 1000.0
+        # Apply the pinned scenario and compute the scales that depend on it.
+        self._apply_scenario(self.fixed_scenario)
+
+        # Reward shaping scales. The objective term (throughput and energy) is
+        # multiplied by objective_scale and the progress bonus by
+        # progress_scale, so that the two objectives decide the operating point
+        # and the shaping only decides whether the agent makes progress at all.
+        # The constraint penalties and the completion bonus are an order of
+        # magnitude larger on purpose: breaking a constraint must never be
+        # worth a throughput or energy gain.
+        self.objective_scale = 5.0
+        self.progress_scale = 2.0
+        self.hv_scale = 5.0
 
         # State: [VB_norm, kappa_norm, n_norm, f_norm, ap_norm, MRR_norm, Ra_norm, is_broken]
         self.observation_space = spaces.Box(low=0.0, high=1.0, shape=(8,), dtype=np.float32)
@@ -128,8 +117,58 @@ class MillingDTEnv(gym.Env):
         self.max_steps = 200 # Safety limit
         self.reset()
 
+    def _apply_scenario(self, scenario: Dict[str, Any]):
+        """Apply a machining scenario to this environment and recompute scales.
+
+        A scenario holds the physical values of one part: geometry, material
+        and tool coefficients, and the initial flank wear. Everything that
+        depends on them, including the normalization scales of the reward, is
+        recomputed here.
+        """
+        for key in ('C_wear', 'alpha', 'beta', 'gamma_wear'):
+            if key in scenario:
+                self.tool_wear_cfg[key] = float(scenario[key])
+        for key in ('k1', 'k2', 'k3'):
+            if key in scenario:
+                self.roughness_cfg[key] = float(scenario[key])
+        for key in ('kappa_total', 'D', 'L_cut'):
+            if key in scenario:
+                self.workpiece_cfg[key] = float(scenario[key])
+
+        # Workpiece
+        self.kappa_total = self.workpiece_cfg['kappa_total']
+        self.D = self.workpiece_cfg['D']
+        self.L_cut = self.workpiece_cfg['L_cut']
+        self.VB_init = float(scenario['VB_0']) if 'VB_0' in scenario else None
+
+        # Pre-compute normalization constants
+        v_c_max = (np.pi * self.D * self.n_max) / 1000.0
+        self.MRR_max = v_c_max * self.ap_max * self.f_max
+        # Energy scale. One pass draws
+        #   E = (P_idle + k_c * MRR) * t_cut,   t_cut = L_cut / (n * f_r)
+        # and MRR = (pi * D * n / 1000) * a_p * f_r, so the cutting term of E
+        # does not depend on n or f_r at all. The scale is the energy of a pass
+        # cut under the reference condition in config/physics_constants.py.
+        # A pass under the reference condition therefore normalizes to 1, and
+        # the energy term has the same sensitivity as the throughput term, so
+        # the weight w2 has a visible effect on the operating point.
+        ref = ALL_CONSTANTS['reference_cutting_condition']
+        self.E_ref = self.L_cut * (
+            self.energy_cfg['P_idle'] / (ref['n'] * ref['f_r'])
+            + self.energy_cfg['k_c'] * (np.pi * self.D / 1000.0) * ref['a_p']
+        ) * 60 / 1000.0
+        # Cycle time of a part cut under the reference condition, in seconds.
+        self.T_ref = (self.kappa_total / ref['a_p']) * self.L_cut / (ref['n'] * ref['f_r']) * 60.0
+
     def reset(self, *, seed: Optional[int] = None, options: Optional[Dict[str, Any]] = None):
         super().reset(seed=seed)
+
+        if self.randomize:
+            # Draw a fresh scenario for this part. The pinned values passed to
+            # the constructor win over the drawn ones.
+            scenario = sample_scenario(self.np_random, exclude=self.fixed_scenario.keys())
+            scenario.update(self.fixed_scenario)
+            self._apply_scenario(scenario)
 
         # Initial state
         if self.VB_init is not None:
@@ -227,14 +266,17 @@ class MillingDTEnv(gym.Env):
         w2 = self.reward_cfg['w2']
 
         MRR_hat = MRR / self.MRR_max
-        E_hat = Energy / self.E_max
+        E_hat = Energy / self.E_ref
 
-        # Base Step Reward (Throughput vs Energy)
-        r_step = w1 * MRR_hat - w2 * E_hat
+        # Objective term (Throughput vs Energy). The scale factor puts the two
+        # objectives on the same footing as the shaping terms below. Without it
+        # the progress bonus and the constraint penalties decide the policy on
+        # their own and the energy weight w2 has no visible effect.
+        r_step = self.objective_scale * (w1 * MRR_hat - w2 * E_hat)
 
         # Intermediate Progress Bonus
         kappa_used_ratio = (self.kappa_total - self.kappa) / self.kappa_total
-        progress_bonus = 10.0 * (kappa_used_ratio - self.last_kappa_progress)
+        progress_bonus = self.progress_scale * (kappa_used_ratio - self.last_kappa_progress)
         self.last_kappa_progress = kappa_used_ratio
 
         # Constraint Penalties
@@ -242,7 +284,7 @@ class MillingDTEnv(gym.Env):
         r_B = -100.0 if self.broken else 0.0
         r_Ra = 0.0
         if is_finishing:
-            r_Ra = -50.0 if Ra > self.Ra_safe else 50.0 # Reward for finishing within safe spec
+            r_Ra = -50.0 if Ra > self.Ra_safe else 0.0 # Penalty for finishing outside safe spec
 
         step_penalty = -0.05
         reward = r_step + progress_bonus + r_VB + r_B + r_Ra + step_penalty
@@ -251,12 +293,13 @@ class MillingDTEnv(gym.Env):
         if is_finishing and not self.broken and not terminated_by_wear and Ra <= self.Ra_safe:
             reward += 200.0 # Large completion bonus
 
-            # Additional Pareto efficiency reward
-            T_ref = 15.0 * 60.0 # seconds
-            Ra_ref = 5.0
-            T_term = max(0.0, T_ref - self.T_total)
-            Ra_term = max(0.0, Ra_ref - Ra)
-            HV = (T_term / T_ref) * (Ra_term / Ra_ref) * 50.0
+            # Additional Pareto efficiency reward: the margin left below the
+            # roughness limit and below the reference cycle time. This is a
+            # small bonus, not a decision variable, so it cannot outvote the
+            # throughput and energy objectives.
+            T_term = max(0.0, 1.0 - self.T_total / self.T_ref)
+            Ra_term = max(0.0, 1.0 - Ra / self.Ra_safe)
+            HV = T_term * Ra_term * self.hv_scale
             reward += HV
 
         # Cache for next obs

@@ -117,7 +117,7 @@ def test_info_exports_accumulators():
     env_inst.close()
 
 def test_energy_normalization_is_per_pass():
-    """Energy is normalized against the largest single pass, not a whole part.
+    """Energy is normalized against a reference pass, not a whole part.
 
     A whole-part scale makes the per-step energy term two orders of magnitude
     smaller than the throughput term, and the energy weight stops mattering.
@@ -128,8 +128,8 @@ def test_energy_normalization_is_per_pass():
 
     for action in ([1.0, 1.0, 1.0], [-1.0, -1.0, -1.0], [1.0, -1.0, 1.0], [-1.0, 1.0, -1.0]):
         _, _, _, _, info = env_inst.step(np.array(action, dtype=np.float32))
-        assert 0.0 < info['Energy'] <= unwrapped.E_max
-        assert 0.0 < info['Energy'] / unwrapped.E_max <= 1.0
+        assert info['Energy'] > 0.0
+        assert info['Energy'] / unwrapped.E_ref > 0.0
     env_inst.close()
 
 def test_gymnasium_env_checker_passes():
@@ -138,4 +138,65 @@ def test_gymnasium_env_checker_passes():
 
     check_env(env_inst := gym.make("MillingDTEnv-v1").unwrapped, skip_render_check=True)
     env_inst.close()
+
+def test_randomized_environment_draws_a_new_scenario():
+    """Domain randomization: every reset is a different part."""
+    env_inst = env.MillingDTEnv(randomize=True)
+
+    env_inst.reset(seed=1)
+    first = (env_inst.kappa_total, env_inst.D, env_inst.L_cut,
+             env_inst.tool_wear_cfg['C_wear'], env_inst.roughness_cfg['k1'])
+    env_inst.reset(seed=2)
+    second = (env_inst.kappa_total, env_inst.D, env_inst.L_cut,
+              env_inst.tool_wear_cfg['C_wear'], env_inst.roughness_cfg['k1'])
+
+    assert first != second, "A randomized environment must draw a new scenario"
+    env_inst.close()
+
+def test_fixed_environment_keeps_its_scenario():
+    """Without randomization the physical scenario never moves."""
+    env_inst = env.MillingDTEnv()
+    env_inst.reset(seed=1)
+    first = (env_inst.kappa_total, env_inst.D, env_inst.L_cut,
+             env_inst.tool_wear_cfg['C_wear'], env_inst.roughness_cfg['k1'])
+    env_inst.reset(seed=2)
+    second = (env_inst.kappa_total, env_inst.D, env_inst.L_cut,
+              env_inst.tool_wear_cfg['C_wear'], env_inst.roughness_cfg['k1'])
+
+    assert first == second
+    env_inst.close()
+
+def test_pinned_values_survive_randomization():
+    """A value passed to the constructor is not overwritten by the sampler."""
+    env_inst = env.MillingDTEnv(randomize=True, kappa_total=7.5, k1=11.0)
+    env_inst.reset(seed=3)
+
+    assert env_inst.kappa_total == 7.5
+    assert env_inst.roughness_cfg['k1'] == 11.0
+    env_inst.close()
+
+def test_scenario_scales_follow_the_scenario():
+    """The reward scales depend on the scenario, so they are recomputed."""
+    env_inst = env.MillingDTEnv(randomize=True)
+    env_inst.reset(seed=4)
+
+    v_c_max = (np.pi * env_inst.D * env_inst.n_max) / 1000.0
+    assert env_inst.MRR_max == pytest.approx(v_c_max * env_inst.ap_max * env_inst.f_max)
+    assert env_inst.E_ref > 0.0
+    assert env_inst.T_ref > 0.0
+    env_inst.close()
+
+def test_sweep_and_environment_share_the_scenario_tables():
+    """The sweep scenarios and the training scenarios come from one source."""
+    from config.scenarios import generate_random_configs, sample_scenario
+    from config.physics_constants import SCENARIO_RANGES
+
+    configs = generate_random_configs(5, seed=42)
+    assert len(configs) == 5
+    for scenario in configs.values():
+        for key, (low, high) in SCENARIO_RANGES.items():
+            assert low <= scenario[key] <= high
+
+    drawn = sample_scenario(np.random.default_rng(0))
+    assert set(drawn) == set(configs['Scenario_000'])
 
