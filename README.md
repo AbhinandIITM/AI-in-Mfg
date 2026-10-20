@@ -212,6 +212,25 @@ Launch the Streamlit web dashboard to simulate real-time cutting, inspect 2D wor
 streamlit run app.py
 ```
 
+### 5. Compute Notes
+PPO on a 256x256 MLP does not benefit from a GPU. The bottleneck is the
+per-step forward pass and the Python environment step, not the gradient
+math, so the measured throughput on this machine (16 cores, RTX 4060) is:
+
+| Configuration | Throughput |
+| :--- | ---: |
+| CPU, 1 torch thread | 812 steps/s |
+| CPU, 4 torch threads | 881 steps/s |
+| CPU, 8 torch threads | 913 steps/s |
+| RTX 4060, `--device cuda` | 318 steps/s |
+
+Stable-Baselines3 warns about the same thing for a non-CNN policy. The
+training scripts therefore default to the CPU with one thread per process,
+and the parallelism comes from running the ablation policies as separate
+processes (`agent/run_experiments.py`, 7 slots by default), which is what
+uses the cores. A GPU would pay off for a convolutional policy, a much
+larger network, or an off-policy algorithm with a replay buffer.
+
 ---
 
 ## Experimental Findings
