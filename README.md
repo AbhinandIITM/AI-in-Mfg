@@ -56,9 +56,10 @@ To avoid operating at the boundary of failure, the reward formulation incorporat
 The control policy is trained using **Proximal Policy Optimization (PPO)**:
 - **State Representation (8-dim):**
   $$s_t = \left[ \widetilde{VB}, \widetilde{\kappa}, \tilde{n}_{\text{prev}}, \tilde{f}_{\text{prev}}, \tilde{a}_{p,\text{prev}}, \widetilde{MRR}_{\text{prev}}, \widetilde{Ra}_{\text{prev}}, \mathbb{I}_{\text{broken}} \right]$$
-  Observations utilize soft tanh-squashing for continuous normalized gradients.
+  Observations utilize soft tanh-squashing for continuous normalized gradients. The conditioned registration `MillingDTEnv-w2-v1` adds three more, the energy weight and the material context, and is described under **Method** below.
 - **Action Space (3-dim continuous):**
   $$a_t = [a_n, a_f, a_p] \in [-1, 1]^3 \mapsto [n, f_r, a_p]$$
+  The policy output is unbounded and is clipped to this box before the physical parameters are computed, which is what keeps the cut inside the machine envelope.
 - **Network Architecture:**
   - Multi-Layer Perceptron (Actor-Critic `MlpPolicy`)
   - Two hidden layers of 256 units each with Tanh activations for both policy ($\pi_\theta$) and value function ($V_\phi$).
