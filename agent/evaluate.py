@@ -95,6 +95,8 @@ def evaluate_policy_on_scenarios(model, vec_norm_path, configs, seed=42, determi
             'a_p_mean': float(np.mean(ep_ap)),
             'passes': len(ep_MRR),
             'Ra_violation': int(np.max(ep_Ra) > ENGINEERING_CONSTRAINTS['Ra_max']),
+            'Ra_safe_violation': int(np.max(ep_Ra) > ENGINEERING_CONSTRAINTS['Ra_max']
+                                     * ENGINEERING_CONSTRAINTS.get('safety_factor', 0.85)),
             'VB_violation': int(np.max(ep_VB) > ENGINEERING_CONSTRAINTS['VB_max']),
             'Broken': int(bool(info.get('broken', False))),
             'Success': int(bool(info.get('is_finishing', False))
@@ -132,7 +134,7 @@ def compute_statistics(df, ci=0.95):
         }
 
     # Violation rates (Binomial CI)
-    for col in ['Ra_violation', 'VB_violation', 'Broken']:
+    for col in ['Ra_violation', 'Ra_safe_violation', 'VB_violation', 'Broken']:
         if col not in df.columns: continue
         rate = df[col].mean()
         n = len(df)
@@ -199,6 +201,7 @@ def evaluate(num_scenarios=100, seed=42, algo="PPO"):
     print(f"  Energy:     {stats_dict['Energy_total']['mean']:.2f} +/- {stats_dict['Energy_total']['std']:.2f} [95% CI: {stats_dict['Energy_total']['ci_lower']:.2f}-{stats_dict['Energy_total']['ci_upper']:.2f}]")
     print(f"  Cycle time: {stats_dict['T_total']['mean']:.2f} +/- {stats_dict['T_total']['std']:.2f} s [95% CI: {stats_dict['T_total']['ci_lower']:.2f}-{stats_dict['T_total']['ci_upper']:.2f}]")
     print(f"  Ra Viol:    {stats_dict['Ra_violation']['rate']*100:.1f}% [95% CI: {stats_dict['Ra_violation']['ci_lower']*100:.1f}-{stats_dict['Ra_violation']['ci_upper']*100:.1f}%]")
+    print(f"  Ra Safe:    {stats_dict['Ra_safe_violation']['rate']*100:.1f}% (above the 0.85 safety limit)")
     print(f"  VB Viol:    {stats_dict['VB_violation']['rate']*100:.1f}% [95% CI: {stats_dict['VB_violation']['ci_lower']*100:.1f}-{stats_dict['VB_violation']['ci_upper']*100:.1f}%]")
     print(f"  Broken:     {stats_dict['Broken']['rate']*100:.1f}%")
     print(f"  Success:    {df_algo['Success'].mean()*100:.1f}%")

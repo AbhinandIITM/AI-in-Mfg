@@ -53,7 +53,9 @@ def evaluate_on_target(model, vec_norm_path, scenarios, env_kwargs=None, seed=42
     rewards, violations, successes = [], [], []
 
     for idx, (name, scenario) in enumerate(scenarios.items()):
-        eval_env = gym.make("MillingDTEnv-v1", **scenario, **env_kwargs)
+        # The target material overrides the scenario, it does not duplicate it.
+        env_kwargs_full = {**scenario, **env_kwargs}
+        eval_env = gym.make("MillingDTEnv-v1", **env_kwargs_full)
         eval_env.reset(seed=seed + idx)
         vec_env = DummyVecEnv([lambda: eval_env])
         vec_env = VecNormalize.load(str(vec_norm_path), vec_env)

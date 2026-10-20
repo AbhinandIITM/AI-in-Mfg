@@ -90,7 +90,17 @@ def compare_with_sweep(conditioned_df, sweep_path=None):
 
 
 def main():
-    model_dir = PROJECT_ROOT / "models" / "PPO_conditioned_seed42"
+    import argparse
+
+    parser = argparse.ArgumentParser(description="Sweep the energy weight for the conditioned policy")
+    parser.add_argument("--model-dir", default=str(PROJECT_ROOT / "models" / "PPO_conditioned_seed42"))
+    parser.add_argument("--tag", default="conditioned_frontier")
+    parser.add_argument("--scenarios", type=int, default=50)
+    parser.add_argument("--compare", action="store_true",
+                        help="compare against the per-weight sweep")
+    args = parser.parse_args()
+
+    model_dir = Path(args.model_dir)
     if not (model_dir / "final_model.zip").exists():
         raise FileNotFoundError(
             f"No conditioned policy at {model_dir}. Run agent/train_rl_conditioned.py first.")
@@ -98,18 +108,19 @@ def main():
     out_dir = PROJECT_ROOT / "results" / "conditioned"
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    print("Sweeping the energy weight for the conditioned policy...")
-    frontier = evaluate_frontier(model_dir)
-    frontier.to_csv(out_dir / "conditioned_frontier.csv", index=False)
+    print(f"Sweeping the energy weight for {model_dir.name}...")
+    frontier = evaluate_frontier(model_dir, num_scenarios=args.scenarios)
+    frontier.to_csv(out_dir / f"{args.tag}.csv", index=False)
 
-    comparison = compare_with_sweep(frontier)
-    if comparison is not None:
-        comparison.to_csv(out_dir / "conditioned_vs_sweep.csv", index=False)
-        print("\nConditioned policy against the per-weight sweep:")
-        print(comparison[[
-            'w2', 'MRR_mean_conditioned', 'MRR_mean_sweep', 'MRR_gap_pct',
-            'Energy_mean_conditioned', 'Energy_mean_sweep', 'Energy_gap_pct'
-        ]].round(2).to_string(index=False))
+    if args.compare:
+        comparison = compare_with_sweep(frontier)
+        if comparison is not None:
+            comparison.to_csv(out_dir / f"{args.tag}_vs_sweep.csv", index=False)
+            print("\nConditioned policy against the per-weight sweep:")
+            print(comparison[[
+                'w2', 'MRR_mean_conditioned', 'MRR_mean_sweep', 'MRR_gap_pct',
+                'Energy_mean_conditioned', 'Energy_mean_sweep', 'Energy_gap_pct'
+            ]].round(2).to_string(index=False))
 
     print(f"\nSaved to {out_dir}")
 
