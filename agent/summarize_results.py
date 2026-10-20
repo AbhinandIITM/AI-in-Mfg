@@ -76,20 +76,19 @@ def ablation_table():
     df = pd.read_csv(path).sort_values('w2')
 
     lines = [
-        "| w2 (energy weight) | MRR (mm3/min) | Energy per part (kJ) | Energy per pass (kJ) | Cycle time (s) | Spindle (RPM) | Feed (mm/r) | Depth of cut (mm) | Passes | Seeds |",
-        "| ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
+        "| w2 (energy weight) | MRR (mm3/min) | Energy per part (kJ) | Cycle time (s) | Spindle (RPM) | Feed (mm/r) | On the frontier |",
+        "| ---: | ---: | ---: | ---: | ---: | ---: | :--- |",
     ]
     for _, r in df.iterrows():
         mrr_std = 0.0 if pd.isna(r['MRR_std']) else r['MRR_std']
         energy_std = 0.0 if pd.isna(r['Energy_std']) else r['Energy_std']
         time_std = 0.0 if pd.isna(r['Time_std']) else r['Time_std']
+        on_frontier = "yes" if bool(r.get('pareto', False)) else "dominated"
         lines.append(
             f"| {r['w2']:.1f} | {r['MRR_mean']:.1f} +/- {mrr_std:.1f} | "
             f"{r['Energy_mean']:.1f} +/- {energy_std:.1f} | "
-            f"{r['Energy_per_pass']:.2f} | "
             f"{r['Time_mean']:.1f} +/- {time_std:.1f} | "
-            f"{r['n_mean']:.0f} | {r['f_r_mean']:.3f} | {r['a_p_mean']:.2f} | "
-            f"{r['passes_mean']:.1f} | {int(r['seeds'])} |"
+            f"{r['n_mean']:.0f} | {r['f_r_mean']:.3f} | {on_frontier} |"
         )
     return "\n".join(lines)
 

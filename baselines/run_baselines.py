@@ -27,6 +27,13 @@ sys.path.insert(0, str(PROJECT_ROOT))
 
 import env # Register environment
 from config.physics_constants import ALL_CONSTANTS
+from config.physics import (
+    cutting_speed,
+    flank_wear_rate,
+    material_removal_rate,
+    pass_energy,
+    surface_roughness,
+)
 from baselines.receding_horizon import solve_next_pass
 import gymnasium as gym
 
@@ -65,9 +72,6 @@ class MillingStaticProblem(Problem):
         ra_viol = np.zeros(len(x))
         vb_viol = np.zeros(len(x))
 
-        wear_cfg = self.constants['tool_wear']
-        rough_cfg = self.constants['surface_roughness']
-        energy_cfg = self.constants['energy']
         eng_cfg = self.constants['engineering']
         wp_cfg = self.constants['workpiece']
 
@@ -76,12 +80,11 @@ class MillingStaticProblem(Problem):
             f_r = f_vals[i]
             a_p = ap_vals[i]
 
-            # Physics per pass
-            v_c = (np.pi * wp_cfg['D'] * n) / 1000.0
+            # Physics per pass, from the shared model
+            v_c = cutting_speed(wp_cfg['D'], n)
             t_cut = wp_cfg['L_cut'] / (n * f_r)
-            MRR = v_c * a_p * f_r
-            P_cutting = energy_cfg['k_c'] * MRR
-            E_pass = (energy_cfg['P_idle'] + P_cutting) * t_cut * 60 / 1000.0
+            MRR = material_removal_rate(v_c, a_p, f_r)
+            E_pass = pass_energy(n, f_r, a_p, wp_cfg['D'], wp_cfg['L_cut'])
 
             # Simulate a full batch (kappa_total / a_p passes)
             n_passes = int(np.ceil(wp_cfg['kappa_total'] / a_p))
@@ -91,11 +94,10 @@ class MillingStaticProblem(Problem):
             max_Ra = 0.0
 
             for _ in range(n_passes):
-                Ra = rough_cfg['k1'] * (f_r ** 2) + rough_cfg['k2'] * VB + rough_cfg['k3'] / v_c
+                Ra = surface_roughness(f_r, VB, v_c)
                 if Ra > max_Ra: max_Ra = Ra
 
-                delta_VB = wear_cfg['C_wear'] * (v_c ** wear_cfg['alpha']) * \
-                           (f_r ** wear_cfg['beta']) * (a_p ** wear_cfg['gamma_wear']) * t_cut
+                delta_VB = flank_wear_rate(v_c, f_r, a_p, t_cut)
                 VB += delta_VB
                 total_E += E_pass
 

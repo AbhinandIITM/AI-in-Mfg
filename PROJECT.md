@@ -106,12 +106,29 @@ Ra = k_1 f_r^2 + k_2 VB + \frac{k_3}{v_c}
 $$
 
 $$
-E = \left(P_{\text{idle}} + k_c \, MRR\right) t_{\text{cut}}
+k_c(v_c) = k_{c0} \left(\frac{v_c}{v_{\text{ref}}}\right)^{m}, \qquad
+E = \left(P_{\text{idle}} + k_c(v_c) \, MRR\right) t_{\text{cut}}
 $$
 
-$E$ is the energy of one pass in kJ. The part energy is the sum over the
-passes, which is $k_c V + P_{\text{idle}} T_{\text{part}}$: the cutting term
-is fixed by the volume, and the idle term falls when the cycle time falls.
+$E$ is the energy of one pass in kJ. The specific cutting energy grows with
+the cutting speed, so the energy of a finished part is
+
+$$
+E_{\text{part}} = k_c(v_c) \cdot V + P_{\text{idle}} \cdot T_{\text{part}}
+$$
+
+The cutting term rises as the spindle speeds up, because the energy per unit
+volume removed grows, and the idle term falls because the cycle time falls.
+The part energy therefore has an interior minimum, and the throughput keeps
+rising with the speed: the energy objective and the throughput objective pull
+in opposite directions, and the energy weight chooses where between them the
+policy sits. Without the speed dependence the cutting term was fixed by the
+volume, both terms moved the same way, and the energy objective was a
+duplicate of the throughput objective.
+
+$m$ is 0.6 and $v_{\text{ref}}$ is the cutting speed of the reference
+condition, 785 m/min at 50 mm and 5000 RPM, so the calibrated $k_{c0} = 2.5$
+is the coefficient that applies at the reference condition.
 
 ---
 
@@ -162,7 +179,7 @@ drift from another.
 | :--- | :--- |
 | Tool wear | $C_{\text{wear}} = 1.1\times10^{-4}$, $\alpha = 0.3$, $\beta = 0.2$, $\gamma_{\text{wear}} = 0.15$ |
 | Surface roughness | $k_1 = 12.5$, $k_2 = 0.8$, $k_3 = 0.5$ |
-| Energy | $P_{\text{idle}} = 500$ W, $k_c = 2.5$ W$\cdot$min/mm$^3$ |
+| Energy | $P_{\text{idle}} = 500$ W, $k_{c0} = 2.5$ W$\cdot$min/mm$^3$, speed exponent $m = 0.6$ |
 | Machine | 2000-8000 RPM, 0.05-0.35 mm/r, 0.1-2.5 mm |
 | Engineering | $VB_{\max} = 0.3$ mm, $Ra_{\max} = 1.6$ $\mu$m, safety factor 0.85 |
 | Workpiece | $D = 50$ mm, $L_{\text{cut}} = 100$ mm, $\kappa = 5$ mm |
@@ -181,10 +198,10 @@ drift from another.
 | PPO | The learned policy, and the energy weight ablation across seven weights |
 
 The receding-horizon controller is the only classical policy that stays inside
-the roughness safety limit, and it reaches a total reward of +204.3 against
--45 for the four static ones. The learned policy and the controller are level
-on the reward (204.9 against 204.3), and the controller is ahead on the
-material removal rate, the energy and the cycle time. The comparison in
+the roughness safety limit, and it reaches a total reward of +203.5 against
+-46 for the four static ones. The learned policy and the controller are level
+on the reward (204.1 against 203.5), and the controller is ahead on the
+material removal rate and the cycle time. The comparison in
 `results/baseline_results_v5.csv` is the one to read.
 
 ---
@@ -198,8 +215,9 @@ material removal rate, the energy and the cycle time. The comparison in
 | Convergence without divergence or NaN | Met | Training curves in `results/curves/*/progress.csv`, plotted by `viz/plot_results.py` |
 | The Monte Carlo sweep reports 95% confidence intervals for every metric | Met | `results/monte_carlo/eval_PPO_MC_v5.csv`, five metrics with intervals |
 | The environment and the baselines use identical constants | Met | `tests/test_env.py::test_physics_constants_sync`; both import `config/physics_constants.py` |
+| The environment and the baselines use identical equations | Met | `tests/test_env.py::test_environment_uses_the_shared_physics`; the equations live in `config/physics.py` and every consumer imports them |
 | No duplicated plotting code | Met | `viz/plotting_utils.py` is the single source |
-| The ablation demonstrates the energy objective | Met, with a stated limit | The part energy falls by 21% and the cycle time by 53% across the weight grid. The energy of a part and the removal rate are tied together in this energy model, so the weight is not a trade-off against throughput. [Part 3, Literature Comparison](#part-3-literature-comparison) states what would open one. |
+| The ablation demonstrates the energy objective | Met | Across the non-dominated weights the removal rate falls 18% and the energy of the part falls 8.5%, and the spindle speed falls with the energy weight, which is the mechanism the model predicts. [Part 3, Literature Comparison](#part-3-literature-comparison) states the mechanism. |
 
 ---
 
@@ -227,29 +245,36 @@ baseline, from `results/RESULTS.md`:
 - The literature comparison quotes only numbers that exist in `docs/papers/` or
   in the artifacts of this repository.
 
-Two measured facts drive this plan.
+Two measured facts drove this plan.
 
-**Fact 1, the energy objective is not a trade-off in this model.** The energy of
-a finished part is
+**Fact 1, the energy objective was not a trade-off in this model.** The energy
+of a finished part was
 
 $$E_{\text{part}} = k_c \cdot V + P_{\text{idle}} \cdot T_{\text{part}}$$
 
-The cutting term is fixed by the volume that has to come off, and the idle term
-falls exactly when the cycle time falls, which is also what raises the material
-removal rate. Across the ablation grid the part energy falls by 30% and the
-cycle time by 71% as the energy weight goes from 0.0 to 1.0, but the removal
-rate rises as well. The two objectives point the same way, so the weight sweep
-produces a monotone improvement rather than a Pareto frontier, and 21 separate
-training runs buy a curve that one policy could produce directly.
+The cutting term was fixed by the volume that has to come off, and the idle
+term fell exactly when the cycle time fell, which is also what raises the
+material removal rate. At the time this plan was written the ablation grid
+showed the part energy falling by 21% and the cycle time by 53% as the energy
+weight went from 0.0 to 1.0, but the removal rate rose as well. The two
+objectives pointed the same way, so the weight sweep produced a monotone
+improvement rather than a Pareto frontier, and 21 separate training runs
+bought a curve that one policy could produce directly.
 
 **Fact 2, the policy is trained on one operating point and evaluated on many.**
-The primary policy is trained on the nominal constants and then evaluated on
-randomized scenarios. It is not conditioned on the scenario, so it has to
-generalize to material and tool coefficients it has never seen, and the sweep
-shows roughness violations in the double digits.
+The primary policy was trained on the nominal constants and then evaluated on
+randomized scenarios. It was not conditioned on the scenario, so it had to
+generalize to material and tool coefficients it had never seen, and the sweep
+showed roughness violations in the double digits.
 
 Both facts have the same remedy: put the context into the observation and
 train across a distribution of contexts.
+
+Fact 1 also needed a change in the physics rather than in the method. The
+specific cutting energy now grows with the cutting speed, so the part energy
+has an interior minimum and the energy objective pulls against the throughput
+objective instead of with it. The equations are in Part 1, the reasoning in
+Part 3, and the measured frontier in `results/RESULTS.md`.
 
 ---
 
@@ -443,26 +468,28 @@ that the documentation quotes.
 
 | Phase | Built in | Artifact | Outcome |
 | :--- | :--- | :--- | :--- |
-| 1. Domain randomization | `config/scenarios.py`, `env/milling_env.py` | `results/monte_carlo/eval_PPO_MC_v5.csv` | The finished surface stays inside the roughness limit in 100% of the 100 scenarios, the part completion rate is 98.0%, the flank wear limit is never exceeded. |
-| 2. Conditioned policy | `env/__init__.py`, `agent/train_rl_conditioned.py`, `agent/evaluate_conditioned.py` | `results/conditioned/` | At a matched budget of 150,000 steps per model, one conditioned policy beats all 21 weight-specific policies: 12% to 22% more removal rate and 8% to 19% less energy per part, from one run instead of 21. |
-| 3. Transfer experiment | `agent/transfer_experiment.py` | `results/transfer/` | Fine tuning the source policy for 50,000 steps removes no roughness violation (184.5 to 184.8), while a policy trained on the target from scratch for the same budget removes all of them (196.0). |
-| 4. Controller teacher | `baselines/receding_horizon.py` | `results/baseline_results_v5.csv` | The receding-horizon controller scores +204.3 against -45 for every static baseline, and is the only classical policy that stays inside the roughness safety limit. The cloning arm of this phase was measured and removed. |
+| 1. Domain randomization | `config/scenarios.py`, `env/milling_env.py` | `results/monte_carlo/eval_PPO_MC_v5.csv` | The finished surface stays inside the roughness limit in 100% of the 100 scenarios, the part completion rate is 99.0%, the flank wear limit is never exceeded. |
+| 2. Conditioned policy | `env/__init__.py`, `agent/train_rl_conditioned.py`, `agent/evaluate_conditioned.py` | `results/conditioned/` | One run of 1,000,000 steps beats the 21 weight-specific policies of 150,000 steps each, which is 3,150,000 steps in total: 13% to 27% more removal rate at the same or lower energy. |
+| 3. Transfer experiment | `agent/transfer_experiment.py` | `results/transfer/` | Fine tuning the source policy for 50,000 steps removes no roughness violation (183.0 to 182.9), while a policy trained on the target from scratch for the same budget removes all of them (196.7). |
+| 4. Controller teacher | `baselines/receding_horizon.py` | `results/baseline_results_v5.csv` | The receding-horizon controller scores +203.5 against -46 for every static baseline, and is the only classical policy that stays inside the roughness safety limit. The cloning arm of this phase was measured and removed. |
+| 5. Speed dependent cutting energy | `config/physics.py`, `config/physics_constants.py` | `results/ablation/ablation_summary.csv` | The part energy now has an interior minimum in the spindle speed, and the ablation measures a real trade-off: across the non-dominated weights the removal rate falls 18% and the energy of the part falls 8.5%. |
 
-Two results contradict what the plan expected, and both are reported as they
-came out.
-
-**The energy objective does not trade against throughput.** Section 1 predicted
-that a conditioned policy would produce a frontier. It does, but the frontier
-runs in the direction where both objectives improve, because the part energy
-and the removal rate are tied together in this energy model. The physics is
-the reason, not the method, and it is spelled out in
-[Part 3, Literature Comparison](#part-3-literature-comparison).
+One result contradicts what the plan expected, and it is reported as it came
+out.
 
 **Fine tuning is the wrong tool for a material change.** The plan assumed
 that a pre-trained policy would adapt to a new material faster than one
 trained from scratch. At a 50,000-step budget the opposite is true. The
 reason the plan's own recommendation still holds is phase 1: a policy trained
 across a distribution of materials needs no adaptation step at all.
+
+The other surprise was the opposite one. The plan expected the energy
+objective to be a trade-off against throughput and found that it was not: the
+part energy was fixed by the volume removed, so both objectives pointed the
+same way. That was a property of the energy model, not of the method, and
+phase 5 changed the model to $k_c(v_c) V + P_{\text{idle}} T_{\text{part}}$
+so that the trade-off exists to be found. It is now measured rather than
+assumed.
 
 ---
 
@@ -538,7 +565,8 @@ this repository, from `config/physics_constants.py`.
 **Adds**
 
 1. Energy as an explicit objective. The reward carries a specific cutting
-   energy term, `E = (P_idle + k_c * MRR) * t_cut`, and the energy weight `w2`
+   energy term, `E = (P_idle + k_c(v_c) * MRR) * t_cut`, with the specific
+   cutting energy growing with the cutting speed, and the energy weight `w2`
    is a first-class parameter of the environment rather than a by-product.
 2. No sensor machine learning pipeline. Tool wear and surface roughness are
    propagated from the constants in `config/physics_constants.py`, so a run is
@@ -573,36 +601,43 @@ this repository, from `config/physics_constants.py`.
    published models, not against measured cuts from a machining centre.
 4. No learned surface roughness or tool condition estimator.
 
-#### What the energy objective can trade against, and what it cannot
+#### What the energy objective trades against
 
 The energy of a finished part in this digital twin is
 
-$$E_{\text{part}} = k_c \cdot V + P_{\text{idle}} \cdot T_{\text{part}}$$
+$$E_{\text{part}} = k_c(v_c) \cdot V + P_{\text{idle}} \cdot T_{\text{part}}$$
 
-where $V$ is the volume that has to come off and $T_{\text{part}}$ is the cycle
-time. The cutting term is fixed by the volume, so the only part of the energy
-the policy controls is the idle term, and the idle term falls exactly when the
-cycle time falls. The material removal rate is inversely proportional to the
-same cycle time, $MRR = V / T_{\text{part}}$. Throughput and part energy
-therefore point in the same direction in this model, and no weight on the
-energy term can open a trade-off between them.
+where $V$ is the volume that has to come off, $T_{\text{part}}$ is the cycle
+time, and the specific cutting energy grows with the cutting speed:
 
-Two consequences follow, and both are visible in the ablation:
+$$k_c(v_c) = k_{c0} \left(\frac{v_c}{v_{\text{ref}}}\right)^{m}$$
 
-1. The binding constraint on the operating point is surface roughness and
-   flank wear, not energy. A policy that pushes the feed rate up to raise the
-   removal rate raises the roughness with it, and the roughness limit is what
-   stops it.
-2. The reward charges the energy of a pass, while the reported metric is the
-   energy of a part. A part cut in many shallow passes draws less power per
-   pass but spends more time on the idle machine, so the two quantities can
-   move in opposite directions. The ablation reports both.
+This is the mechanism that makes the energy objective a real objective. The
+material removal rate is inversely proportional to the cycle time,
+$MRR = V / T_{\text{part}}$, so raising the spindle speed raises the removal
+rate and cuts the idle energy, but it also raises the energy per unit volume
+removed. The part energy therefore has an interior minimum in the spindle
+speed, and the energy weight chooses where on that curve the policy sits:
+a high energy weight holds the spindle back and gives up removal rate, a low
+one runs it up and pays for it in energy.
 
-Opening a genuine throughput against energy trade-off needs an energy model
-whose energy is not proportional to the removed volume, for example a spindle
-power that grows with the cutting speed, together with a part level
-accounting that charges the agent for the number of passes it creates. Both
-are left as future work.
+Before this model was changed, the cutting term was fixed by the volume and
+both terms moved the same way, so the energy objective was a duplicate of the
+throughput objective and no weight on it could open a trade-off. The
+ablation in section 5.2 is the measurement of the change: the removal rate and
+the part energy now move in opposite directions across the weight grid.
+
+Two things still bound the operating point, and neither of them is energy:
+
+1. The surface roughness limit. A policy that pushes the feed rate up to raise
+   the removal rate raises the roughness with it, and the roughness limit is
+   what stops it.
+2. The flank wear limit, which caps how long the tool survives the cycle.
+
+The reward charges the energy of a pass, while the reported metric is the
+energy of a part. A part cut in many shallow passes draws less power per pass
+but spends more time on the idle machine, so the two quantities can move in
+opposite directions. The ablation reports both.
 
 
 ---
@@ -619,20 +654,20 @@ Artifact: `results/monte_carlo/eval_PPO_MC_v5.csv`
 
 | Metric | Mean | 95% CI |
 | :--- | ---: | :--- |
-| Material removal rate (mm3/min) | 1325.7 | 1204.9 to 1446.5 |
-| Energy per part (kJ) | 55.2 | 47.6 to 62.8 |
-| Cycle time per part (s) | 16.7 | 14.4 to 18.9 |
+| Material removal rate (mm3/min) | 1239.3 | 1116.0 to 1362.5 |
+| Energy per part (kJ) | 68.2 | 58.5 to 77.9 |
+| Cycle time per part (s) | 19.4 | 16.6 to 22.2 |
 | Max flank wear (mm) | 0.124 | 0.111 to 0.138 |
-| Parts completed within spec | 98.0% | |
+| Parts completed within spec | 99.0% | |
 | Roughness violations, finished surface | 0.0% | 0.0% to 0.0% |
 | Flank wear violations | 0.0% | 0.0% to 0.0% |
-| Tool breakage | 2.0% | 0.0% to 4.7% |
+| Tool breakage | 1.0% | 0.0% to 3.0% |
 
 The scenarios randomize the stock allowance, the tool diameter, the cutting
 length, the wear and roughness coefficients, and the initial flank wear of the
 tool. The policy is trained on scenarios drawn from the same tables, so it is
 measured on the distribution it was trained on. The worst pass of an episode
-exceeds the roughness limit in 40% of the scenarios, which is the roughing
+exceeds the roughness limit in 39% of the scenarios, which is the roughing
 pass; the reward constrains the finishing pass, which is the pass that sets
 the surface of the part.
 
@@ -640,27 +675,39 @@ the surface of the part.
 
 Artifact: `results/ablation/ablation_summary.csv`
 
-| w2 | MRR (mm3/min) | Energy per part (kJ) | Cycle time (s) | Parts completed |
-| ---: | ---: | ---: | ---: | ---: |
-| 0.0 | 835 +/- 73 | 79.1 +/- 1.3 | 62.6 +/- 2.4 | 0.99 |
-| 0.4 | 925 +/- 55 | 66.4 +/- 2.1 | 36.9 +/- 4.1 | 1.00 |
-| 0.8 | 925 +/- 65 | 63.3 +/- 1.0 | 31.0 +/- 2.1 | 0.99 |
-| 1.0 | 952 +/- 23 | 62.4 +/- 0.5 | 29.1 +/- 1.0 | 1.00 |
+| w2 | MRR (mm3/min) | Energy per part (kJ) | Cycle time (s) | Spindle (RPM) | On the frontier |
+| ---: | ---: | ---: | ---: | ---: | :--- |
+| 0.0 | 1000 +/- 31 | 82.8 +/- 0.7 | 45.8 +/- 2.0 | 6974 | dominated |
+| 0.4 | 1069 +/- 40 | 71.5 +/- 0.4 | 22.9 +/- 1.0 | 7205 | yes |
+| 0.6 | 1008 +/- 23 | 68.3 +/- 0.8 | 21.6 +/- 1.1 | 6775 | yes |
+| 0.8 | 888 +/- 58 | 65.8 +/- 1.4 | 23.1 +/- 0.9 | 6307 | yes |
+| 1.0 | 877 +/- 43 | 65.4 +/- 1.7 | 22.5 +/- 1.2 | 6321 | yes |
+
+This is the measurement the energy model was changed for. Across the frontier
+the removal rate falls 18% and the energy of the part falls 8.5%, and the
+spindle speed falls with it, which is the mechanism the model predicts: the
+specific cutting energy grows with the speed, so the energy weight holds the
+spindle back and pays for it in removal rate. The two lowest weights are
+dominated, they spend more energy without removing more material.
 
 #### 5.3 One conditioned policy against 21 weight-specific policies
 
-Artifacts: `results/conditioned/conditioned_frontier_150k.csv` and
-`results/ablation/ablation_summary.csv`, both trained with 150,000 steps per
-model.
+Artifacts: `results/conditioned/conditioned_frontier.csv` (1,000,000 steps) and
+`results/conditioned/conditioned_frontier_150k.csv` (150,000 steps, the same
+budget as the sweep).
 
-| w2 | MRR, conditioned | MRR, per-weight | Energy, conditioned | Energy, per-weight |
+| w2 | MRR, conditioned 1M | MRR, per-weight 150k | Energy, conditioned 1M | Energy, per-weight 150k |
 | ---: | ---: | ---: | ---: | ---: |
-| 0.0 | 1017.7 | 835.1 | 64.1 | 79.1 |
-| 0.5 | 1058.8 | 944.4 | 59.6 | 64.7 |
-| 1.0 | 1079.4 | 951.9 | 57.6 | 62.4 |
+| 0.0 | 1213.6 | 1000.0 | 69.6 | 82.8 |
+| 0.5 | 1191.0 | 1026.2 | 68.0 | 71.0 |
+| 1.0 | 1096.0 | 876.6 | 67.1 | 65.4 |
 
-One training run covers the whole weight range and beats every weight-specific
-policy on both objectives.
+One training run of 1,000,000 steps covers the whole weight range and beats
+the 21 weight-specific policies of 150,000 steps each, which is 3,150,000
+steps in total, by 13% to 27% of removal rate at the same or lower energy. At
+a matched budget of 150,000 steps the two frontiers cross: the per-weight
+policies reach the throughput-heavy corner and the conditioned policy the
+energy-heavy one.
 
 #### 5.4 Classical baselines
 
@@ -668,15 +715,17 @@ Artifact: `results/baseline_results_v5.csv`
 
 | Policy | MRR (mm3/min) | Energy per part (kJ) | Cycle time (s) | Mean reward |
 | :--- | ---: | ---: | ---: | ---: |
-| Constant high | 1099.6 | 13.9 | 4.3 | -45.2 |
-| Constant safe | 1.6 | 1511.8 | 3000.0 | -140.4 |
-| NSGA-II static | 733.0 | 15.0 | 6.4 | -45.5 |
-| Rule based | 719.8 | 15.1 | 6.6 | -45.7 |
-| Receding horizon | 981.7 | 14.2 | 4.8 | +204.3 |
+| Constant high | 1099.6 | 17.8 | 4.3 | -46.1 |
+| Constant safe | 1.6 | 1506.8 | 3000.0 | -139.3 |
+| NSGA-II static | 732.9 | 18.8 | 6.4 | -46.4 |
+| Rule based | 719.8 | 18.7 | 6.6 | -46.5 |
+| Receding horizon | 981.7 | 18.0 | 4.8 | +203.5 |
 
 The four static policies end outside the roughness safety limit, which the
 reward penalizes with -50. The receding-horizon controller is the only
-classical policy that stays inside it.
+classical policy that stays inside it. On the same 50 episodes the learned
+policy scores 204.1 against the controller's 203.5, so the two are level on the
+reward while the controller is ahead on the removal rate and the cycle time.
 
 #### 5.5 Transfer to a harder material
 
@@ -684,9 +733,9 @@ Artifact: `results/transfer/transfer_results.csv`
 
 | Arm | Mean episode reward | Roughness violations | Parts completed |
 | :--- | ---: | ---: | ---: |
-| Source policy, zero shot | 184.5 | 100.0% | 93.3% |
-| Source policy, fine tuned 50,000 steps | 184.8 | 100.0% | 93.3% |
-| Trained on the target from scratch, 50,000 steps | 196.0 | 0.0% | 100.0% |
+| Source policy, zero shot | 183.0 | 100.0% | 93.3% |
+| Source policy, fine tuned 50,000 steps | 182.9 | 100.0% | 93.3% |
+| Trained on the target from scratch, 50,000 steps | 196.7 | 0.0% | 100.0% |
 
 
 ---
@@ -694,17 +743,26 @@ Artifact: `results/transfer/transfer_results.csv`
 ### 6. Reproducing the numbers above
 
 ```bash
-# Primary policy
-python agent/train_rl.py --algo PPO --steps 1000000 --seed 42
+# Primary policy, trained on randomized scenarios
+python agent/train_rl.py --algo PPO --steps 1000000 --seed 42 --randomize
+
+# Conditioned policy, one run for the whole weight range
+python agent/train_rl_conditioned.py --steps 1000000 --seed 42
 
 # Monte Carlo sweep with confidence intervals
 python agent/evaluate.py
 
 # Energy weight ablation, 7 weights x 3 seeds
-python agent/train_rl_ablation.py --steps 100000 --scenarios 50 --slots 7
+python agent/train_rl_ablation.py --steps 150000 --scenarios 50 --slots 7
 
 # Classical baselines
 python baselines/run_baselines.py
+
+# Transfer to a harder material
+python agent/transfer_experiment.py 300000 50000
+
+# Rebuild the result tables
+python agent/summarize_results.py
 ```
 
 ---
@@ -846,7 +904,7 @@ The core physics equations driving our Digital Twin environment (`MillingDTEnv-v
 * **Surface Roughness ($Ra$):** The empirical regression formula we use ($Ra = k_1 f_r^2 + k_2 VB + k_3 / v_c$) is a standard traditional model that "DRL-based optimization for machining process: Cutting parameters dynamic optimization considering tool condition degradation" uses as a comparative baseline (Eq. 56 in their paper). "Machining parameter optimization for a batch milling system using multi-task deep reinforcement learning" utilizes a very similar mathematical structure for their baseline objectives. 
 
 #### Standard Manufacturing Engineering (Our Novelty)
-* **Energy Consumption ($E$):** $E = (P_{idle} + k_c \times MRR) \times t_{cut}$. This is not explicitly in "DRL-based optimization for machining process: Cutting parameters dynamic optimization considering tool condition degradation". We added this standard specific cutting energy formulation to introduce the "Green Manufacturing" objective into the reward function.
+* **Energy Consumption ($E$):** $E = (P_{idle} + k_c(v_c) \times MRR) \times t_{cut}$, with the specific cutting energy growing with the cutting speed, $k_c(v_c) = k_{c0} (v_c / v_{ref})^m$. This is not explicitly in "DRL-based optimization for machining process: Cutting parameters dynamic optimization considering tool condition degradation". We added the specific cutting energy formulation to introduce the "Green Manufacturing" objective into the reward function, and the speed dependence to make it an objective in its own right: without it the energy of a part is fixed by the volume, and the energy term is a duplicate of the throughput term.
 
 ---
 

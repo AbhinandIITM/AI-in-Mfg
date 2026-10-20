@@ -20,6 +20,12 @@ import gymnasium as gym
 from gymnasium import spaces
 from typing import Optional, Dict, Tuple, Any
 from config.physics_constants import ALL_CONSTANTS, SCENARIO_BANDS
+from config.physics import (
+    cutting_power,
+    flank_wear_rate,
+    reference_pass_energy,
+    surface_roughness,
+)
 from config.scenarios import SCENARIO_KEYS, sample_scenario
 
 class MillingDTEnv(gym.Env):
@@ -150,20 +156,14 @@ class MillingDTEnv(gym.Env):
         # Pre-compute normalization constants
         v_c_max = (np.pi * self.D * self.n_max) / 1000.0
         self.MRR_max = v_c_max * self.ap_max * self.f_max
-        # Energy scale. One pass draws
-        #   E = (P_idle + k_c * MRR) * t_cut,   t_cut = L_cut / (n * f_r)
-        # and MRR = (pi * D * n / 1000) * a_p * f_r, so the cutting term of E
-        # does not depend on n or f_r at all. The scale is the energy of a pass
-        # cut under the reference condition in config/physics_constants.py.
-        # A pass under the reference condition therefore normalizes to 1, and
-        # the energy term has the same sensitivity as the throughput term, so
-        # the weight w2 has a visible effect on the operating point.
-        ref = ALL_CONSTANTS['reference_cutting_condition']
-        self.E_ref = self.L_cut * (
-            self.energy_cfg['P_idle'] / (ref['n'] * ref['f_r'])
-            + self.energy_cfg['k_c'] * (np.pi * self.D / 1000.0) * ref['a_p']
-        ) * 60 / 1000.0
+        # Energy scale. A pass cut under the reference condition draws the
+        # reference energy, so that pass normalizes to 1 and the energy term
+        # has the same sensitivity as the throughput term. The reference
+        # condition is the anchor of the speed dependent cutting energy, so
+        # the calibrated k_c0 is the one that applies there.
+        self.E_ref = reference_pass_energy(self.D, self.L_cut, self.energy_cfg)
         # Cycle time of a part cut under the reference condition, in seconds.
+        ref = ALL_CONSTANTS['reference_cutting_condition']
         self.T_ref = (self.kappa_total / ref['a_p']) * self.L_cut / (ref['n'] * ref['f_r']) * 60.0
 
     def reset(self, *, seed: Optional[int] = None, options: Optional[Dict[str, Any]] = None):
@@ -265,14 +265,14 @@ class MillingDTEnv(gym.Env):
         MRR = v_c * a_p * f_r
 
         # Tool Wear (Taylor-Extended)
-        delta_VB = self.tool_wear_cfg['C_wear'] * (v_c ** self.tool_wear_cfg['alpha']) * \
-                   (f_r ** self.tool_wear_cfg['beta']) * (a_p ** self.tool_wear_cfg['gamma_wear']) * t_cut
+        delta_VB = flank_wear_rate(v_c, f_r, a_p, t_cut, self.tool_wear_cfg)
 
         # Surface Roughness
-        Ra = self.roughness_cfg['k1'] * (f_r ** 2) + self.roughness_cfg['k2'] * self.VB + self.roughness_cfg['k3'] / v_c
+        Ra = surface_roughness(f_r, self.VB, v_c, self.roughness_cfg)
 
-        # Energy Consumption (kJ)
-        P_cutting = self.energy_cfg['k_c'] * MRR
+        # Energy Consumption (kJ). The specific cutting energy grows with the
+        # cutting speed, so a faster spindle costs more energy per part.
+        P_cutting = cutting_power(v_c, MRR, self.D, self.energy_cfg)
         Energy = (self.energy_cfg['P_idle'] + P_cutting) * t_cut * 60 / 1000.0
 
         # 3. State Updates

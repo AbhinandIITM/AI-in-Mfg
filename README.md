@@ -27,8 +27,9 @@ The digital twin models empirical interactions derived from machining literature
 - **Surface Roughness Model:**
   $$Ra = k_1 f_r^2 + k_2 VB + \frac{k_3}{v_c}$$
 - **Energy Consumption:**
-  $$P_{\text{total}} = P_{\text{idle}} + k_c \cdot MRR$$
+  $$k_c(v_c) = k_{c0} \left(\frac{v_c}{v_{\text{ref}}}\right)^{m}, \qquad P_{\text{total}} = P_{\text{idle}} + k_c(v_c) \cdot MRR$$
   $$E_{\text{cut}} = P_{\text{total}} \cdot t_{\text{cut}}$$
+  The specific cutting energy grows with the cutting speed, so the energy of a finished part is $E_{\text{part}} = k_c(v_c) V + P_{\text{idle}} T_{\text{part}}$: the cutting term rises as the spindle speeds up and the idle term falls as the cycle time shortens. The part energy therefore has an interior minimum, which is what makes the energy objective a trade-off against the removal rate rather than a duplicate of it.
 
 ### Calibrated Constants
 All values live in `config/physics_constants.py` and are shared by the environment, the baselines and the ablation study, so no consumer can drift from another.
@@ -37,7 +38,7 @@ All values live in `config/physics_constants.py` and are shared by the environme
 | :--- | :--- | :--- |
 | Tool wear | $C_{\text{wear}}, \alpha, \beta, \gamma_{\text{wear}}$ | 1.1e-4, 0.3, 0.2, 0.15 |
 | Surface roughness | $k_1, k_2, k_3$ | 12.5, 0.8, 0.5 |
-| Energy | $P_{\text{idle}}, k_c$ | 500 W, 2.5 W$\cdot$min/mm$^3$ |
+| Energy | $P_{\text{idle}}, k_{c0}, m$ | 500 W, 2.5 W$\cdot$min/mm$^3$, 0.6 |
 | Machine | $n$, $f_r$, $a_p$ bounds | 2000-8000 RPM, 0.05-0.35 mm/r, 0.1-2.5 mm |
 | Engineering | $VB_{\max}$, $Ra_{\max}$ | 0.3 mm, 1.6 $\mu$m |
 | Workpiece | $D$, $L_{\text{cut}}$, $\kappa$ | 50 mm, 100 mm, 5 mm |
@@ -86,6 +87,9 @@ Both the weight and the scenario are drawn per episode during training, so a sin
 ### Domain Randomization
 `MillingDTEnv(randomize=True)` draws a new machining scenario for every part: the stock allowance, the tool diameter, the cutting length, the wear and roughness coefficients, and the initial flank wear of the tool. The bands live in `config/physics_constants.py` and are shared with the Monte Carlo sweep, so the policy is trained on the distribution it is measured on.
 
+### One Physical Model
+`config/physics.py` holds the equations of the digital twin: the cutting speed, the specific cutting energy, the material removal rate, the flank wear, the surface roughness and the energy of a pass. The environment, the classical baselines and the dashboard all import them, so a scenario that overrides a coefficient gets the physics of that scenario everywhere and no consumer can drift from another.
+
 ### Receding-Horizon Controller
 `baselines/receding_horizon.py` re-solves the next pass at every step, with the remaining stock and the current flank wear as the state, and keeps the candidate that scores best and stays inside the roughness and wear limits. It is a stronger classical baseline than the static NSGA-II solution: the four static baselines all end outside the roughness safety limit, and this one is the only classical policy that stays inside it.
 
@@ -115,6 +119,7 @@ Both the weight and the scenario are drawn per episode during training, so a sin
 |   |-- run_baselines.py         # Constant-high, constant-safe, rule-based, NSGA-II and receding horizon
 |-- config/
 |   |-- physics_constants.py     # Centralized physical, machine, and material constants
+|   |-- physics.py               # The physical model, shared by the environment, the baselines and the app
 |   |-- scenarios.py             # Randomized machining scenarios, shared by training and evaluation
 |-- docs/
 |   |-- papers/                   # The three papers this work is compared against
@@ -231,17 +236,17 @@ larger network, or an off-policy algorithm with a replay buffer.
 
 ## Experimental Findings
 
-1. **Robustness over 100 randomized scenarios.** The policy is trained across randomized machining scenarios and evaluated on 100 held-out scenarios of the same kind. It completed 98.0% of the parts, kept the finished surface inside the roughness limit in **100%** of them, never exceeded the flank wear limit, and broke a tool in 2%. Material removal rate 1325.7 mm3/min [95% CI 1204.9-1446.5], energy 55.2 kJ per part, cycle time 16.7 s. The worst pass of an episode exceeds the roughness limit in 40% of the scenarios, which is the roughing pass: the reward constrains the finishing pass, because that is the pass that sets the surface of the part.
+1. **Robustness over 100 randomized scenarios.** The policy is trained across randomized machining scenarios and evaluated on 100 held-out scenarios of the same kind. It completed 99.0% of the parts, kept the finished surface inside the roughness limit in **100%** of them, never exceeded the flank wear limit, and broke a tool in 1%. Material removal rate 1239.3 mm3/min [95% CI 1116.0-1362.5], energy 68.2 kJ per part, cycle time 19.4 s. The worst pass of an episode exceeds the roughness limit in 39% of the scenarios, which is the roughing pass: the reward constrains the finishing pass, because that is the pass that sets the surface of the part.
 
-2. **The energy weight moves the operating point.** Over 7 weights and 3 seeds, the energy of a part falls by 21% (79.1 to 62.4 kJ) and the cycle time by 53% (62.6 to 29.1 s) as the weight goes from 0.0 to 1.0, with the part completion rate between 0.99 and 1.00 throughout. The material removal rate rises over the same range (835 to 952 mm3/min), and that is not a mistake in the experiment: the energy of a part is $k_c V + P_{\text{idle}} T_{\text{part}}$, so the cutting term is fixed by the volume, and the idle term falls exactly when the cycle time falls, which is also what raises the removal rate. In this digital twin the two objectives point the same way, and the energy weight is not a trade-off against throughput. Part 3 of `PROJECT.md` states what would be needed to open one.
+2. **The energy weight trades throughput for energy.** The non-dominated weights run from w2 = 0.4 (1069 mm3/min at 71.5 kJ) to w2 = 1.0 (877 mm3/min at 65.4 kJ). Across that frontier the removal rate falls 18% while the energy of the part falls 8.5%, and the spindle speed falls from 7200 to 6320 RPM, which is the mechanism the energy model predicts: the specific cutting energy grows with the speed, so a faster spindle buys removal rate with energy. The two lowest weights are dominated, they spend more energy without removing more material.
 
-3. **One conditioned policy replaces 21 weight-specific policies.** At the same training budget per model, the single conditioned policy beats every weight-specific policy: 12% to 22% more material removal rate and 8% to 19% less energy per part, from one training run instead of 21. The energy weight stays a runtime query rather than a retrain.
+3. **One conditioned policy replaces 21 weight-specific policies.** A single conditioned policy trained for 1,000,000 steps dominates all 21 weight-specific policies trained for 150,000 steps each, which is 3,150,000 steps in total: 13% to 27% more material removal rate at the same or lower energy, from one run instead of 21. Its own frontier is monotone, 1213.6 down to 1096.0 mm3/min against 69.6 down to 67.1 kJ. At a matched 150,000 step budget the two frontiers cross: the per-weight policies reach the throughput-heavy corner and the conditioned policy the energy-heavy one.
 
-4. **The classical baselines were weak until the controller was made dynamic.** The static NSGA-II solution, the two constant policies and the rule-based policy all end outside the roughness safety limit and score around -45. The receding-horizon controller, which re-solves at every pass, scores +204.3 and is the strongest baseline in the repository.
+4. **The classical baselines were weak until the controller was made dynamic.** The static NSGA-II solution, the two constant policies and the rule-based policy all end outside the roughness safety limit and score around -46. The receding-horizon controller, which re-solves at every pass, scores +203.5 and is the strongest baseline in the repository.
 
-5. **Fine tuning does not fix a material change at this budget.** A policy trained on the nominal material scores 184.5 on a harder alloy and violates the roughness limit in every scenario. Fine tuning it for 50,000 steps moves the score to 184.8 and removes no violation. A policy trained on that alloy from scratch for the same 50,000 steps scores 196.0 with no violations at all. For this shift, training on the target distribution beats pre-training and fine-tuning, which is the argument for the domain randomization above.
+5. **Fine tuning does not fix a material change at this budget.** A policy trained on the nominal material scores 183.0 on a harder alloy and violates the roughness limit in every scenario. Fine tuning it for 50,000 steps moves the score to 182.9 and removes no violation. A policy trained on that alloy from scratch for the same 50,000 steps scores 196.7 with no violations at all. For this shift, training on the target distribution beats pre-training and fine-tuning, which is the argument for the domain randomization above.
 
-6. **The learned policy and the classical controller are level.** On the same 50 episodes, the PPO policy scores 204.9 and the receding-horizon controller 204.3, and the controller is ahead on the material removal rate, the energy and the cycle time. The earlier comparison against the static baselines was hollow, because all four of them end outside the roughness safety limit. This digital twin does not yet show a reinforcement learning advantage, and the honest next experiment is to start the policy from the controller and fine-tune from there.
+6. **The learned policy and the classical controller are level.** On the same 50 episodes, the PPO policy scores 204.1 and the receding-horizon controller 203.5, and the controller is ahead on the material removal rate (982 against 878 mm3/min) and the cycle time (4.8 against 5.7 s). The earlier comparison against the static baselines was hollow, because all four of them end outside the roughness safety limit. This digital twin does not yet show a reinforcement learning advantage, and the honest next experiment is to start the policy from the controller and fine-tune from there.
 
 Every number below is generated from the artifacts in `results/` by
 `python agent/summarize_results.py`, which writes the same tables to

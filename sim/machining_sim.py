@@ -21,6 +21,7 @@ import env
 from env.milling_env import MillingDTEnv
 from agent.train_rl_ablation import WEIGHTS as ABLATION_WEIGHTS
 from config.physics_constants import ALL_CONSTANTS
+from config.physics import cutting_power, cutting_speed
 from stable_baselines3 import PPO
 from stable_baselines3.common.vec_env import DummyVecEnv, VecNormalize
 
@@ -118,10 +119,11 @@ def run_single_simulation(
         info = info_list[0]
         
         accum_energy += info["Energy"]
-        v_c = (np.pi * D * info["n"]) / 1000.0
+        v_c = cutting_speed(D, info["n"])
         t_cut = L_cut / (info["n"] * info["f_r"])
         accum_time += t_cut
-        cutting_power = ALL_CONSTANTS["energy"]["P_idle"] + ALL_CONSTANTS["energy"]["k_c"] * info["MRR"]
+        power = (ALL_CONSTANTS["energy"]["P_idle"]
+                 + cutting_power(v_c, info["MRR"], D))
 
         pass_records.append({
             "pass": pass_num,
@@ -133,7 +135,7 @@ def run_single_simulation(
             "v_c_m_min": v_c,
             "t_cut_s": t_cut * 60.0,
             "MRR_mm3_min": info["MRR"],
-            "cutting_power_W": cutting_power,
+            "cutting_power_W": power,
             "pass_energy_kJ": info["Energy"],
             "cum_energy_kJ": accum_energy,
             "cum_time_s": accum_time * 60.0,

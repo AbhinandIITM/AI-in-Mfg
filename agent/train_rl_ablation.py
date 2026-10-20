@@ -158,10 +158,30 @@ def run_ablation(weights=WEIGHTS, seeds=SEEDS, timesteps=200_000,
         Success_rate=('Success_rate', 'mean'),
         seeds=('seed', 'count'),
     ).reset_index()
+    agg['pareto'] = pareto_mask(agg['MRR_mean'], agg['Energy_mean'])
     agg.to_csv(logs_dir / "ablation_summary.csv", index=False)
 
     plot_ablation(agg, weights, plots_dir)
     return df_res
+
+def pareto_mask(mrr, energy):
+    """Mark the points no other point beats on both axes.
+
+    A point is dominated when another one removes more material and spends
+    less energy.
+    """
+    mrr = np.asarray(mrr, dtype=float)
+    energy = np.asarray(energy, dtype=float)
+    mask = np.ones(len(mrr), dtype=bool)
+    for i in range(len(mrr)):
+        for j in range(len(mrr)):
+            if i == j:
+                continue
+            if mrr[j] >= mrr[i] and energy[j] <= energy[i] and (mrr[j] > mrr[i] or energy[j] < energy[i]):
+                mask[i] = False
+                break
+    return mask
+
 
 def plot_ablation(agg, weights, plots_dir):
     """Pareto frontier of MRR against energy, plus the two weight sweeps."""
@@ -182,9 +202,17 @@ def plot_ablation(agg, weights, plots_dir):
             fmt='o', color='#0d9488', ecolor='#0d9488', elinewidth=1.4,
             capsize=4, markersize=9, linewidth=2.0, label='PPO (mean over seeds)'
         )
-        for _, row in agg.iterrows():
+        # The non-dominated points, joined, are the frontier.
+        front = agg[agg['pareto']].sort_values('Energy_mean')
+        if len(front) > 1:
+            ax.plot(front[energy_col], front['MRR_mean'], '--', color='#ea580c',
+                    linewidth=2.2, zorder=1, label='Pareto frontier')
+        for index, (_, row) in enumerate(agg.iterrows()):
+            # Stagger the labels so the close points do not overprint.
+            offset = (8, 6 if index % 2 == 0 else -12)
             ax.annotate(f"w2={row['w2']:.1f}", (row[energy_col], row['MRR_mean']),
-                        textcoords="offset points", xytext=(8, -4), fontsize=9, color='#334155')
+                        textcoords="offset points", xytext=offset, fontsize=9,
+                        color='#334155')
         ax.set_title("Pareto Frontier: Throughput against Energy", fontweight='bold')
         ax.set_xlabel(xlabel)
         ax.set_ylabel("Mean Material Removal Rate (mm3/min)")

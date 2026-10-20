@@ -10,6 +10,7 @@ sys.path.insert(0, str(PROJECT_ROOT))
 
 import env
 from config.physics_constants import ALL_CONSTANTS, MACHINE_CONSTRAINTS, ENGINEERING_CONSTRAINTS
+from config.physics import cutting_speed
 
 def test_action_clipping():
     """Test that out-of-bounds actions are correctly clipped and handled."""
@@ -184,6 +185,85 @@ def test_scenario_scales_follow_the_scenario():
     assert env_inst.MRR_max == pytest.approx(v_c_max * env_inst.ap_max * env_inst.f_max)
     assert env_inst.E_ref > 0.0
     assert env_inst.T_ref > 0.0
+    env_inst.close()
+
+
+def test_cutting_energy_grows_with_the_cutting_speed():
+    """The specific cutting energy rises as the spindle speeds up.
+
+    This is what makes the energy objective a real trade-off against
+    throughput: the cutting term of the part energy rises with the speed
+    while the idle term falls.
+    """
+    from config.physics import specific_cutting_energy
+
+    D = ALL_CONSTANTS['workpiece']['D']
+    slow = specific_cutting_energy(cutting_speed(D, 2000), D)
+    reference = specific_cutting_energy(cutting_speed(D, 5000), D)
+    fast = specific_cutting_energy(cutting_speed(D, 8000), D)
+
+    assert slow < reference < fast
+    # The reference condition carries the calibrated coefficient.
+    assert reference == pytest.approx(ALL_CONSTANTS['energy']['k_c'])
+
+
+def test_part_energy_has_an_interior_minimum_in_speed():
+    """Cutting faster is not always cheaper.
+
+    The energy of a finished part is k_c(v_c) * V + P_idle * T_part. The
+    first term rises with the speed, the second falls, so the part energy
+    has a minimum at an intermediate speed. Without that, the energy
+    objective is a duplicate of the throughput objective.
+    """
+    def part_energy(n):
+        env_inst = env.MillingDTEnv()
+        env_inst.reset(seed=1)
+        kappa = env_inst.kappa_total
+        total = 0.0
+        while kappa > 1e-5:
+            depth = min(2.5, kappa)
+            action = np.array([
+                2.0 * (n - env_inst.n_min) / (env_inst.n_max - env_inst.n_min) - 1.0,
+                2.0 * (0.2 - env_inst.f_min) / (env_inst.f_max - env_inst.f_min) - 1.0,
+                2.0 * (depth - env_inst.ap_min) / (env_inst.ap_max - env_inst.ap_min) - 1.0,
+            ], dtype=np.float32)
+            _, _, terminated, truncated, info = env_inst.step(action)
+            total += info['Energy']
+            kappa -= info['a_p']
+            if terminated or truncated:
+                break
+        env_inst.close()
+        return total
+
+    slow = part_energy(2000)
+    middle = part_energy(4500)
+    fast = part_energy(8000)
+
+    assert middle < slow, "the energy optimum must not sit at the slowest speed"
+    assert middle < fast, "the energy optimum must not sit at the fastest speed"
+
+
+def test_environment_uses_the_shared_physics():
+    """The environment must cut with the shared equations.
+
+    The baselines import the same functions from config/physics.py, so this
+    is what keeps the environment and the baselines from drifting apart.
+    """
+    from config.physics import pass_energy
+
+    env_inst = env.MillingDTEnv()
+    env_inst.reset(seed=1)
+
+    action = np.array([0.3, -0.2, 0.8], dtype=np.float32)
+    _, _, _, _, info = env_inst.step(action)
+
+    n = env_inst.n_min + (action[0] + 1.0) / 2.0 * (env_inst.n_max - env_inst.n_min)
+    f_r = env_inst.f_min + (action[1] + 1.0) / 2.0 * (env_inst.f_max - env_inst.f_min)
+    a_p = env_inst.ap_min + (action[2] + 1.0) / 2.0 * (env_inst.ap_max - env_inst.ap_min)
+
+    assert info['Energy'] == pytest.approx(
+        pass_energy(n, f_r, a_p, env_inst.D, env_inst.L_cut, env_inst.energy_cfg),
+        rel=1e-9)
     env_inst.close()
 
 def test_sweep_and_environment_share_the_scenario_tables():

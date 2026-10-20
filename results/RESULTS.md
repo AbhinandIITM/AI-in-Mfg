@@ -8,35 +8,35 @@ Artifact: `results/monte_carlo/eval_PPO_MC_v5.csv`
 
 | Metric | Mean | Std | 95% CI |
 | :--- | ---: | ---: | :--- |
-| Material removal rate (mm3/min) | 1325.73 | 608.84 | [1204.92, 1446.54] |
-| Energy per part (kJ) | 55.21 | 38.40 | [47.59, 62.83] |
-| Cycle time per part (s) | 16.67 | 11.31 | [14.43, 18.91] |
-| Max surface roughness (um) | 1.476 | 0.257 | [1.425, 1.527] |
-| Max flank wear (mm) | 0.1243 | 0.0678 | [0.1109, 0.1378] |
-| Roughness violations, worst pass | 40.0% | | [30.4%, 49.6%] |
+| Material removal rate (mm3/min) | 1239.26 | 621.25 | [1115.99, 1362.53] |
+| Energy per part (kJ) | 68.20 | 48.68 | [58.54, 77.87] |
+| Cycle time per part (s) | 19.38 | 14.13 | [16.58, 22.18] |
+| Max surface roughness (um) | 1.475 | 0.235 | [1.428, 1.521] |
+| Max flank wear (mm) | 0.1244 | 0.0679 | [0.1109, 0.1378] |
+| Roughness violations, worst pass | 39.0% | | [29.4%, 48.6%] |
 | Roughness violations, finished surface | 0.0% | | [0.0%, 0.0%] |
-| Roughness above the safety limit, worst pass | 65.0% | | [55.7%, 74.3%] |
+| Roughness above the safety limit, worst pass | 61.0% | | [51.4%, 70.6%] |
 | Roughness above the safety limit, finished surface | 0.0% | | [0.0%, 0.0%] |
 | Flank wear violations (VB > 0.3 mm) | 0.0% | | [0.0%, 0.0%] |
-| Tool breakage | 2.0% | | [0.0%, 4.7%] |
-| Parts completed within spec | 98.0% | | |
+| Tool breakage | 1.0% | | [0.0%, 3.0%] |
+| Parts completed within spec | 99.0% | | |
 | Scenarios | 100 | | |
 
-Mean operating point across the 100 scenarios: 7373 RPM, 0.269 mm/r, 2.12 mm depth of cut, 4.0 passes per part.
+Mean operating point across the 100 scenarios: 7241 RPM, 0.254 mm/r, 2.11 mm depth of cut, 4.0 passes per part.
 
 ## Energy weight ablation
 
 Artifact: `results/ablation/ablation_summary.csv`
 
-| w2 (energy weight) | MRR (mm3/min) | Energy per part (kJ) | Energy per pass (kJ) | Cycle time (s) | Spindle (RPM) | Feed (mm/r) | Depth of cut (mm) | Passes | Seeds |
-| ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| 0.0 | 835.1 +/- 73.5 | 79.1 +/- 1.3 | 18.28 | 62.6 +/- 2.4 | 6411 | 0.177 | 1.98 | 4.3 | 3 |
-| 0.2 | 888.2 +/- 62.0 | 69.7 +/- 1.9 | 16.37 | 43.8 +/- 3.9 | 6818 | 0.187 | 2.00 | 4.3 | 3 |
-| 0.4 | 924.7 +/- 54.9 | 66.4 +/- 2.1 | 15.58 | 36.9 +/- 4.1 | 6840 | 0.199 | 2.00 | 4.3 | 3 |
-| 0.5 | 944.4 +/- 50.2 | 64.7 +/- 1.3 | 15.40 | 33.6 +/- 2.7 | 6880 | 0.202 | 2.03 | 4.2 | 3 |
-| 0.6 | 950.5 +/- 75.9 | 63.9 +/- 1.7 | 15.26 | 32.2 +/- 3.2 | 6964 | 0.204 | 2.03 | 4.2 | 3 |
-| 0.8 | 925.5 +/- 64.8 | 63.3 +/- 1.0 | 14.86 | 31.0 +/- 2.1 | 6720 | 0.212 | 2.00 | 4.3 | 3 |
-| 1.0 | 951.9 +/- 23.1 | 62.4 +/- 0.5 | 14.64 | 29.1 +/- 1.0 | 6858 | 0.211 | 2.00 | 4.3 | 3 |
+| w2 (energy weight) | MRR (mm3/min) | Energy per part (kJ) | Cycle time (s) | Spindle (RPM) | Feed (mm/r) | On the frontier |
+| ---: | ---: | ---: | ---: | ---: | ---: | :--- |
+| 0.0 | 999.9 +/- 31.3 | 82.8 +/- 0.7 | 45.8 +/- 2.0 | 6974 | 0.177 | dominated |
+| 0.2 | 990.5 +/- 137.3 | 76.3 +/- 2.2 | 31.2 +/- 5.8 | 7307 | 0.186 | dominated |
+| 0.4 | 1069.0 +/- 40.0 | 71.5 +/- 0.4 | 22.9 +/- 1.0 | 7205 | 0.212 | yes |
+| 0.5 | 1026.2 +/- 56.9 | 71.0 +/- 0.7 | 23.2 +/- 0.5 | 7115 | 0.208 | yes |
+| 0.6 | 1008.4 +/- 22.6 | 68.3 +/- 0.8 | 21.6 +/- 1.1 | 6775 | 0.223 | yes |
+| 0.8 | 888.3 +/- 57.6 | 65.8 +/- 1.4 | 23.1 +/- 0.9 | 6307 | 0.222 | yes |
+| 1.0 | 876.6 +/- 43.2 | 65.4 +/- 1.7 | 22.5 +/- 1.2 | 6321 | 0.220 | yes |
 
 ## Conditioned policy, weight swept at runtime
 
@@ -46,25 +46,25 @@ Artifacts: `results/conditioned/conditioned_frontier.csv` and `results/condition
 
 | w2 (energy weight) | MRR (mm3/min) | Energy per part (kJ) | Cycle time (s) | Spindle (RPM) | Feed (mm/r) | Ra violation rate |
 | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| 0.0 | 1302.7 | 54.6 | 16.8 | 7575 | 0.253 | 40.0% |
-| 0.2 | 1275.0 | 54.8 | 17.1 | 7501 | 0.251 | 39.0% |
-| 0.4 | 1246.9 | 55.0 | 17.5 | 7450 | 0.247 | 39.0% |
-| 0.5 | 1235.2 | 55.1 | 17.7 | 7435 | 0.246 | 38.0% |
-| 0.6 | 1225.0 | 55.1 | 17.9 | 7423 | 0.244 | 38.0% |
-| 0.8 | 1206.0 | 55.3 | 18.2 | 7399 | 0.242 | 37.0% |
-| 1.0 | 1187.7 | 55.5 | 18.5 | 7362 | 0.239 | 37.0% |
+| 0.0 | 1213.6 | 69.6 | 19.0 | 7513 | 0.238 | 34.0% |
+| 0.2 | 1215.3 | 69.0 | 19.5 | 7379 | 0.243 | 36.0% |
+| 0.4 | 1205.1 | 68.3 | 20.2 | 7199 | 0.247 | 38.0% |
+| 0.5 | 1191.0 | 68.0 | 20.9 | 7081 | 0.249 | 38.0% |
+| 0.6 | 1169.3 | 67.6 | 21.5 | 6953 | 0.250 | 39.0% |
+| 0.8 | 1130.8 | 67.1 | 23.0 | 6710 | 0.251 | 39.0% |
+| 1.0 | 1096.0 | 67.1 | 24.8 | 6475 | 0.249 | 39.0% |
 
 ### One conditioned policy, 150,000 steps, the same budget as the sweep
 
 | w2 (energy weight) | MRR (mm3/min) | Energy per part (kJ) | Cycle time (s) | Spindle (RPM) | Feed (mm/r) | Ra violation rate |
 | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| 0.0 | 1017.7 | 64.1 | 34.3 | 7442 | 0.192 | 32.0% |
-| 0.2 | 1034.3 | 62.3 | 30.7 | 7504 | 0.195 | 36.0% |
-| 0.4 | 1052.2 | 60.3 | 26.9 | 7518 | 0.200 | 36.0% |
-| 0.5 | 1058.8 | 59.6 | 25.5 | 7522 | 0.202 | 34.0% |
-| 0.6 | 1064.7 | 59.0 | 24.3 | 7521 | 0.204 | 34.0% |
-| 0.8 | 1074.1 | 58.2 | 22.6 | 7514 | 0.208 | 33.0% |
-| 1.0 | 1079.4 | 57.6 | 21.4 | 7503 | 0.211 | 32.0% |
+| 0.0 | 870.3 | 72.6 | 28.5 | 7292 | 0.174 | 0.0% |
+| 0.2 | 912.7 | 71.5 | 26.2 | 7299 | 0.183 | 0.0% |
+| 0.4 | 941.5 | 70.3 | 24.3 | 7247 | 0.193 | 0.0% |
+| 0.5 | 950.2 | 69.7 | 23.5 | 7204 | 0.197 | 1.0% |
+| 0.6 | 955.2 | 69.1 | 22.9 | 7152 | 0.201 | 3.0% |
+| 0.8 | 955.7 | 68.0 | 22.0 | 7026 | 0.208 | 8.0% |
+| 1.0 | 945.7 | 67.0 | 21.5 | 6907 | 0.213 | 14.0% |
 
 ## Classical baselines
 
@@ -72,11 +72,11 @@ Artifact: `results/baseline_results_v5.csv`
 
 | Policy | MRR (mm3/min) | Energy per part (kJ) | Cycle time (s) | Mean reward | Ra violation rate |
 | :--- | ---: | ---: | ---: | ---: | ---: |
-| Constant high | 1099.6 | 13.9 | 4.3 | -45.2 | 0.0% |
-| Constant safe | 1.6 | 1511.8 | 3000.0 | -140.4 | 0.0% |
-| NSGA-II static | 733.0 | 15.0 | 6.4 | -45.5 | 0.0% |
-| receding_horizon | 981.7 | 14.2 | 4.8 | 204.3 | 0.0% |
-| Rule based | 719.8 | 15.1 | 6.6 | -45.7 | 0.0% |
+| Constant high | 1099.6 | 17.8 | 4.3 | -46.1 | 0.0% |
+| Constant safe | 1.6 | 1506.8 | 3000.0 | -139.3 | 0.0% |
+| NSGA-II static | 732.9 | 18.8 | 6.4 | -46.4 | 0.0% |
+| receding_horizon | 981.7 | 18.0 | 4.8 | 203.5 | 0.0% |
+| Rule based | 719.8 | 18.7 | 6.6 | -46.5 | 0.0% |
 
 ## Transfer to a harder material
 
@@ -84,8 +84,8 @@ Artifact: `results/transfer/transfer_results.csv`
 
 | Arm | Mean episode reward | Ra violation rate | Parts completed |
 | :--- | ---: | ---: | ---: |
-| Source policy, zero shot | 184.5 | 100.0% | 93.3% |
-| Source policy, fine tuned | 184.8 | 100.0% | 93.3% |
-| Trained on the target from scratch | 196.0 | 0.0% | 100.0% |
+| Source policy, zero shot | 183.0 | 100.0% | 93.3% |
+| Source policy, fine tuned | 182.9 | 100.0% | 93.3% |
+| Trained on the target from scratch | 196.7 | 0.0% | 100.0% |
 
 Source policy: 300,000 steps on the nominal material. Adaptation budget: 50,000 steps on the target.

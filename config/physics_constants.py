@@ -23,7 +23,12 @@ SURFACE_ROUGHNESS_CONSTANTS = {
 # Energy Consumption (Specific Cutting Energy)
 ENERGY_CONSTANTS = {
     'P_idle': 500,   # Idle/spindle motor power [W]
-    'k_c': 2.5,      # Specific cutting energy [W·min/mm³]
+    'k_c': 2.5,      # Specific cutting energy at the reference condition [W·min/mm³]
+    # Exponent of the speed dependence of the specific cutting energy. The
+    # energy per unit volume removed rises as the spindle speeds up, so a
+    # faster cut costs more energy per part. Zero restores the speed
+    # independent model.
+    'k_c_speed_exponent': 0.6,
 }
 
 # Machine Constraints

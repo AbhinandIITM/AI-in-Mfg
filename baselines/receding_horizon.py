@@ -20,6 +20,13 @@ controller is a good teacher for the reinforcement learning policy.
 import numpy as np
 
 from config.physics_constants import ALL_CONSTANTS
+from config.physics import (
+    cutting_power,
+    cutting_speed,
+    material_removal_rate,
+    pass_energy,
+    reference_pass_energy,
+)
 
 
 def _candidates(machine_cfg, n_grid=9, f_grid=9):
@@ -72,11 +79,7 @@ def solve_next_pass(VB, kappa_rem, D, L_cut, w1=0.6, w2=0.4,
         v_c_max = (np.pi * D * machine_cfg['n_max']) / 1000.0
         MRR_max = v_c_max * machine_cfg['a_p_max'] * machine_cfg['f_r_max']
     if E_ref is None:
-        ref = constants['reference_cutting_condition']
-        E_ref = L_cut * (
-            energy['P_idle'] / (ref['n'] * ref['f_r'])
-            + energy['k_c'] * (np.pi * D / 1000.0) * ref['a_p']
-        ) * 60 / 1000.0
+        E_ref = reference_pass_energy(D, L_cut, energy)
 
     Ra_safe = eng['Ra_max'] * eng.get('safety_factor', 0.85)
     VB_max = eng['VB_max']
@@ -93,7 +96,10 @@ def solve_next_pass(VB, kappa_rem, D, L_cut, w1=0.6, w2=0.4,
         MRR = v_c * a_p * f_flat
         delta_VB = (wear['C_wear'] * v_c ** wear['alpha']
                     * f_flat ** wear['beta'] * a_p ** wear['gamma_wear'] * t_cut)
-        energy_pass = (energy['P_idle'] + energy['k_c'] * MRR) * t_cut * 60 / 1000.0
+        # The energy of the pass, with the speed dependent cutting energy.
+        energy_pass = ((energy['P_idle']
+                        + cutting_power(v_c, MRR, D, energy))
+                       * t_cut * 60 / 1000.0)
 
         # Simulate the remaining passes of the part with these parameters.
         VB_now = np.full_like(n_flat, VB)
