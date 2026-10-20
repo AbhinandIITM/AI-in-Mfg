@@ -11,6 +11,16 @@ Executes the full pipeline sequentially:
 6. Classical Baselines
 7. Viz Generation (Training Curves, MC Distributions, Baseline Comparison)
 8. Result Tables (rebuilds results/RESULTS.md)
+
+Design note: this script drives the *pipeline stages* through subprocess calls
+(python -m agent.train_rl, python -m baselines.run_baselines, etc.).
+The parallel training of the ablation models is delegated to
+agent/run_experiments.py, which uses multiprocessing to supervise a pool of
+training workers with heartbeat monitoring. The two strategies exist because
+run_pipeline.py sequences dependent stages (each stage needs the previous
+stage's artifacts), while run_experiments.py parallelizes *independent* jobs
+within one stage (the ablation grid). Merging them would conflate sequential
+orchestration with parallel worker supervision.
 """
 
 import os

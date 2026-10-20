@@ -1,3 +1,27 @@
+"""
+agent/run_experiments.py
+
+Parallel training supervisor for the ablation study.
+
+This module uses multiprocessing (not subprocess) to run a pool of training
+workers because:
+- The workers share the same Python environment and imports; spawning N
+  subprocesses would re-import torch and the environment N times, adding
+  ~30s overhead per worker.
+- The heartbeat queue (multiprocessing.Queue) gives the supervisor a
+  low-latency liveness signal from each worker; a subprocess would need a
+  pipe or file watcher.
+- The workers are short-lived (100k-150k steps, ~2-3 minutes each) and the
+  pool size is small (4-7 slots); multiprocessing is the lighter-weight
+  choice.
+
+run_pipeline.py is the sequential orchestrator that calls *this* script as
+one stage (the ablation sweep). The two strategies exist because
+run_pipeline.py sequences dependent stages, while run_experiments.py
+parallelizes independent jobs within one stage. Merging them would conflate
+sequential orchestration with parallel worker supervision.
+"""
+
 import os
 import sys
 import time

@@ -1,0 +1,853 @@
+\documentclass[11pt,a4paper]{article}
+
+% ========================================================================
+% Packages
+% ========================================================================
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath,amssymb,amsthm}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{longtable}
+\usepackage{caption}
+\usepackage{subcaption}
+\usepackage{hyperref}
+\usepackage{xcolor}
+\usepackage{listings}
+\usepackage{algorithm}
+\usepackage{algpseudocode}
+\usepackage{float}
+\usepackage{enumitem}
+\usepackage{multirow}
+\usepackage{makecell}
+\usepackage{pifont}
+\usepackage{tikz}
+\usepackage{pgfplots}
+\pgfplotsset{compat=1.18}
+
+% A cross mark for the comparison tables.
+\newcommand{\xmark}{\ding{55}}
+
+% Highlight for the results that carry the argument. Beamer provides \alert,
+% the article class does not.
+\newcommand{\alert}[1]{\textcolor{IITGold}{\textbf{#1}}}
+
+% ========================================================================
+% Colors & Styles
+% ========================================================================
+\definecolor{IITBlue}{RGB}{0,51,102}
+\definecolor{IITGold}{RGB}{204,153,0}
+\definecolor{codegray}{RGB}{240,240,240}
+\definecolor{codegreen}{RGB}{0,128,0}
+\definecolor{codepurple}{RGB}{128,0,128}
+\definecolor{backcolour}{RGB}{245,245,245}
+
+\hypersetup{
+    colorlinks=true,
+    linkcolor=IITBlue,
+    filecolor=IITBlue,
+    urlcolor=IITBlue,
+    citecolor=IITBlue,
+    pdftitle={Digital Twin-Driven DRL for Energy-Aware CNC Milling Parameter Optimization},
+    pdfauthor={Abhinand, IIT Madras},
+    pdfsubject={ME6324 - AI in Manufacturing}
+}
+
+\lstdefinestyle{python}{
+    backgroundcolor=\color{backcolour},
+    commentstyle=\color{codegreen},
+    keywordstyle=\color{codepurple}\bfseries,
+    numberstyle=\tiny\color{gray},
+    stringstyle=\color{codegreen},
+    basicstyle=\ttfamily\small,
+    breakatwhitespace=false,
+    breaklines=true,
+    captionpos=b,
+    keepspaces=true,
+    numbers=left,
+    numbersep=5pt,
+    showspaces=false,
+    showstringspaces=false,
+    showtabs=false,
+    tabsize=4,
+    frame=single,
+    framerule=0.5pt,
+    rulecolor=\color{IITBlue!30}
+}
+
+\lstdefinestyle{bash}{
+    backgroundcolor=\color{backcolour},
+    basicstyle=\ttfamily\small,
+    breaklines=true,
+    frame=single,
+    framerule=0.5pt,
+    rulecolor=\color{IITBlue!30}
+}
+
+% ========================================================================
+% Theorem-like environments
+% ========================================================================
+\newtheorem{definition}{Definition}
+\newtheorem{proposition}{Proposition}
+\newtheorem{remark}{Remark}
+
+% ========================================================================
+% Custom commands - FIXED: no double subscripts
+% ========================================================================
+\newcommand{\vc}[1]{\boldsymbol{#1}}
+\newcommand{\R}{\mathbb{R}}
+\newcommand{\E}{\mathbb{E}}
+\newcommand{\argmax}{\mathop{\mathrm{argmax}}}
+\newcommand{\argmin}{\mathop{\mathrm{argmin}}}
+\newcommand{\MRR}{\mathrm{MRR}}
+\newcommand{\Ra}{R_a}
+\newcommand{\RaSafe}{R_{a,\text{safe}}}
+\newcommand{\RaMax}{R_{a,\text{max}}}
+\newcommand{\RaFinal}{R_{a,\text{final}}}
+\newcommand{\VBSafe}{V_{B,\text{safe}}}
+\newcommand{\VB}{V_B}
+\newcommand{\VBMax}{V_{B,\text{max}}}
+\newcommand{\TODO}[1]{\textcolor{red}{[TODO: #1]}}
+
+% ========================================================================
+% Document
+% ========================================================================
+\begin{document}
+
+% ---------- Title Page ----------
+\begin{titlepage}
+    \centering
+    \vspace*{2cm}
+
+    {\LARGE \bfseries Digital Twin-Driven Deep Reinforcement Learning\\
+    for Energy-Aware CNC Milling Parameter Optimization}\\[1.5cm]
+
+    {\Large ME6324 -- AI in Manufacturing}\\[0.5cm]
+    {\large Course Project Report}\\[2cm]
+
+    \begin{minipage}{0.8\textwidth}
+        \centering
+        \large
+        \textbf{Abhinand}\\
+        Department of Mechanical Engineering\\
+        Indian Institute of Technology Madras\\
+        \texttt{abhinand@iitm.ac.in}
+    \end{minipage}\\[2cm]
+
+    \vfill
+
+    {\large \today}\\[0.5cm]
+    {\large Git Revision: \texttt{87a4021} (main branch)}
+
+    \vspace{1cm}
+    \rule{0.6\textwidth}{0.4pt}\\[0.5cm]
+    {\small \textit{This report is generated from the project repository at\\
+    \texttt{G:/My Drive/IITM/AI in Mfg}. All results are reproducible from\\
+    the committed artifacts using the provided scripts.}}
+\end{titlepage}
+
+% ---------- Table of Contents ----------
+\tableofcontents
+\newpage
+
+% ========================================================================
+% 1. INTRODUCTION
+% ========================================================================
+\section{Introduction}
+
+\subsection{Problem Statement}
+CNC face milling is a fundamental manufacturing operation where a rotating cutter removes material from a workpiece in multiple passes. The cutting parameters -- spindle speed ($n$), feed per revolution ($f_r$), and axial depth of cut ($a_p$) -- must be chosen to balance four competing objectives:
+
+\begin{enumerate}
+    \item \textbf{Productivity:} Maximize material removal rate ($\MRR = v_c \cdot a_p \cdot f_r$)
+    \item \textbf{Energy Efficiency:} Minimize total electrical energy consumption ($E_{\text{total}}$), accounting for both machine idle power and cutting power.
+    \item \textbf{Surface Quality Assurance:} Strictly adhere to finished workpiece roughness requirements ($\Ra \le 1.6\ \mu\text{m}$).
+    \item \textbf{Tool Wear and Breakage Avoidance:} Limit cumulative flank wear ($\VB \le 0.3\ \text{mm}$) and mitigate catastrophic tool failure risks.
+\end{enumerate}
+
+Traditional approaches use fixed parameters from handbooks or static optimization (e.g., NSGA-II) that pick one parameter set for the entire batch. These cannot adapt to the \textit{state} of the process -- tool wear accumulates, workpiece geometry changes, and material properties vary between batches.
+
+\subsection{Proposed Approach}
+This project develops a \textbf{Digital Twin} of the milling process -- a high-fidelity physics-based simulator grounded in empirical manufacturing literature -- and trains a \textbf{Deep Reinforcement Learning (DRL)} agent to dynamically optimize cutting parameters pass-by-pass. The agent observes the current state (flank wear, remaining stock, previous parameters) and selects the next pass parameters to maximize a reward that balances throughput and energy while respecting constraints.
+
+Key innovations:
+\begin{itemize}
+    \item \textbf{Speed-dependent specific cutting energy} $k_c(v_c) = k_{c0} (v_c/v_\text{ref})^m$ creates a genuine trade-off: faster cutting increases energy per unit volume but reduces idle energy.
+    \item \textbf{Domain randomization} during training: material/tool coefficients, workpiece geometry, and initial wear are sampled per episode from literature-calibrated ranges.
+    \item \textbf{Conditioned policy:} A single PPO policy conditioned on the energy weight $w_2$ and material context covers the entire Pareto frontier.
+    \item \textbf{Transfer experiment:} Measures how much a policy trained on one material knows about a harder, faster-wearing material.
+    \item \textbf{Receding-horizon controller baseline:} A strong classical benchmark that re-solves at every pass.
+\end{itemize}
+
+\subsection{Contributions}
+\begin{enumerate}
+    \item A Gymnasium-compliant milling environment with explicit physics, energy-aware reward, and domain randomization.
+    \item A trained PPO policy evaluated via 100-scenario Monte Carlo sweep with 95\% confidence intervals.
+    \item Energy-weight ablation study (7 weights $\times$ 3 seeds) mapping the empirical Pareto frontier.
+    \item Comparison against 5 classical baselines (Constant-High, Constant-Safe, Rule-Based, NSGA-II Static, Receding-Horizon).
+    \item Transfer experiment quantifying cross-material adaptation, which finds that fine tuning does not provide it and that training across a distribution of materials does.
+    \item Interactive Streamlit workstation with 2D stock depletion, micro-topography, G-code generation, and multi-controller comparison.
+    \item Full reproducibility: all results regenerated from committed artifacts by \texttt{agent/summarize\_results.py}.
+\end{enumerate}
+
+% ========================================================================
+% 2. RELATED WORK
+% ========================================================================
+\section{Related Work}
+
+This project positions itself against three key papers in the literature:
+
+\begin{table}[H]
+\centering
+\caption{Position against the three papers held in \texttt{docs/papers/}}
+\label{tab:papers}
+\begin{tabular}{@{}lccc@{}}
+\toprule
+\textbf{Capability} & \makecell{Mo et al. (2025)\\\textsl{J. Manuf. Proc. 156}} & \makecell{Wang et al. (2025a)\\\textsl{J. Manuf. Sys. 78}} & \textbf{This Work} \\
+\midrule
+Dynamic parameter optimization & \checkmark & \checkmark & \checkmark \\
+Tool wear in the state & \checkmark & \checkmark & \checkmark \\
+Surface roughness constraint & \checkmark & \checkmark & \checkmark \\
+Energy as an objective & \xmark & \xmark & \checkmark \\
+Speed-dependent cutting energy & \xmark & \xmark & \checkmark \\
+Domain randomization & \xmark & \xmark & \checkmark \\
+Conditioned policy (single $\to$ frontier) & \xmark & \xmark & \checkmark \\
+Transfer experiment across materials & \xmark & \xmark & \checkmark \\
+Receding-horizon baseline & \xmark & \xmark & \checkmark \\
+Monte Carlo robustness (100 scenarios) & \xmark & \xmark & \checkmark \\
+Interactive digital twin workstation & \xmark & \xmark & \checkmark \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Both reference papers treat energy as related work rather than as an optimization target: in each of them energy appears in the discussion of prior art, not among the objectives. The third paper in \texttt{docs/papers/} (Wang et al., 2025b) solves the discrete step sequencing problem, so continuous cutting parameters are outside its scope. The speed-dependent cutting energy model (Section~\ref{sec:physics}) is the key enabler here: without it the energy of a part is fixed by the volume removed, both objectives point the same way, and no weight on the energy term can open a trade-off. The conditioned policy reduces the ablation cost from 21 training runs to one. The receding-horizon controller provides a fair classical benchmark that uses the same physics and re-optimizes at every pass.
+
+% ========================================================================
+% 3. DIGITAL TWIN PHYSICS
+% ========================================================================
+\section{Digital Twin Physics}
+\label{sec:physics}
+
+All equations are implemented in \texttt{config/physics.py} and used by the environment, baselines, simulator, and evaluation scripts -- a single source of truth.
+
+\subsection{Geometry and Kinematics}
+Cutter diameter $D = 50\ \text{mm}$, cutting length $L_\text{cut} = 100\ \text{mm}$, total machining allowance $\kappa_\text{total} = 5.0\ \text{mm}$.
+\begin{align}
+    v_c &= \frac{\pi D n}{1000} \quad &&\text{[m/min]} \label{eq:vc} \\
+    \MRR &= v_c \cdot a_p \cdot f_r \quad &&\text{[mm}^3/\text{min]} \label{eq:mrr} \\
+    t_\text{cut} &= \frac{L_\text{cut}}{n f_r} \quad &&\text{[min]} \label{eq:tcut} \\
+    N_\text{passes} &= \left\lceil \frac{\kappa_\text{total}}{a_p} \right\rceil \quad &&\text{[integer]} \label{eq:npasses}
+\end{align}
+
+\subsection{Tool Wear (Extended Taylor Model)}
+\label{sec:wear}
+Flank wear rate per pass:
+\begin{equation}
+    \Delta \VB = C_\text{wear} \cdot v_c^{\alpha} \cdot f_r^{\beta} \cdot a_p^{\gamma_\text{wear}} \cdot t_\text{cut}
+    \label{eq:wear}
+\end{equation}
+with calibrated coefficients $C_\text{wear}=1.1\times10^{-4}$, $\alpha=0.3$, $\beta=0.2$, $\gamma_\text{wear}=0.15$. Cumulative wear $V_{B,k} = \sum_{i=1}^k \Delta V_{B,i}$.
+
+\subsection{Surface Roughness (Empirical Regression)}
+\label{sec:roughness}
+\begin{equation}
+    \Ra = k_1 f_r^2 + k_2 \VB + \frac{k_3}{v_c}
+    \label{eq:roughness}
+\end{equation}
+with $k_1=12.5$, $k_2=0.8$, $k_3=0.5$. The finished surface (last pass) must satisfy $\Ra \le \RaMax = 1.6\ \mu\text{m}$.
+
+\subsection{Energy Consumption}
+\label{sec:energy}
+Specific cutting energy grows with cutting speed:
+\begin{equation}
+    k_c(v_c) = k_{c0} \left( \frac{v_c}{v_\text{ref}} \right)^m,
+    \quad P_\text{cut} = k_c(v_c) \cdot \MRR,
+    \quad P_\text{total} = P_\text{idle} + P_\text{cut}
+    \label{eq:energy}
+\end{equation}
+with $P_\text{idle}=500\ \text{W}$, $k_{c0}=2.5\ \text{W}\cdot\text{min/mm}^3$, $m=0.6$, $v_\text{ref}$ from the reference cutting condition.
+Energy per pass: $E_\text{pass} = P_\text{total} \cdot t_\text{cut}$.
+Total energy per part: $E_\text{part} = \sum_{k=1}^{N_\text{passes}} E_{\text{pass},k}$.
+
+\begin{proposition}[Interior Minimum]
+With $m>0$, the energy per part $E_\text{part}(v_c)$ has an interior minimum in $v_c$. The cutting term rises with $v_c$ while the idle term falls, creating a genuine trade-off that the energy weight $w_2$ can select.
+\end{proposition}
+This is validated by test \texttt{test\_part\_energy\_has\_an\_interior\_minimum\_in\_speed}.
+
+\subsection{Stochastic Tool Breakage}
+Probability of catastrophic breakage per pass, applied only once the flank wear passes a threshold:
+\begin{equation}
+    p_\text{break} = 0.3 \cdot \underbrace{\frac{\VB - 0.15}{\VBMax - 0.15}}_{\text{wear factor}} \cdot \underbrace{\left(\frac{\MRR}{\MRR_\text{max}}\right)^2}_{\text{load factor}}
+    \qquad (\VB > 0.15\ \text{mm},\ \text{else } 0)
+\end{equation}
+The draw comes from the environment's own generator, which \texttt{reset(seed=...)} seeds, so a scenario replayed with the same seed breaks in the same place. If triggered, the episode terminates with a $-100$ reward.
+
+% ========================================================================
+% 4. ENVIRONMENT DESIGN
+% ========================================================================
+\section{Environment Design}
+
+\subsection{Registrations}
+Two Gymnasium environments are registered in \texttt{env/\_\_init\_\_.py}:
+
+\begin{enumerate}
+    \item \texttt{MillingDTEnv-v1}: Base environment, fixed scenario per episode. Observation $\in \R^8$.
+    \item \texttt{MillingDTEnv-w2-v1}: Conditioned environment. Energy weight $w_2$ and material context appended to observation $\in \R^{11}$. Both $w_2 \sim \mathcal{U}[0,1]$ and scenario are drawn per \texttt{reset()}.
+\end{enumerate}
+
+\subsection{State Space}
+\begin{table}[H]
+\centering
+\caption{Base observation (8 dimensions), every feature mapped onto $[0,1]$}
+\label{tab:obs}
+\begin{tabular}{@{}cll@{}}
+\toprule
+\textbf{Index} & \textbf{Feature} & \textbf{Normalization} \\
+\midrule
+0 & Flank wear $\VB$ & $\tanh$ squash over $[0, \VBMax]$ \\
+1 & Remaining stock $\kappa_\text{rem}$ & $\tanh$ squash over $[0, \kappa_\text{total}]$ \\
+2 & Previous spindle speed $n$ & $(n-n_\text{min})/(n_\text{max}-n_\text{min})$ \\
+3 & Previous feed $f_r$ & $(f_r-f_\text{min})/(f_\text{max}-f_\text{min})$ \\
+4 & Previous depth $a_p$ & $(a_p-a_{p,\text{min}})/(a_{p,\text{max}}-a_{p,\text{min}})$ \\
+5 & Previous $\MRR$ & $\MRR / \MRR_\text{max}$, clipped \\
+6 & Previous roughness $\Ra$ & $\tanh$ squash over $[0, \RaMax]$ \\
+7 & Tool broken & 1 if broken, else 0 \\
+\midrule
+8 & Energy weight $w_2$ & $w_2 \in [0,1]$ (conditioned only) \\
+9 & Wear coefficient $C_\text{wear}$ & over the scenario band $[0.6, 1.4]$ of nominal (conditioned only) \\
+10 & Roughness coefficient $k_1$ & over the scenario band $[0.8, 1.2]$ of nominal (conditioned only) \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Every feature is normalized against the \emph{scenario's own} limits, so the observation is scale free across geometries and materials. The $\tanh$ squashing keeps the gradient magnitude when a constraint is violated, instead of clipping the value to 1.
+
+\subsection{Action Space}
+Continuous 3D box $\mathcal{A} = [-1, 1]^3$, mapped to physical parameters:
+\begin{align}
+    n &= n_\text{min} + \frac{a_1+1}{2}(n_\text{max}-n_\text{min}) \\
+    f_r &= f_\text{min} + \frac{a_2+1}{2}(f_\text{max}-f_\text{min}) \\
+    a_p &= a_{p,\text{min}} + \frac{a_3+1}{2}(a_{p,\text{max}}-a_{p,\text{min}})
+\end{align}
+The policy output is unbounded; the environment clips to $[-1,1]$ before mapping, guaranteeing the machine envelope is never violated.
+
+\subsection{Reward Function}
+The per-step reward is:
+\begin{equation}
+    r = \underbrace{5\left(w_1 \frac{\MRR}{\MRR_\text{max}} - w_2 \frac{E_\text{pass}}{E_\text{ref}}\right)}_{\text{Objective}}
+    + \underbrace{2\,\Delta\!\left(\tfrac{\kappa_\text{removed}}{\kappa_\text{total}}\right)}_{\text{Progress}}
+    - \underbrace{50\,\mathbb{1}[\VB > \VBSafe]}_{\text{Wear penalty}}
+    - \underbrace{100\,\mathbb{1}[\text{broken}]}_{\text{Breakage}}
+    - \underbrace{50\,\mathbb{1}[\text{finishing pass} \wedge \Ra > \RaSafe]}_{\text{Roughness penalty}}
+    - 0.05
+\end{equation}
+plus, on a part finished inside spec, a $+200$ completion bonus and a Pareto margin bonus of at most $+5$:
+\begin{equation}
+    \text{HV} = \max\!\left(0, 1 - \tfrac{T_\text{total}}{T_\text{ref}}\right) \cdot \max\!\left(0, 1 - \tfrac{\Ra}{\RaSafe}\right) \cdot 5
+\end{equation}
+
+The objective term carries a scale factor of 5 so that it competes with the shaping terms. Without it the progress bonus and the constraint penalties decide the policy on their own, and the energy weight $w_2$ has no visible effect at all: the ablation produced 21 identical policies. The constraint penalties and the completion bonus are an order of magnitude larger on purpose, so that breaking a constraint is never worth a throughput or energy gain. $\RaSafe = 0.85\,\RaMax$, $w_1 + w_2 = 1$, and $E_\text{ref}$ is the energy of a pass under the reference condition, recomputed for every scenario from that scenario's diameter, cutting length and energy coefficients.
+
+The reward is validated by \texttt{test\_reward\_matches\_an\_independent\_calculation}, which recomputes it from \texttt{config/physics.py}, independently of the code that assembles it, and asserts agreement to $10^{-9}$.
+
+\subsection{Episode Logic}
+\begin{itemize}
+    \item \texttt{terminated=True}: Part finished ($\kappa_\text{rem} \le 0$), tool broken, or wear exceeded.
+    \item \texttt{truncated=True}: Maximum steps (200) reached.
+    \item Constraint violations on the \textit{finished surface} incur the roughness penalty only at the final pass; intermediate passes are penalized via the safety margin $\RaSafe$.
+\end{itemize}
+
+\subsection{Domain Randomization}
+When \texttt{randomize=True}, each \texttt{reset()} samples a new scenario from \texttt{config/scenarios.py}:
+\begin{itemize}
+    \item Workpiece: $\kappa_\text{total} \in [2, 15]\ \text{mm}$, $D \in [40, 150]\ \text{mm}$, $L_\text{cut} \in [50, 200]\ \text{mm}$
+    \item Material/Tool: $C_\text{wear}$ at $[0.6, 1.4]\times$ nominal, $k_1, k_2, k_3$ each at $[0.8, 1.2]\times$ nominal
+    \item Initial wear: $V_{B,0} \sim \mathcal{U}[0, 0.8]\,\VBMax$
+\end{itemize}
+The same tables are used for Monte Carlo evaluation, so the policy is measured on the distribution it was trained on. Measured on the trained policy, the observations the policy receives on the two sets agree to 0.041 in the mean of the normalized features, against a standard deviation of 1.
+
+% ========================================================================
+% 5. REINFORCEMENT LEARNING
+% ========================================================================
+\section{Reinforcement Learning}
+
+\subsection{Algorithm}
+Proximal Policy Optimization (PPO) with MLP policy, implemented via Stable-Baselines3.
+\begin{table}[H]
+\centering
+\caption{PPO hyperparameters}
+\label{tab:ppo}
+\begin{tabular}{@{}ll@{}}
+\toprule
+\textbf{Parameter} & \textbf{Value} \\
+\midrule
+Policy & MlpPolicy (2 hidden layers, 256 units each) \\
+Learning rate & $3 \times 10^{-4}$ (linear schedule to 0) \\
+$n\_steps$ & 2048 \\
+Batch size & 64 \\
+$n\_epochs$ & 10 \\
+$\gamma$ & 0.99 \\
+GAE $\lambda$ & 0.95 \\
+Clip range & 0.2 \\
+Entropy coefficient & 0.02 \\
+Value function coefficient & 0.5 \\
+Max grad norm & 0.5 \\
+VecNormalize & \texttt{norm\_obs=True, norm\_reward=True} \\
+Environments & 4 parallel (\texttt{SubprocVecEnv}) \\
+Device & CPU (2.5$\times$ faster than GPU for this MLP) \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Training uses a custom \texttt{ProgressQueueCallback} that sends a heartbeat every 1000 steps to the supervisor (\texttt{run\_experiments.py}); a dropped heartbeat triggers worker termination.
+
+\subsection{Training Runs}
+\begin{enumerate}
+    \item \textbf{Primary PPO:} 1M steps, seed 42, \texttt{randomize=True}. Model at \texttt{models/PPO\_seed42/}.
+    \item \textbf{Conditioned PPO:} 1M steps, seed 42, on \texttt{MillingDTEnv-w2-v1}. Model at \texttt{models/PPO\_conditioned\_seed42/}.
+    \item \textbf{Ablation grid:} 7 weights $w_2 \in \{0.0, 0.2, 0.4, 0.5, 0.6, 0.8, 1.0\} \times$ 3 seeds $\{42,43,44\}$, 150k steps each. Trained in parallel via \texttt{run\_experiments.py}.
+\end{enumerate}
+
+\subsection{Monte Carlo Evaluation}
+\texttt{agent/evaluate.py} runs 100 randomized scenarios (fixed seed 42) per policy. Each scenario is a full machining episode. Reports mean $\pm$ std and 95\% CI (t-distribution) for:
+\begin{itemize}
+    \item $\MRR$, Energy/part, Cycle time
+    \item Max $\Ra$, Max $\VB$
+    \item Constraint violation rates (worst pass vs finished surface)
+    \item Tool breakage rate, Part completion rate
+\end{itemize}
+
+% ========================================================================
+% 6. CLASSICAL BASELINES
+% ========================================================================
+\section{Classical Baselines}
+\label{sec:baselines}
+
+Five non-RL baselines implemented in \texttt{baselines/run\_baselines.py}:
+
+\begin{enumerate}
+    \item \textbf{Constant-High:} $n=8000, f_r=0.35, a_p=2.5$ (upper bounds).
+    \item \textbf{Constant-Safe:} $n=2000, f_r=0.05, a_p=0.1$ (lower bounds).
+    \item \textbf{Rule-Based Degradation:} Feed at maximum, spindle speed reduced by 20\% every second pass, as a shop-floor heuristic for tool degradation.
+    \item \textbf{NSGA-II Static:} Multi-objective optimization (pymoo) picking \textit{one} parameter set for the whole part. Decision variables $[n, f_r, a_p]$. Objectives: maximize $\MRR$, minimize Energy. Constraints: $\RaFinal \le \RaMax$, $V_{B,\text{final}} \le \VBMax$.
+    \item \textbf{Receding-Horizon Controller:} Vectorized grid search over $(n, f_r, a_p)$ at \textit{every pass}, simulating the remaining passes with the current $\VB$ and $\kappa_\text{rem}$. Keeps feasible candidates, picks the best by the same scalarization $w_1 \MRR - w_2 E$. This is the strongest classical baseline.
+\end{enumerate}
+
+All baselines use the \textit{same physics} (\texttt{config/physics.py}) and are evaluated on the same 50 episodes of the nominal machining condition.
+
+% ========================================================================
+% 7. RESULTS
+% ========================================================================
+\section{Results}
+
+All tables below are regenerated from committed CSVs by \texttt{python agent/summarize\_results.py}.
+
+\subsection{Primary PPO Policy -- Monte Carlo Sweep (100 Scenarios)}
+\label{sec:mc}
+
+\begin{table}[H]
+\centering
+\caption{Primary PPO Monte Carlo results}
+\label{tab:mc}
+\begin{tabular}{@{}lrrr@{}}
+\toprule
+\textbf{Metric} & \textbf{Mean} & \textbf{Std} & \textbf{95\% CI} \\
+\midrule
+Material removal rate (mm$^3$/min) & 1239.26 & 621.25 & [1115.99, 1362.53] \\
+Energy per part (kJ) & 68.20 & 48.68 & [58.54, 77.87] \\
+Cycle time per part (s) & 19.38 & 14.13 & [16.58, 22.18] \\
+Max surface roughness ($\mu$m) & 1.475 & 0.235 & [1.428, 1.521] \\
+Max flank wear (mm) & 0.1244 & 0.0679 & [0.1109, 0.1379] \\
+\multicolumn{4}{l}{\textit{Constraint violations}} \\
+Roughness violations, worst pass & 39.0\% & & [29.4\%, 48.6\%] \\
+Roughness violations, finished surface & 0.0\% & & [0.0\%, 0.0\%] \\
+Roughness $>$ safety limit, worst pass & 61.0\% & & [51.4\%, 70.6\%] \\
+Roughness $>$ safety limit, finished surface & 0.0\% & & [0.0\%, 0.0\%] \\
+Flank wear violations ($\VB > 0.3$ mm) & 0.0\% & & [0.0\%, 0.0\%] \\
+Tool breakage & 1.0\% & & [0.0\%, 3.0\%] \\
+Parts completed within spec & 99.0\% & & \\
+\midrule
+Scenarios & \multicolumn{3}{c}{100} \\
+Mean operating point & \multicolumn{3}{c}{7241 RPM, 0.254 mm/r, 2.11 mm, 4.0 passes} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Key observations:
+\begin{itemize}
+    \item \textbf{Finished surface always within spec:} 0\% roughness violations on the final pass.
+    \item \textbf{Wear never exceeded:} 0\% flank wear violations.
+    \item \textbf{Intermediate roughness:} 61\% of passes exceed the safety margin (0.85 $\times$ 1.6 = 1.36 $\mu$m), but the policy recovers by the finish pass.
+    \item \textbf{High variance:} Std of $\MRR$ is 50\% of mean -- domain randomization produces diverse operating points.
+\end{itemize}
+
+\subsection{Energy Weight Ablation -- Pareto Frontier}
+\label{sec:ablation}
+
+\begin{table}[H]
+\centering
+\caption{Ablation study: mean $\pm$ std over 3 seeds, 50 scenarios each}
+\label{tab:ablation}
+\begin{tabular}{@{}ccccccc@{}}
+\toprule
+$w_2$ & $\MRR$ (mm$^3$/min) & Energy (kJ) & Cycle (s) & $n$ (RPM) & $f_r$ (mm/r) & Frontier \\
+\midrule
+0.0 & 999.9 $\pm$ 31.3 & 82.8 $\pm$ 0.7 & 45.8 $\pm$ 2.0 & 6974 & 0.177 & dominated \\
+0.2 & 990.5 $\pm$ 137.3 & 76.3 $\pm$ 2.2 & 31.2 $\pm$ 5.8 & 7307 & 0.186 & dominated \\
+0.4 & 1069.0 $\pm$ 40.0 & 71.5 $\pm$ 0.4 & 22.9 $\pm$ 1.0 & 7205 & 0.212 & \checkmark \\
+0.5 & 1026.2 $\pm$ 56.9 & 71.0 $\pm$ 0.7 & 23.2 $\pm$ 0.5 & 7115 & 0.208 & \checkmark \\
+0.6 & 1008.4 $\pm$ 22.6 & 68.3 $\pm$ 0.8 & 21.6 $\pm$ 1.1 & 6775 & 0.223 & \checkmark \\
+0.8 & 888.3 $\pm$ 57.6 & 65.8 $\pm$ 1.4 & 23.1 $\pm$ 0.9 & 6307 & 0.222 & \checkmark \\
+1.0 & 876.6 $\pm$ 43.2 & 65.4 $\pm$ 1.7 & 22.7 $\pm$ 1.2 & 6321 & 0.220 & \checkmark \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{proposition}[Frontier Shape]
+Across the Pareto frontier ($w_2 \in [0.4, 1.0]$): $\MRR$ falls 18.0\% (1069 $\to$ 877 mm$^3$/min) while energy falls 8.5\% (71.5 $\to$ 65.4 kJ). The trade-off is \textit{asymmetric} -- large $\MRR$ sacrifice for modest energy gain -- because the speed-dependent cutting energy makes high speeds energetically expensive.
+\end{proposition}
+
+The dominated points ($w_2=0.0, 0.2$) have \textit{higher} energy than $w_2=0.4$ because they push speed too high, increasing $k_c(v_c)$ without reducing idle energy enough to compensate.
+
+\subsection{Conditioned Policy vs Ablation Sweep}
+\label{sec:conditioned}
+
+The conditioned policy (\texttt{MillingDTEnv-w2-v1}) is evaluated by sweeping $w_2$ at runtime and compared against the ablation policies (one per weight).
+
+\begin{table}[H]
+\centering
+\caption{Conditioned policy runtime sweep against the per-weight sweep}
+\label{tab:conditioned}
+\begin{tabular}{@{}cccc@{}}
+\toprule
+$w_2$ & \makecell{Conditioned, 1M steps\\$\MRR$ (mm$^3$/min)} & \makecell{Per-weight, 150k steps\\$\MRR$ (mm$^3$/min)} & \makecell{Energy gap\\conditioned vs sweep} \\
+\midrule
+0.0 & 1213.6 & 999.9 & $-15.9\%$ \\
+0.2 & 1215.3 & 990.5 & $-9.5\%$ \\
+0.4 & 1205.1 & 1069.0 & $-4.4\%$ \\
+0.5 & 1191.0 & 1026.2 & $-4.2\%$ \\
+0.6 & 1169.3 & 1008.4 & $-1.0\%$ \\
+0.8 & 1130.8 & 888.3 & $+2.0\%$ \\
+1.0 & 1096.0 & 876.6 & $+2.6\%$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+A single conditioned policy of 1,000,000 steps covers the whole weight range and beats the 21 weight-specific policies of 150,000 steps each, which is 3,150,000 steps in total: 13\% to 27\% more material removal rate for at most 3\% more energy. At a matched budget of 150,000 steps the two frontiers cross: the per-weight policies reach the throughput-heavy corner and the conditioned policy the energy-heavy one. The energy weight stays a runtime query rather than a retrain.
+
+\subsection{Baseline Comparison}
+All six policies are evaluated on the same 50 episodes of the nominal machining condition, so the numbers are comparable. The reward column is the decisive one, because it carries the constraint penalties.
+
+\begin{table}[H]
+\centering
+\caption{Baseline comparison, 50 episodes of the nominal condition}
+\label{tab:baselines}
+\begin{tabular}{@{}lcccc@{}}
+\toprule
+\textbf{Policy} & \textbf{$\MRR$ (mm$^3$/min)} & \textbf{Energy (kJ)} & \textbf{Cycle (s)} & \textbf{Mean reward} \\
+\midrule
+PPO (primary) & 877.7 & 18.5 & 5.7 & \alert{+204.1} \\
+Receding-Horizon & \textbf{981.7} & \textbf{18.0} & \textbf{4.8} & \alert{+203.5} \\
+NSGA-II Static & 732.9 & 18.8 & 6.4 & $-46.4$ \\
+Rule-Based & 719.8 & 18.7 & 6.6 & $-46.5$ \\
+Constant-High & 1099.6 & 17.8 & 4.3 & $-46.1$ \quad (violates) \\
+Constant-Safe & 1.6 & 1506.8 & 3000.0 & $-139.3$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{itemize}
+    \item \textbf{The four static policies end outside the roughness safety limit}, which the reward penalizes with $-50$. The receding-horizon controller is the only classical policy that stays inside it, and it reaches $+203.5$ against $-46$ for the rest.
+    \item \textbf{The learned policy and the controller are level on the reward} ($+204.1$ against $+203.5$), and the controller is ahead on the removal rate, the energy and the cycle time.
+    \item \textbf{This digital twin does not yet show a reinforcement learning advantage.} The next experiment is to initialize the policy from the controller and fine-tune from there.
+\end{itemize}
+
+\subsection{Transfer Experiment}
+
+Target material: harder alloy ($k_1 \times 1.25$, $k_2 \times 1.30$) with faster-wearing tool ($C_\text{wear} \times 2.0$). Source policy never saw this material.
+
+\begin{table}[H]
+\centering
+\caption{Transfer experiment on the target material}
+\label{tab:transfer}
+\begin{tabular}{@{}lccc@{}}
+\toprule
+\textbf{Arm} & \textbf{Mean reward} & \textbf{Roughness violations} & \textbf{Parts completed} \\
+\midrule
+Source policy, zero-shot & 183.0 & 100.0\% & 93.3\% \\
+Source policy, fine-tuned (50k steps) & 182.9 & 100.0\% & 93.3\% \\
+Target from scratch (50k steps) & 196.7 & 0.0\% & 100.0\% \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\textbf{Fine tuning is the wrong tool for a material change.} The source policy violates the roughness limit in every scenario of the harder material, and 50,000 steps of fine tuning move the reward from 183.0 to 182.9 and remove no violation at all. A policy trained on the harder material from scratch, for the same budget, reaches 196.7 with no violations. The remedy is the one this project adopted: train across a distribution of materials, so that no adaptation step is needed at all.
+
+% ========================================================================
+% 8. INTERACTIVE WORKSTATION
+% ========================================================================
+\section{Interactive Digital Twin Workstation}
+
+The Streamlit application (\texttt{app.py}) provides an industrial-grade interface:
+
+\begin{enumerate}
+    \item \textbf{2D Cross-Sectional Stock Depletion:} Real-time visualization of cylindrical billet, pass-by-pass cutout, remaining allowance $\kappa$, depth per pass $a_p$, and tool engagement.
+    \item \textbf{Micro-Topography Generator:} Feed-mark cusp profile $y_\text{cusp}(x) \approx x^2/(8 r_\epsilon) + \text{stochastic perturbation}$ with ISO 1302 centerline average $\Ra$ overlay and 1.6 $\mu$m ceiling.
+    \item \textbf{ISO 6983 G-Code Synthesizer:} Emits Fanuc/Siemens compliant G-code for the exact PPO parameter sequence.
+    \item \textbf{Multi-Controller Comparison:} Side-by-side PPO vs NSGA-II vs Rule-Based vs Constant-High with telemetry overlay.
+    \item \textbf{Cached Policy Loading:} \texttt{@st.cache\_resource} ensures model loads once per session.
+\end{enumerate}
+
+Launch: \texttt{streamlit run app.py}
+
+% ========================================================================
+% 9. SOFTWARE ENGINEERING
+% ========================================================================
+\section{Software Engineering Practices}
+
+\subsection{Architecture}
+\begin{itemize}
+    \item \texttt{config/}: Physics constants, equations, scenario distributions, paths (single source of truth)
+    \item \texttt{env/}: Gymnasium environment, two registrations
+    \item \texttt{agent/}: Training, evaluation, ablation, transfer, pipeline orchestration
+    \item \texttt{baselines/}: 5 classical baselines + receding-horizon controller
+    \item \texttt{sim/}: Simulation engine for Streamlit (stock depletion, micro-topography, G-code)
+    \item \texttt{viz/}: Plotting utilities, training curves, MC distributions, baseline comparison
+    \item \texttt{utils/}: Seeding, reproducibility
+\end{itemize}
+
+\subsection{Reproducibility}
+\begin{itemize}
+    \item Global seeding via \texttt{utils/seeding.py} (Python, NumPy, PyTorch, CUDA deterministic)
+    \item \texttt{config/scenarios.py} shared by training and Monte Carlo -- no drift
+    \item \texttt{agent/summarize\_results.py} rebuilds \texttt{RESULTS.md} from committed CSVs
+    \item All random draws (scenarios, weights, seeds) are deterministic given the seed
+\end{itemize}
+
+\subsection{Testing}
+26 tests in \texttt{tests/} covering:
+\begin{itemize}
+    \item Environment: action clipping, truncation, soft norm, physics constants, overrides, info dict, energy norm, Gym checker, randomization, pinned values, scenario scales, cutting energy speed dependence, part energy interior minimum, shared physics, shared scenario tables
+    \item Reward: golden-value test (independent recomputation), finishing-pass penalty
+    \item Integration: training$\to$evaluation roundtrip, conditioned observation context, baseline artifact
+    \item Progress callback: heartbeat delivery, failure reporting, interval respect
+\end{itemize}
+
+\subsection{Code Quality}
+\begin{itemize}
+    \item Centralized constants (\texttt{config/physics\_constants.py}) with literature citations
+    \item Centralized paths (\texttt{config/paths.py}) -- no hardcoded strings
+    \item Environment IDs exported from \texttt{env/\_\_init\_\_.py}
+    \item No unused imports (AST-verified)
+    \item Conventional commits, clean git history
+\end{itemize}
+
+% ========================================================================
+% 10. DISCUSSION
+% ========================================================================
+\section{Discussion}
+
+\subsection{What Worked}
+\begin{enumerate}
+    \item The speed-dependent cutting energy model ($k_c \propto v_c^m$) is essential -- without it, the energy/throughput trade-off vanishes and 21 ablation policies come out identical.
+    \item Domain randomization + shared scenario tables: the policy generalizes to unseen scenarios (99\% part completion, 0\% finished-surface violations).
+    \item The conditioned policy reduces the ablation cost from 21 training runs to one, and beats them at a third of the total step budget.
+    \item The receding-horizon controller is a strong, fair baseline using the same physics. It also exposed that the earlier baseline comparison was hollow.
+    \item The test suite catches physics regressions (energy interior minimum, cutting energy speed dependence) and reward regressions (golden-value test).
+\end{enumerate}
+
+\subsection{Limitations}
+\begin{enumerate}
+    \item The learned policy does not outperform the receding-horizon controller on the reward (Table~\ref{tab:baselines}), and the controller is ahead on the physical metrics. The controller re-solves with perfect physics; the policy has to learn the dynamics from experience.
+    \item The energy weight ablation uses 150k steps per weight (vs 1M for the primary policy) -- the frontier may shift with more training.
+    \item The reward charges the energy of a pass, while the reported metric is the energy of a part. A part cut in many shallow passes draws less power per pass but spends more time on the idle machine, so the two can move in opposite directions. Both are reported.
+    \item Stochastic tool breakage (1\% rate) introduces variance; the reward penalty could be shaped more carefully.
+    \item The micro-topography model is a simplified feed-mark cusp; real chatter and vibration are not modeled.
+    \item The energy model is the modelling choice of this work, not a result taken from the reference papers, and it is calibrated against a single reference condition.
+\end{enumerate}
+
+\subsection{Future Work}
+\begin{enumerate}
+    \item \textbf{Controller-initialized RL:} Initialize PPO from the receding-horizon controller's trajectories (behavior cloning) then fine-tune with RL.
+    \item \textbf{Sim-to-real:} Calibrate physics coefficients on real machine data; add sensor noise and delay to the environment.
+    \item \textbf{Multi-objective RL:} Replace scalarization with Pareto-conditioned networks or hypervolume maximization.
+    \item \textbf{Online adaptation:} Deploy the conditioned policy with a runtime optimizer that adjusts $w_2$ based on energy budget.
+    \item \textbf{Full 3D Digital Twin:} Extend the 2D cross-section to 3D toolpath visualization with collision checking.
+\end{enumerate}
+
+% ========================================================================
+% 11. CONCLUSION
+% ========================================================================
+\section{Conclusion}
+
+This project demonstrates a complete pipeline for DRL-based CNC milling optimization:
+\begin{enumerate}
+    \item A physics-grounded Digital Twin with speed-dependent cutting energy, tool wear, surface roughness, and stochastic breakage.
+    \item A Gymnasium environment with domain randomization, conditioned observations, and an energy-aware reward whose objective terms are scaled to compete with the shaping terms.
+    \item PPO policies trained with proper experimental rigor: Monte Carlo evaluation with confidence intervals, ablation study mapping the empirical Pareto frontier, conditioned policy covering the frontier in one run.
+    \item Strong classical baselines including a receding-horizon controller that re-optimizes at every pass.
+    \item A transfer experiment that measures cross-material adaptation, and finds that fine tuning does not provide it.
+    \item An interactive workstation for visualization, G-code generation, and multi-controller comparison.
+    \item Full reproducibility: every result table is generated from committed artifacts by a single script.
+\end{enumerate}
+
+The key scientific finding is that \textbf{the speed-dependent specific cutting energy creates a genuine energy/throughput trade-off}, and a DRL agent can learn to navigate it pass-by-pass while respecting surface quality and tool life constraints. Across the measured frontier the removal rate falls 18\% while the energy of the part falls 8.5\%, and the spindle speed falls with the energy weight, which is the mechanism the model predicts. The conditioned policy architecture makes the whole trade-off accessible at runtime with a single model.
+
+All code, data, and results are available in the repository at \texttt{G:/My Drive/IITM/AI in Mfg}.
+
+% ========================================================================
+% REFERENCES
+% ========================================================================
+\section*{References}
+\begin{thebibliography}{9}
+\bibitem{mo2025}
+X. Mo, M. Xia, S. Mei, X. Hu, ``Deep reinforcement learning-based optimization for machining process: Cutting parameters dynamic optimization considering tool condition degradation,'' \textit{Journal of Manufacturing Processes} 156 (2025) 1006--1031.
+
+\bibitem{wang2025a}
+P. Wang, Y. Cui, H. Tao, X. Xu, S. Yang, ``Machining parameter optimization for a batch milling system using multi-task deep reinforcement learning,'' \textit{Journal of Manufacturing Systems} 78 (2025) 124--152, doi: 10.1016/j.jmsy.2024.11.013.
+
+\bibitem{wang2025b}
+P. Wang, Y. You, W. Liu, D. Ding, F. Xu, ``Knowledge-guided deep reinforcement learning framework for feature machining step sequencing,'' \textit{International Journal of Advanced Manufacturing Technology} 140 (2025) 5617--5636, doi: 10.1007/s00170-025-16606-4.
+\end{thebibliography}
+
+% ========================================================================
+% APPENDIX: REPRODUCIBILITY COMMANDS
+% ========================================================================
+\appendix
+\section{Reproducibility Commands}
+\label{app:commands}
+
+All commands run from the project root \texttt{G:/My Drive/IITM/AI in Mfg}:
+
+\begin{lstlisting}[style=bash, caption=Key reproducibility commands]
+# Run all tests
+pytest tests/ -v
+
+# Train primary PPO (1M steps)
+python agent/train_rl.py --algo PPO --steps 1000000 --seed 42 --randomize
+
+# Train conditioned policy (1M steps)
+python agent/train_rl_conditioned.py --steps 1000000 --seed 42
+
+# Monte Carlo evaluation
+python agent/evaluate.py
+
+# Ablation study (7 weights x 3 seeds, 150k steps each)
+python agent/train_rl_ablation.py --steps 150000 --scenarios 50 --slots 7
+
+# Classical baselines
+python baselines/run_baselines.py
+
+# Transfer experiment
+python agent/transfer_experiment.py
+
+# Regenerate all plots
+python viz/plot_eval.py
+python viz/plot_results.py
+python viz/plot_baselines_comparison.py
+
+# Regenerate RESULTS.md from artifacts
+python agent/summarize_results.py
+
+# Launch interactive workstation
+streamlit run app.py
+
+# Full pipeline (sequential)
+python agent/run_pipeline.py --steps 1000000 --ablation_steps 100000 --scenarios 50 --slots 7
+\end{lstlisting}
+
+% ========================================================================
+% APPENDIX: PROJECT STRUCTURE
+% ========================================================================
+\section{Project Structure}
+\label{app:structure}
+
+\begin{lstlisting}[style=bash, caption=Project directory tree]
+G:\My Drive\IITM\AI in Mfg
+|-- agent/
+|   |-- train_rl.py                 # Primary PPO training
+|   |-- train_rl_conditioned.py     # Conditioned policy training
+|   |-- train_rl_ablation.py        # Energy weight ablation
+|   |-- evaluate.py                 # Monte Carlo sweep
+|   |-- evaluate_conditioned.py     # Conditioned policy sweep
+|   |-- transfer_experiment.py      # Cross-material transfer
+|   |-- run_experiments.py          # Parallel training supervisor
+|   |-- run_pipeline.py             # Full pipeline orchestrator
+|   |-- summarize_results.py        # Regenerates RESULTS.md
+|   `-- __init__.py
+|-- baselines/
+|   |-- run_baselines.py            # 5 classical baselines
+|   |-- receding_horizon.py         # Receding-horizon controller
+|   `-- __init__.py
+|-- config/
+|   |-- physics_constants.py        # All constants with citations
+|   |-- physics.py                  # Shared physics equations
+|   |-- scenarios.py                # Randomized scenario sampling
+|   |-- paths.py                    # Centralized paths
+|   `-- __init__.py
+|-- env/
+|   |-- milling_env.py              # Gymnasium environment
+|   `-- __init__.py                 # Exports ENV_ID, CONDITIONED_ENV_ID
+|-- sim/
+|   |-- machining_sim.py            # Stock depletion, micro-topography, G-code
+|   `-- __init__.py
+|-- viz/
+|   |-- plotting_utils.py           # Shared plotting functions
+|   |-- plot_eval.py                # Monte Carlo distributions
+|   |-- plot_results.py             # Training curves
+|   |-- plot_baselines_comparison.py # Baseline comparison charts
+|   `-- __init__.py
+|-- utils/
+|   `-- seeding.py                  # Global deterministic seeding
+|-- tests/
+|   |-- test_env.py                 # 19 environment tests
+|   |-- test_training.py            # 2 training tests
+|   |-- test_progress_callback.py   # 3 callback tests
+|   `-- test_integration.py         # 3 integration tests
+|-- results/                        # Committed artifacts (CSVs, plots)
+|-- models/                         # Trained models (gitignored, regenerated)
+|-- app.py                          # Streamlit workstation
+|-- AUDIT_REPORT.md                 # Code audit with dispositions
+|-- PROJECT.md                      # Consolidated documentation
+|-- README.md                       # Project overview
+`-- report/
+    `-- report.tex                  # This file
+\end{lstlisting}
+
+% ========================================================================
+% APPENDIX: HYPERPARAMETER SENSITIVITY
+% ========================================================================
+\section{Hyperparameter Sensitivity}
+\label{app:sensitivity}
+
+The PPO hyperparameters in Table~\ref{tab:ppo} are the Stable-Baselines3 defaults, with three exceptions: the network is widened to $2\times256$ units, the entropy coefficient is raised to 0.02 to keep the policy from collapsing to deterministic actions early, and the training runs on the CPU with one thread per process so that several policies can train in parallel on one machine. Measured on this machine, PPO on this MLP runs at 812 steps/s on the CPU against 318 steps/s on the GPU, so the GPU is not used.
+
+The entropy coefficient matters most: with too little of it the policy settles into a deterministic action early and stops exploring the envelope.
+
+% ========================================================================
+% APPENDIX: ENERGY MODEL DERIVATION
+% ========================================================================
+\section{Energy Model Derivation}
+\label{app:energy}
+
+The specific cutting energy $k_c(v_c)$ models the empirical observation that the energy required to remove a unit volume of material increases with cutting speed due to:
+\begin{enumerate}
+    \item Higher shear zone temperatures $\to$ increased flow stress
+    \item Increased strain rates $\to$ strain-rate hardening
+    \item Tool-chip interface friction changes
+\end{enumerate}
+
+The power-law form $k_c(v_c) = k_{c0} (v_c/v_\text{ref})^m$ with $m \approx 0.6$ is a standard empirical form for the rise of the specific cutting energy with cutting speed, and it is the modelling choice of this work rather than a result taken from either reference paper: the reference papers optimize quality and efficiency, and treat energy only as related work. The reference condition $v_\text{ref}$ is the cutting speed at the calibrated nominal parameters ($n=5000$ RPM, $D=50$ mm $\to v_\text{ref} \approx 785$ m/min). At this speed, $k_c = k_{c0} = 2.5$ W$\cdot$min/mm$^3$.
+
+Total power: $P_\text{total} = P_\text{idle} + k_c(v_c) \cdot \MRR$.
+Energy per pass: $E_\text{pass} = P_\text{total} \cdot t_\text{cut}$.
+Substituting $t_\text{cut} = L_\text{cut} / (n f_r)$ and $\MRR = v_c a_p f_r$:
+\begin{align}
+    E_\text{pass} &= P_\text{idle} \frac{L_\text{cut}}{n f_r}
+    + k_{c0} \left( \frac{v_c}{v_\text{ref}} \right)^m v_c a_p f_r \frac{L_\text{cut}}{n f_r} \\
+    &= \underbrace{P_\text{idle} \frac{L_\text{cut}}{n f_r}}_\text{Idle energy}
+    + \underbrace{k_{c0} \frac{L_\text{cut} a_p}{n f_r} \left( \frac{\pi D n}{1000 v_\text{ref}} \right)^m \frac{\pi D n}{1000}}_\text{Cutting energy}
+\end{align}
+
+The idle term $\propto 1/(n f_r)$ decreases with speed; the cutting term $\propto n^m$ increases with speed. Their sum has an interior minimum, which is the operating point selected by $w_2$.
+
+\end{document}
