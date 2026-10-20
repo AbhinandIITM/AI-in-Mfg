@@ -68,7 +68,7 @@ REWARD_WEIGHTS = {
 # term, and the energy weight stops having a visible effect.
 REFERENCE_CUTTING_CONDITION = {
     'n': 5000,        # Spindle speed [RPM]
-    'f_r': 0.2,       # Feed per tooth [mm/r]
+    'f_r': 0.2,       # Feed per revolution [mm/r]
     'a_p': 2.5,       # Depth of cut [mm]
 }
 

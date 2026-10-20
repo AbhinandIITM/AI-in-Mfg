@@ -16,7 +16,6 @@ from stable_baselines3 import PPO
 from stable_baselines3.common.env_util import make_vec_env
 from stable_baselines3.common.vec_env import VecNormalize
 from stable_baselines3.common.callbacks import BaseCallback
-import gymnasium as gym
 
 # Ensure project root is importable
 PROJECT_ROOT = Path(__file__).resolve().parents[1]

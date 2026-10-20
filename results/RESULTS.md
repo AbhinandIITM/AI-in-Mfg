@@ -40,7 +40,9 @@ Artifact: `results/ablation/ablation_summary.csv`
 
 ## Conditioned policy, weight swept at runtime
 
-Artifact: `results/conditioned/conditioned_frontier.csv`
+Artifacts: `results/conditioned/conditioned_frontier.csv` and `results/conditioned/conditioned_frontier_150k.csv`
+
+### One conditioned policy, 1,000,000 steps
 
 | w2 (energy weight) | MRR (mm3/min) | Energy per part (kJ) | Cycle time (s) | Spindle (RPM) | Feed (mm/r) | Ra violation rate |
 | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
@@ -51,6 +53,18 @@ Artifact: `results/conditioned/conditioned_frontier.csv`
 | 0.6 | 1225.0 | 55.1 | 17.9 | 7423 | 0.244 | 38.0% |
 | 0.8 | 1206.0 | 55.3 | 18.2 | 7399 | 0.242 | 37.0% |
 | 1.0 | 1187.7 | 55.5 | 18.5 | 7362 | 0.239 | 37.0% |
+
+### One conditioned policy, 150,000 steps, the same budget as the sweep
+
+| w2 (energy weight) | MRR (mm3/min) | Energy per part (kJ) | Cycle time (s) | Spindle (RPM) | Feed (mm/r) | Ra violation rate |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 0.0 | 1017.7 | 64.1 | 34.3 | 7442 | 0.192 | 32.0% |
+| 0.2 | 1034.3 | 62.3 | 30.7 | 7504 | 0.195 | 36.0% |
+| 0.4 | 1052.2 | 60.3 | 26.9 | 7518 | 0.200 | 36.0% |
+| 0.5 | 1058.8 | 59.6 | 25.5 | 7522 | 0.202 | 34.0% |
+| 0.6 | 1064.7 | 59.0 | 24.3 | 7521 | 0.204 | 34.0% |
+| 0.8 | 1074.1 | 58.2 | 22.6 | 7514 | 0.208 | 33.0% |
+| 1.0 | 1079.4 | 57.6 | 21.4 | 7503 | 0.211 | 32.0% |
 
 ## Classical baselines
 

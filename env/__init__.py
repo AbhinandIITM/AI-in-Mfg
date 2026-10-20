@@ -1,7 +1,5 @@
-import gymnasium as gym
 from gymnasium.envs.registration import register
 from config.physics_constants import (
-    BATCH_PARAMETERS,
     ENGINEERING_CONSTRAINTS,
     WORKPIECE_PARAMETERS,
     MACHINE_CONSTRAINTS

@@ -51,7 +51,7 @@ envelope and clipped before use:
 | Variable | Symbol | Range | Unit |
 | :--- | :--- | :--- | :--- |
 | Spindle speed | $n$ | 2000 to 8000 | RPM |
-| Feed per tooth | $f_r$ | 0.05 to 0.35 | mm/r |
+| Feed per revolution | $f_r$ | 0.05 to 0.35 | mm/r |
 | Depth of cut | $a_p$ | 0.1 to 2.5 | mm |
 
 The depth of cut is additionally capped at the stock that is left, so a pass

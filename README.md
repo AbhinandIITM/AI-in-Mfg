@@ -5,7 +5,7 @@
 ## Overview
 This project applies Deep Reinforcement Learning (DRL) to address the dynamic cutting parameter optimization problem in CNC face milling operations. Utilizing a high-fidelity Python-based Digital Twin grounded in empirical manufacturing physics, an autonomous agent dynamically optimizes cutting parameters across multi-pass machining:
 - **Spindle Speed ($n$):** 2000 - 8000 RPM
-- **Feed per Tooth ($f_r$):** 0.05 - 0.35 mm/tooth
+- **Feed per Revolution ($f_r$):** 0.05 - 0.35 mm/r
 - **Axial Depth of Cut ($a_p$):** 0.1 - 2.5 mm
 
 The optimization framework addresses a constrained multi-objective problem:

@@ -53,7 +53,7 @@ this repository, from `config/physics_constants.py`.
 | Quantity | Mo et al. (2025) | This work |
 | :--- | :--- | :--- |
 | Cutting speed | 25 to 200 m/min | 314 to 1257 m/min at D = 50 mm, from 2000 to 8000 RPM |
-| Feed per tooth | 0.05 to 0.3 mm/r | 0.05 to 0.35 mm/r |
+| Feed per revolution | 0.05 to 0.3 mm/r | 0.05 to 0.35 mm/r |
 | Depth of cut | 0.05 to 3 mm | 0.1 to 2.5 mm |
 | Machining allowance | 3, 5, 6 or 10 mm | 5 mm nominal, 2 to 15 mm across the sweep |
 | Surface roughness limit | Ra 3.2 um roughing, Ra 1.6 um finishing | Ra 1.6 um, 1.36 um with the 0.85 safety factor |

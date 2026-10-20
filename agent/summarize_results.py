@@ -122,23 +122,32 @@ def baseline_table():
     return "\n".join(lines)
 
 def conditioned_table():
-    """The frontier of the conditioned policy."""
-    path = PROJECT_ROOT / "results" / "conditioned" / "conditioned_frontier.csv"
-    if not path.exists():
-        return None
+    """The frontier of the conditioned policy, at both training budgets."""
+    out_dir = PROJECT_ROOT / "results" / "conditioned"
 
-    df = pd.read_csv(path).sort_values('w2')
-    lines = [
-        "| w2 (energy weight) | MRR (mm3/min) | Energy per part (kJ) | Cycle time (s) | Spindle (RPM) | Feed (mm/r) | Ra violation rate |",
-        "| ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
-    ]
-    for _, r in df.iterrows():
-        lines.append(
-            f"| {r['w2']:.1f} | {r['MRR_mean']:.1f} | {r['Energy_mean']:.1f} | "
-            f"{r['Time_mean']:.1f} | {r['n_mean']:.0f} | {r['f_r_mean']:.3f} | "
-            f"{r['Ra_viol_rate']*100:.1f}% |"
-        )
-    return "\n".join(lines)
+    blocks = []
+    for filename, title in (("conditioned_frontier.csv",
+                             "One conditioned policy, 1,000,000 steps"),
+                            ("conditioned_frontier_150k.csv",
+                             "One conditioned policy, 150,000 steps, the same budget as the sweep")):
+        path = out_dir / filename
+        if not path.exists():
+            continue
+        df = pd.read_csv(path).sort_values('w2')
+        lines = [
+            f"### {title}\n",
+            "| w2 (energy weight) | MRR (mm3/min) | Energy per part (kJ) | Cycle time (s) | Spindle (RPM) | Feed (mm/r) | Ra violation rate |",
+            "| ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
+        ]
+        for _, r in df.iterrows():
+            lines.append(
+                f"| {r['w2']:.1f} | {r['MRR_mean']:.1f} | {r['Energy_mean']:.1f} | "
+                f"{r['Time_mean']:.1f} | {r['n_mean']:.0f} | {r['f_r_mean']:.3f} | "
+                f"{r['Ra_viol_rate']*100:.1f}% |"
+            )
+        blocks.append("\n".join(lines))
+
+    return "\n\n".join(blocks) if blocks else None
 
 
 def transfer_table():
@@ -188,7 +197,8 @@ def main():
     cond = conditioned_table()
     if cond:
         parts.append("## Conditioned policy, weight swept at runtime\n")
-        parts.append("Artifact: `results/conditioned/conditioned_frontier.csv`\n")
+        parts.append("Artifacts: `results/conditioned/conditioned_frontier.csv` and "
+                     "`results/conditioned/conditioned_frontier_150k.csv`\n")
         parts.append(cond + "\n")
 
     bl = baseline_table()
