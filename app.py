@@ -29,6 +29,8 @@ from sim.machining_sim import (
     generate_surface_micro_profile,
     generate_cnc_gcode
 )
+from agent.evaluate import WEIGHTS
+from config.paths import PRIMARY_MODEL_DIR
 from config.physics_constants import ALL_CONSTANTS, ENGINEERING_CONSTRAINTS
 
 # -----------------------------------------------------------------------------
@@ -107,16 +109,17 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # -----------------------------------------------------------------------------
-# Cached Model Loader (loads policy matching the selected energy weight w2)
+# Cached Model Loader (the production policy; the energy weight is a query)
 # -----------------------------------------------------------------------------
 @st.cache_resource(show_spinner="Loading Pre-Trained PPO Policy...")
-def get_model(energy_weight: float = 0.4):
-    closest_w2 = round(energy_weight * 5) / 5 # snap to 0.0, 0.2, 0.4, 0.6, 0.8, 1.0
-    tag = f"ablation_w2_{closest_w2:.1f}".replace('.', '_')
-    cand_dir = PROJECT_ROOT / "models" / tag
-    if (cand_dir / "final_model.zip").exists():
-        return load_ppo_policy(cand_dir)
-    return load_ppo_policy()
+def get_model():
+    """The production policy.
+
+    The energy weight travels in the observation, so the dashboard queries
+    the whole frontier of this one policy instead of loading a different
+    network per weight.
+    """
+    return load_ppo_policy(PRIMARY_MODEL_DIR)
 
 # -----------------------------------------------------------------------------
 # Sidebar: Machining Process Parameters
@@ -136,8 +139,10 @@ with st.sidebar:
                      help="Instantaneous tool flank wear at start of pass. Hard failure ceiling is 0.30 mm.")
     
     st.markdown("#### 3. DRL Optimization Weights")
-    w2 = st.select_slider("Energy Weight $ (Green Slider)", options=[0.0, 0.5, 1.0], value=0.5,
-                     help="0.0: Max Throughput | 0.5: Balanced | 1.0: Max Energy Efficiency")
+    w2 = st.select_slider("Energy Weight $ (Green Slider)", options=WEIGHTS, value=0.5,
+                     help="The weight the part is optimized for. It travels in the observation, so one "
+                          "policy answers the whole range. "
+                          "0.0: Max Throughput | 0.5: Balanced | 1.0: Max Energy Efficiency")
     w1 = round(1.0 - w2, 2)
     st.caption(f"Throughput Weight $w_1 = {w1:.1f}$ | Specific Energy Weight $w_2 = {w2:.1f}$")
 
@@ -145,7 +150,7 @@ with st.sidebar:
     run_sim = st.checkbox("Auto-Run Simulation", value=True) # Replaced button with checkbox
 
 try:
-    ppo_model_tuple = get_model(w2)
+    ppo_model_tuple = get_model()
 except Exception as e:
     st.error(f"Error loading trained PPO policy: {e}")
     ppo_model_tuple = None
@@ -167,7 +172,6 @@ if ppo_model_tuple is not None:
         VB_0=VB_0,
         D=D,
         L_cut=L_cut,
-        w1=w1,
         w2=w2,
         ppo_model_tuple=ppo_model_tuple
     )
@@ -389,7 +393,6 @@ if not df_ppo.empty:
                     VB_0=VB_0,
                     D=D,
                     L_cut=L_cut,
-                    w1=w1,
                     w2=w2,
                     ppo_model_tuple=ppo_model_tuple
                 )

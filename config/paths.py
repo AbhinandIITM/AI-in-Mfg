@@ -19,6 +19,12 @@ CURVES_DIR = RESULTS_DIR / "curves"
 WORKERS_DIR = RESULTS_DIR / "workers"
 PAPERS_DIR = PROJECT_ROOT / "docs" / "papers"
 
-# The policies this project ships with.
+# The production policy: one network over the whole energy weight range and
+# the whole material distribution.
 PRIMARY_MODEL_DIR = MODELS_DIR / "PPO_seed42"
-CONDITIONED_MODEL_DIR = MODELS_DIR / "PPO_conditioned_seed42"
+
+# The runtime weight sweep asks that one policy for every point of the
+# trade-off. The ablation trains one policy per weight, with the weight
+# pinned.
+WEIGHT_SWEEP_DIR = RESULTS_DIR / "weight_sweep"
+ABLATION_DIR = RESULTS_DIR / "ablation"

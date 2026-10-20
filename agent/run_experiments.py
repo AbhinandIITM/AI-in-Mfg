@@ -20,6 +20,10 @@ one stage (the ablation sweep). The two strategies exist because
 run_pipeline.py sequences dependent stages, while run_experiments.py
 parallelizes independent jobs within one stage. Merging them would conflate
 sequential orchestration with parallel worker supervision.
+
+The job list is built by the caller: agent/train_rl_ablation.py owns the
+energy weight grid and hands one job per (weight, seed) pair to
+run_experiments().
 """
 
 import os
@@ -64,6 +68,9 @@ def worker_wrapper(worker_id, job, queue):
             save_dir=job.get("save_dir"),
             env_kwargs=job.get("env_kwargs"),
             run_name=job.get("run_name"),
+            randomize=job.get("randomize", False),
+            randomize_weight=job.get("randomize_weight", False),
+            w2=job.get("w2"),
         )
     except Exception as e:
         print(f"Error in worker {worker_id}: {e}")
@@ -164,20 +171,3 @@ def run_experiments(jobs, parallel_slots=4):
         master_bar.close()
 
     print("All experiments completed.")
-
-if __name__ == "__main__":
-    import multiprocessing
-    multiprocessing.freeze_support() # For Windows
-
-    # Total steps per run
-    steps = 200_000
-    seeds = [1, 2, 3, 4, 5]
-    algos = ["PPO"]
-
-
-    jobs = []
-    for algo in algos:
-        for seed in seeds:
-            jobs.append({"algo": algo, "seed": seed, "steps": steps})
-
-    run_experiments(jobs=jobs, parallel_slots=min(8, multiprocessing.cpu_count()))

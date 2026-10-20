@@ -3,16 +3,18 @@ env/milling_env.py
 
 Digital Twin Milling Environment (MillingDTEnv)
 Based on:
-- "DRL-based optimization for machining process: Cutting parameters dynamic optimization considering tool condition degradation" (J. Manuf. Processes 156)
+- "DRL-based optimization for machining process: Cutting parameters dynamic optimization considering tool condition degradation" (J. Manuf. Process 156)
 - "Machining parameter optimization for a batch milling system using multi-task deep reinforcement learning" (J. Manuf. Systems 78)
 
-Improvements:
+One environment carries the whole method:
 - Gymnasium API compliance (truncated flag)
 - Explicit action clipping
 - Soft normalization for observations (tanh squashing)
 - Energy-aware reward function
 - Intermediate feedback for progress
 - Per-scenario physics overrides (material, tool, machine, workpiece)
+- The conditioning context in the observation, so a single policy covers the
+  whole energy weight range and the whole material distribution
 """
 
 import numpy as np
@@ -28,8 +30,19 @@ from config.physics import (
 )
 from config.scenarios import SCENARIO_KEYS, sample_scenario
 
+# The observation layout, in order. The context features are always present:
+# a policy trained with a pinned weight simply sees a constant there, but
+# every policy works on the same observation shape.
+PHYSICS_FEATURES = 8
+CONTEXT_FEATURES = 3
+OBSERVATION_SIZE = PHYSICS_FEATURES + CONTEXT_FEATURES
+
 class MillingDTEnv(gym.Env):
     """Multi-pass face milling digital twin.
+
+    The observation has 11 features: the eight physics features, then the
+    conditioning context, the energy weight the part is optimized for and the
+    material it is cut from.
 
     Overridable kwargs (all optional, all default to config/physics_constants.py):
         n_min, n_max          spindle speed bounds [RPM]
@@ -41,12 +54,16 @@ class MillingDTEnv(gym.Env):
         C_wear, alpha, beta, gamma_wear   Taylor-expanded wear coefficients
         k1, k2, k3            surface roughness regression coefficients
         P_idle, k_c           energy model coefficients
-        w1, w2                reward weights (throughput, energy)
+        w2                    the energy weight of this part; w1 = 1 - w2
+
+    Flags:
+        randomize           draw a new machining scenario at every reset
+        randomize_weight    draw the energy weight at every reset
     """
     metadata = {"render_modes": ["human", "rgb_array"], "render_fps": 10}
 
     def __init__(self, render_mode: Optional[str] = None, randomize: bool = False,
-                 randomize_weight: bool = False, condition: bool = False, **kwargs):
+                 randomize_weight: bool = False, **kwargs):
         super().__init__()
 
         # Load constants from central config.
@@ -78,10 +95,13 @@ class MillingDTEnv(gym.Env):
         for key in ('VB_max', 'Ra_max'):
             if key in kwargs:
                 self.eng_cfg[key] = float(kwargs[key])
-        if 'w1' in kwargs:
-            self.reward_cfg['w1'] = float(kwargs['w1'])
+
+        # The energy weight of the part. It is part of the observation, so the
+        # policy knows which end of the trade-off it is being asked for.
+        # w1 is always 1 - w2, so the two can never disagree.
         if 'w2' in kwargs:
             self.reward_cfg['w2'] = float(kwargs['w2'])
+        self.reward_cfg['w1'] = 1.0 - self.reward_cfg['w2']
 
         # Machine Limits
         self.n_min = self.machine_cfg['n_min']
@@ -101,7 +121,6 @@ class MillingDTEnv(gym.Env):
         self.render_mode = render_mode
         self.randomize = bool(randomize)
         self.randomize_weight = bool(randomize_weight)
-        self.condition = bool(condition)
         self.VB_init = None
 
         # Apply the pinned scenario and compute the scales that depend on it.
@@ -118,11 +137,11 @@ class MillingDTEnv(gym.Env):
         self.progress_scale = 2.0
         self.hv_scale = 5.0
 
-        # State: [VB_norm, kappa_norm, n_norm, f_norm, ap_norm, MRR_norm, Ra_norm, is_broken]
-        # and, for a conditioned environment, the context the policy is
-        # conditioned on: the energy weight and the material context.
-        self.observation_size = 8 + (3 if self.condition else 0)
-        self.observation_space = spaces.Box(low=0.0, high=1.0, shape=(self.observation_size,), dtype=np.float32)
+        # State: [VB_norm, kappa_norm, n_norm, f_norm, ap_norm, MRR_norm,
+        # Ra_norm, is_broken] followed by the conditioning context:
+        # [w2, C_wear, k1].
+        self.observation_space = spaces.Box(low=0.0, high=1.0,
+                                            shape=(OBSERVATION_SIZE,), dtype=np.float32)
         # Action: [n, f_r, a_p]
         self.action_space = spaces.Box(low=-1.0, high=1.0, shape=(3,), dtype=np.float32)
 
@@ -178,8 +197,8 @@ class MillingDTEnv(gym.Env):
 
         if self.randomize_weight:
             # Draw the energy weight this part is optimized for. The policy
-            # sees the weight in its observation, so one policy covers the
-            # whole weight range.
+            # sees it in the observation, so one policy covers the whole
+            # weight range.
             w2 = float(self.np_random.uniform(0.0, 1.0))
             self.reward_cfg['w2'] = w2
             self.reward_cfg['w1'] = 1.0 - w2
@@ -212,18 +231,20 @@ class MillingDTEnv(gym.Env):
         return (np.tanh(normalized) + 1) / 2
 
     def _context_features(self):
-        """The context a conditioned policy is conditioned on.
+        """The context the policy is conditioned on, mapped onto [0, 1].
 
-        The energy weight it is asked to optimize, and the material context it
-        is cutting, both mapped onto [0, 1] over the range the scenarios span.
+        The energy weight, the wear coefficient and the roughness coefficient
+        of the material, each over the range the scenarios span.
         """
         wear_band = SCENARIO_BANDS['C_wear']
         roughness_band = SCENARIO_BANDS['k1']
         nominal_wear = ALL_CONSTANTS['tool_wear']['C_wear']
         nominal_k1 = ALL_CONSTANTS['surface_roughness']['k1']
 
-        c_wear = (self.tool_wear_cfg['C_wear'] / nominal_wear - wear_band[0]) / (wear_band[1] - wear_band[0])
-        k1 = (self.roughness_cfg['k1'] / nominal_k1 - roughness_band[0]) / (roughness_band[1] - roughness_band[0])
+        c_wear = ((self.tool_wear_cfg['C_wear'] / nominal_wear - wear_band[0])
+                  / (wear_band[1] - wear_band[0]))
+        k1 = ((self.roughness_cfg['k1'] / nominal_k1 - roughness_band[0])
+              / (roughness_band[1] - roughness_band[0]))
 
         return [
             float(np.clip(self.reward_cfg['w2'], 0.0, 1.0)),
@@ -242,8 +263,7 @@ class MillingDTEnv(gym.Env):
             self._soft_normalize(self.prev_Ra, 0.0, self.Ra_max),
             1.0 if self.broken else 0.0
         ]
-        if self.condition:
-            obs.extend(self._context_features())
+        obs.extend(self._context_features())
         return np.array(obs, dtype=np.float32)
 
     def step(self, action: np.ndarray):
@@ -384,4 +404,3 @@ class MillingDTEnv(gym.Env):
             wear_pct = int(np.clip(self.VB / max(1e-5, self.VB_max), 0.0, 1.0) * 128)
             frame[:, :wear_pct, 1] = 200   # Wear in green channel
             return frame
-

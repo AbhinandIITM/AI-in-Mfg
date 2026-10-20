@@ -1,3 +1,22 @@
+"""
+agent/train_rl.py
+
+The one training entry point of the project.
+
+The environment carries the energy weight and the material context in its
+observation, so the same script trains every policy in the project:
+
+    # the production policy: the weight is drawn per episode, so one model
+    # covers the whole weight range and the whole material distribution
+    python agent/train_rl.py --steps 1000000 --seed 42 --randomize --randomize-weight
+
+    # a policy for one point of the trade-off (the ablation study)
+    python agent/train_rl.py --steps 150000 --seed 42 --randomize --w2 0.6
+
+    # a policy for one material (the transfer experiment)
+    python agent/train_rl.py --steps 300000 --seed 42
+"""
+
 import os
 import sys
 import time
@@ -16,6 +35,7 @@ from stable_baselines3 import PPO
 from stable_baselines3.common.env_util import make_vec_env
 from stable_baselines3.common.vec_env import VecNormalize
 from stable_baselines3.common.callbacks import BaseCallback
+from stable_baselines3.common.logger import configure
 
 # Ensure project root is importable
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -26,7 +46,6 @@ import env
 from env import ENV_ID
 from config.paths import MODELS_DIR
 from utils.seeding import set_seed
-from stable_baselines3.common.logger import configure
 
 class ProgressQueueCallback(BaseCallback):
     """Reports training progress to the supervising process over a Queue.
@@ -62,15 +81,17 @@ class ProgressQueueCallback(BaseCallback):
         else:
             print(f"[WARN] {message}", flush=True)
 
-def train(algo="PPO", timesteps=1_000_000, seed=42, queue=None, device="auto", progress_bar=None, save_dir=None, env_kwargs=None, run_name=None, randomize=False, policy=None, env_id=ENV_ID, init_weights=None):
+def train(algo="PPO", timesteps=1_000_000, seed=42, queue=None, device="auto", progress_bar=None,
+          save_dir=None, env_kwargs=None, run_name=None, randomize=False,
+          randomize_weight=False, w2=None, policy=None, env_id=ENV_ID, init_weights=None):
     """Train a PPO policy and save the policy plus its VecNormalize statistics.
 
     Args:
-        env_kwargs: forwarded to MillingDTEnv (reward weights, physics overrides).
-        run_name: name of the run, used for the training curve file. Pass a
-            unique name per run, otherwise the curve of one run replaces the
-            curve of the previous one with the same name.
+        env_kwargs: forwarded to MillingDTEnv (physics overrides, a pinned w2).
+        run_name: name of the run, used for the training curve file.
         randomize: draw a new machining scenario for every episode.
+        randomize_weight: draw the energy weight for every episode.
+        w2: the pinned energy weight of the task. w1 = 1 - w2.
         policy: an existing policy to warm start from.
         env_id: which environment registration to train against.
         init_weights: callable that receives the fresh model before training,
@@ -82,6 +103,10 @@ def train(algo="PPO", timesteps=1_000_000, seed=42, queue=None, device="auto", p
     env_kwargs = dict(env_kwargs or {})
     if randomize:
         env_kwargs['randomize'] = True
+    if randomize_weight:
+        env_kwargs['randomize_weight'] = True
+    if w2 is not None:
+        env_kwargs['w2'] = float(w2)
 
     if save_dir is not None:
         models_dir = Path(save_dir)
@@ -121,8 +146,8 @@ def train(algo="PPO", timesteps=1_000_000, seed=42, queue=None, device="auto", p
         device=device
     )
 
-    run_name = run_name or f"PPO_primary_seed{seed}"
-    curve_dir = PROJECT_ROOT / "results" / "curves" / run_name
+    run_name = run_name or f"PPO_seed{seed}"
+    curve_dir = MODELS_DIR.parent / "results" / "curves" / run_name
 
     callbacks = []
     if queue:
@@ -160,7 +185,6 @@ def train(algo="PPO", timesteps=1_000_000, seed=42, queue=None, device="auto", p
         print("    1. Evaluate model:   python agent/evaluate.py")
         print("    2. Plot curves:      python viz/plot_results.py")
         print("    3. Rebuild tables:    python agent/summarize_results.py")
-        print("=" * 65 + "\n")
 
     return model
 
@@ -173,9 +197,11 @@ if __name__ == "__main__":
     parser.add_argument("--device", type=str, default="auto", choices=["auto", "cuda", "cpu"])
     parser.add_argument("--randomize", action="store_true",
                         help="draw a new machining scenario for every episode")
+    parser.add_argument("--randomize-weight", action="store_true",
+                        help="draw the energy weight for every episode")
+    parser.add_argument("--w2", type=float, default=None,
+                        help="pin the energy weight of the task (w1 = 1 - w2)")
     args = parser.parse_args()
 
     train(algo=args.algo, timesteps=args.steps, seed=args.seed, device=args.device,
-          randomize=args.randomize)
-
-
+          randomize=args.randomize, randomize_weight=args.randomize_weight, w2=args.w2)

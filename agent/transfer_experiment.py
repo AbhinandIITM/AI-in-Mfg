@@ -35,6 +35,7 @@ from stable_baselines3 import PPO
 from stable_baselines3.common.env_util import make_vec_env
 from stable_baselines3.common.vec_env import DummyVecEnv, VecNormalize
 
+from config.paths import MODELS_DIR
 from config.physics_constants import ALL_CONSTANTS
 from config.scenarios import generate_random_configs
 from utils.seeding import set_seed
@@ -155,7 +156,7 @@ def main():
               f"success {metrics['success_rate']*100:.1f}%")
 
     # 4. From scratch on the target, same budget.
-    print(f"[4/4] Training from scratch on the target material ({adapt_budget:,} steps)")
+    print(f"[4/5] Training from scratch on the target material ({adapt_budget:,} steps)")
     scratch_dir = models_dir / "transfer_scratch"
     train_on(TARGET_SCENARIO, adapt_budget, 42, scratch_dir)
     scratch_model = PPO.load(str(scratch_dir / "final_model.zip"), device="cpu")
@@ -167,11 +168,29 @@ def main():
 
     curve.append({'stage': 'from_scratch', 'steps_on_target': adapt_budget, **scratch})
 
+    # 5. The production policy, zero shot. It was trained across a
+    # distribution of materials with the material context in its
+    # observation, so the target material is inside its training
+    # distribution and needs no adaptation at all.
+    print("[5/5] Evaluating the production policy on the target material")
+    production = None
+    production_dir = MODELS_DIR / "PPO_seed42"
+    if (production_dir / "final_model.zip").exists():
+        production_model = PPO.load(str(production_dir / "final_model.zip"), device="cpu")
+        production = evaluate_on_target(production_model, production_dir / "vecnormalize.pkl",
+                                        scenarios, env_kwargs=TARGET_SCENARIO)
+        print(f"      mean reward {production['mean_reward']:.1f} | "
+              f"Ra violations {production['ra_violation_rate']*100:.1f}% | "
+              f"success {production['success_rate']*100:.1f}%")
+        curve.append({'stage': 'production_zero_shot', 'steps_on_target': 0, **production})
+    else:
+        print(f"      no production policy at {production_dir}, skipping this arm")
+
     df_curve = pd.DataFrame(curve)
     df_curve.to_csv(out_dir / "transfer_curve.csv", index=False)
 
     final_finetuned = curve[-2]
-    summary = pd.DataFrame([{
+    summary = {
         'source_steps': source_steps,
         'adapt_budget': adapt_budget,
         'zero_shot_reward': zero_shot['mean_reward'],
@@ -183,11 +202,16 @@ def main():
         'zero_shot_success': zero_shot['success_rate'],
         'finetuned_success': final_finetuned['success_rate'],
         'from_scratch_success': scratch['success_rate'],
-    }])
+    }
+    if production is not None:
+        summary['production_reward'] = production['mean_reward']
+        summary['production_ra_violation'] = production['ra_violation_rate']
+        summary['production_success'] = production['success_rate']
+    summary = pd.DataFrame([summary])
     summary.to_csv(out_dir / "transfer_results.csv", index=False)
 
     print("\nTransfer summary:")
-    print(summary.round(3).to_string(index=False))
+    print(summary.round(3).T.to_string())
     print(f"\nSaved to {out_dir}")
 
 

@@ -15,7 +15,7 @@ from env import ENV_ID
 from utils.seeding import set_seed
 
 
-def test_training_to_evaluation_roundtrip():
+def test_training_to_evaluation_roundtrip(tmp_path):
     """Train a policy for a few thousand steps and evaluate it.
 
     The unit tests cover the environment and the callback in isolation. This
@@ -39,8 +39,7 @@ def test_training_to_evaluation_roundtrip():
     model.learn(total_timesteps=512)
 
     stats = model.get_env()
-    vec_path = PROJECT_ROOT / "tests" / "temp_models" / "vecnormalize.pkl"
-    vec_path.parent.mkdir(parents=True, exist_ok=True)
+    vec_path = tmp_path / "vecnormalize.pkl"
     stats.save(str(vec_path))
 
     scenarios = generate_random_configs(3, seed=7)
@@ -55,15 +54,29 @@ def test_training_to_evaluation_roundtrip():
     # A policy that never finishes the part would score no completion at all.
     assert df["Success"].sum() > 0
 
-    model.save(str(PROJECT_ROOT / "tests" / "temp_models" / "model.zip"))
+    model.save(str(tmp_path / "model.zip"))
     stats.close()
 
 
-def test_conditioned_environment_observation_carries_the_context():
-    """The conditioned registration must expose the weight and the context."""
+def test_there_is_one_milling_registration():
+    """The two registrations were merged into a single environment.
+
+    The energy weight and the material moved into the observation, so a
+    task with a pinned weight is the same environment with a constant in the
+    context, not a second registration.
+    """
     import gymnasium as gym
 
-    env_inst = gym.make(env.CONDITIONED_ENV_ID).unwrapped
+    assert env.ENV_ID == "MillingDTEnv-v1"
+    milling_ids = sorted(i for i in gym.registry if i.startswith("MillingDTEnv"))
+    assert milling_ids == [env.ENV_ID]
+
+
+def test_registered_environment_observation_carries_the_context():
+    """The registration must expose the weight and the material context."""
+    import gymnasium as gym
+
+    env_inst = gym.make(env.ENV_ID).unwrapped
     obs, _ = env_inst.reset(seed=3)
 
     assert obs.shape == (11,)
@@ -72,7 +85,58 @@ def test_conditioned_environment_observation_carries_the_context():
     assert 0.0 <= obs[8] <= 1.0
     assert 0.0 <= obs[9] <= 1.0
     assert 0.0 <= obs[10] <= 1.0
+    # The nominal material sits in the middle of the bands the scenarios span.
+    assert obs[9] == pytest.approx(0.5)
+    assert obs[10] == pytest.approx(0.5)
     env_inst.close()
+
+
+def test_one_policy_answers_a_pinned_weight(tmp_path):
+    """The weight is a query of the policy, not a retrain.
+
+    The policy is trained once over the whole weight range and is then asked
+    for a pinned weight. The weight is part of the observation, so the same
+    network and the same normalization statistics serve both.
+    """
+    import gymnasium as gym
+    from stable_baselines3 import PPO
+    from stable_baselines3.common.env_util import make_vec_env
+    from stable_baselines3.common.vec_env import VecNormalize
+
+    from agent.evaluate import evaluate_policy_on_scenarios
+    from config.scenarios import generate_random_configs
+
+    set_seed(9)
+    train_env = make_vec_env(ENV_ID, n_envs=2, seed=9,
+                              env_kwargs={"randomize": True, "randomize_weight": True})
+    train_env = VecNormalize(train_env, norm_obs=True, norm_reward=True)
+
+    model = PPO("MlpPolicy", train_env, verbose=0, n_steps=128, batch_size=32,
+                seed=9, device="cpu", policy_kwargs=dict(net_arch=[64, 64]))
+    model.learn(total_timesteps=256)
+
+    stats = model.get_env()
+    vec_path = tmp_path / "vecnormalize_weight.pkl"
+    stats.save(str(vec_path))
+
+    scenarios = generate_random_configs(2, seed=9)
+    rows = evaluate_policy_on_scenarios(model, vec_path, scenarios, seed=9,
+                                        env_kwargs={"w2": 0.9})
+
+    assert len(rows) == 2
+    df = pd.DataFrame(rows)
+    assert df["MRR_mean"].gt(0).all()
+    assert df["Energy_total"].gt(0).all()
+    assert df["passes"].ge(1).all()
+
+    # The policy was asked for the pinned weight, and the environment told
+    # it so in the observation.
+    probe = gym.make(ENV_ID, w2=0.9).unwrapped
+    obs, _ = probe.reset(seed=9)
+    assert obs[8] == pytest.approx(0.9)
+    probe.close()
+
+    stats.close()
 
 
 def test_baseline_comparison_writes_its_artifact():

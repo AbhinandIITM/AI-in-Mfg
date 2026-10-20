@@ -17,10 +17,12 @@ import env
 from utils.seeding import set_seed
 
 @pytest.fixture
-def clean_test_dir():
-    test_dir = "tests/temp_models"
+def clean_test_dir(tmp_path):
+    # The artifacts go into the pytest scratch directory: the repository sits
+    # on a synced drive, where rewriting a model archive can fail.
+    test_dir = tmp_path / "temp_models"
     os.makedirs(test_dir, exist_ok=True)
-    yield test_dir
+    yield str(test_dir)
     if os.path.exists(test_dir):
         shutil.rmtree(test_dir)
 

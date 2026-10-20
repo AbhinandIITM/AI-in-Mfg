@@ -9,6 +9,10 @@ scenarios. The result is the empirical trade-off between throughput and
 energy, which is the point of the study: if the energy term in the reward
 carries no weight, the operating point should not move.
 
+Every policy is trained on randomized scenarios with its energy weight
+pinned, and it is measured at that same weight, so a policy is always asked
+the question it was trained for.
+
 Outputs:
     results/ablation/ablation_results.csv       one row per weight and seed
     results/ablation/ablation_episodes.csv      one row per weight, seed and scenario
@@ -28,16 +32,15 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT_ROOT))
 
 import env
-from agent.evaluate import evaluate_policy_on_scenarios
+from agent.evaluate import WEIGHTS, evaluate_policy_on_scenarios
 from agent.run_experiments import run_experiments
-from config.paths import MODELS_DIR
+from config.paths import ABLATION_DIR, MODELS_DIR, PLOTS_DIR
 from config.scenarios import generate_random_configs
 from stable_baselines3 import PPO
 from utils.seeding import set_seed
 from viz.plotting_utils import set_style
 
-# Energy weights for the grid. w1 is always 1 - w2.
-WEIGHTS = [0.0, 0.2, 0.4, 0.5, 0.6, 0.8, 1.0]
+# The seeds the grid is repeated over.
 SEEDS = [42, 43, 44]
 
 def model_tag(w2, seed):
@@ -45,28 +48,35 @@ def model_tag(w2, seed):
     return f"ablation_w2_{w2:.1f}_seed{seed}".replace('.', '_')
 
 def build_jobs(weights, seeds, timesteps, randomize=True):
-    """One training job per (weight, seed) pair."""
+    """One training job per (weight, seed) pair.
+
+    The energy weight is a field of the job, not an environment argument:
+    the trainer pins it, and the environment derives the throughput weight
+    from it.
+    """
     jobs = []
     for w2 in weights:
-        w1 = round(1.0 - w2, 2)
         for seed in seeds:
             tag = model_tag(w2, seed)
-            env_kwargs = {"w1": w1, "w2": w2}
-            if randomize:
-                env_kwargs["randomize"] = True
             jobs.append({
                 "algo": "PPO",
                 "seed": seed,
                 "steps": timesteps,
                 "tag": tag,
                 "save_dir": str(MODELS_DIR / tag),
-                "env_kwargs": env_kwargs,
                 "run_name": tag,
+                "w2": w2,
+                "randomize": randomize,
+                "randomize_weight": False,
             })
     return jobs
 
-def evaluate_ablation_model(model_dir, configs, seed=42):
-    """Evaluate one ablation policy over the shared scenario set."""
+def evaluate_ablation_model(model_dir, configs, seed=42, w2=None):
+    """Evaluate one ablation policy over the shared scenario set.
+
+    The policy is asked at the weight it was trained for, so the weight in
+    the observation is the one the policy was pinned to.
+    """
     model_path = Path(model_dir) / "final_model.zip"
     vec_path = Path(model_dir) / "vecnormalize.pkl"
     if not model_path.exists():
@@ -74,7 +84,9 @@ def evaluate_ablation_model(model_dir, configs, seed=42):
 
     set_seed(seed)
     model = PPO.load(str(model_path), device="cpu")
-    rows = evaluate_policy_on_scenarios(model, vec_path, configs, seed=seed)
+    env_kwargs = {"w2": w2} if w2 is not None else None
+    rows = evaluate_policy_on_scenarios(model, vec_path, configs, seed=seed,
+                                        env_kwargs=env_kwargs)
     df = pd.DataFrame(rows)
 
     return {
@@ -99,9 +111,9 @@ def evaluate_ablation_model(model_dir, configs, seed=42):
 def run_ablation(weights=WEIGHTS, seeds=SEEDS, timesteps=200_000,
                  num_scenarios=50, eval_seed=42, parallel_slots=8, skip_training=False,
                  randomize=True):
-    logs_dir = PROJECT_ROOT / "results" / "ablation"
+    logs_dir = ABLATION_DIR
     logs_dir.mkdir(parents=True, exist_ok=True)
-    plots_dir = PROJECT_ROOT / "results" / "plots"
+    plots_dir = PLOTS_DIR
     plots_dir.mkdir(parents=True, exist_ok=True)
 
     print("=" * 70)
@@ -127,7 +139,8 @@ def run_ablation(weights=WEIGHTS, seeds=SEEDS, timesteps=200_000,
             model_dir = MODELS_DIR / tag
             print(f"\n[+] Evaluating {tag} ...")
 
-            eval_metrics = evaluate_ablation_model(model_dir, configs, seed=eval_seed)
+            eval_metrics = evaluate_ablation_model(model_dir, configs, seed=eval_seed,
+                                                  w2=w2)
             records.append({'w1': w1, 'w2': w2, 'seed': seed, **eval_metrics})
 
             for name, env_kwargs in configs.items():

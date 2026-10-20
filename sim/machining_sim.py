@@ -17,12 +17,10 @@ import sys
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT_ROOT))
 
-import env
 from env.milling_env import MillingDTEnv
-from agent.train_rl_ablation import WEIGHTS as ABLATION_WEIGHTS
 from config.physics_constants import ALL_CONSTANTS
 from config.physics import cutting_power, cutting_speed
-from config.paths import MODELS_DIR, PRIMARY_MODEL_DIR
+from config.paths import PRIMARY_MODEL_DIR
 from stable_baselines3 import PPO
 from stable_baselines3.common.vec_env import DummyVecEnv, VecNormalize
 
@@ -46,20 +44,21 @@ def run_single_simulation(
     VB_0: float = 0.02,
     D: float = 50.0,
     L_cut: float = 100.0,
-    w1: float = 0.6,
     w2: float = 0.4,
     ppo_model_tuple=None
 ) -> pd.DataFrame:
     """
     Executes a complete multi-pass machining episode under specified physical conditions.
     Returns a DataFrame with pass-by-pass physical telemetry.
+
+    The energy weight is a query of the policy: it travels in the
+    observation, so the same production policy serves every weight.
     """
     env_kwargs = {
         "kappa_total": float(kappa_total),
         "D": float(D),
         "L_cut": float(L_cut),
         "VB_0": float(VB_0),
-        "w1": float(w1),
         "w2": float(w2),
     }
 
@@ -69,15 +68,7 @@ def run_single_simulation(
     
     if policy_type == "PPO":
         if ppo_model_tuple is None:
-            # Snap the requested energy weight to the closest weight that was
-            # actually trained in the ablation study, and load that policy.
-            closest_w2 = min(ABLATION_WEIGHTS, key=lambda w: abs(w - w2))
-            tag = f"ablation_w2_{closest_w2:.1f}_seed42".replace('.', '_')
-            cand_dir = MODELS_DIR / tag
-            if (cand_dir / "final_model.zip").exists():
-                model, vec_path = load_ppo_policy(cand_dir)
-            else:
-                model, vec_path = load_ppo_policy()
+            model, vec_path = load_ppo_policy()
         else:
             model, vec_path = ppo_model_tuple
             

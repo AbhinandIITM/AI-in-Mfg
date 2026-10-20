@@ -3,17 +3,16 @@ agent/run_pipeline.py
 
 Master orchestrator script.
 Executes the full pipeline sequentially:
-1. Primary PPO Training
-2. Conditioned Policy Training
-3. Monte Carlo Evaluation (Primary Model)
-4. Conditioned Policy Weight Sweep
-5. Ablation Study (Trains Pareto Frontier Models)
-6. Classical Baselines
-7. Viz Generation (Training Curves, MC Distributions, Baseline Comparison)
-8. Result Tables (rebuilds results/RESULTS.md)
+1. Production PPO Training (one policy over the whole energy weight range)
+2. Monte Carlo Evaluation (Production Model)
+3. Runtime Weight Sweep (the production policy asked for every weight)
+4. Ablation Study (Trains Pareto Frontier Models)
+5. Classical Baselines
+6. Viz Generation (Training Curves, MC Distributions, Baseline Comparison)
+7. Result Tables (rebuilds results/RESULTS.md)
 
 Design note: this script drives the *pipeline stages* through subprocess calls
-(python -m agent.train_rl, python -m baselines.run_baselines, etc.).
+(python agent/train_rl.py, python baselines/run_baselines.py, etc.).
 The parallel training of the ablation models is delegated to
 agent/run_experiments.py, which uses multiprocessing to supervise a pool of
 training workers with heartbeat monitoring. The two strategies exist because
@@ -43,41 +42,47 @@ def run_cmd(cmd):
 
 def main():
     parser = argparse.ArgumentParser(description="Run full CNC Digital Twin RL Pipeline")
-    parser.add_argument("--steps", type=int, default=1_000_000, help="Timesteps for primary training")
-    parser.add_argument("--ablation_steps", type=int, default=100_000, help="Timesteps per ablation model")
-    parser.add_argument("--scenarios", type=int, default=50, help="Scenarios per ablation policy")
-    parser.add_argument("--slots", type=int, default=7, help="Parallel training slots for the ablation")
+    parser.add_argument("--steps", type=int, default=1_000_000,
+                        help="Timesteps for the production policy")
+    parser.add_argument("--ablation_steps", type=int, default=150_000,
+                        help="Timesteps per ablation model")
+    parser.add_argument("--eval_scenarios", type=int, default=100,
+                        help="Scenarios per policy in the Monte Carlo and weight sweeps")
+    parser.add_argument("--scenarios", type=int, default=50,
+                        help="Scenarios per ablation policy")
+    parser.add_argument("--slots", type=int, default=7,
+                        help="Parallel training slots for the ablation")
     args = parser.parse_args()
 
     print("="*80)
     print("  DIGITAL TWIN CNC MILLING - MASTER PIPELINE")
     print("="*80)
 
-    # 1. Primary Model Training
-    run_cmd(f"python agent/train_rl.py --algo PPO --steps {args.steps} --seed 42 --randomize")
+    # 1. The production policy: the weight and the scenario are drawn per
+    # episode, so one network covers the whole energy weight range.
+    run_cmd(f"python agent/train_rl.py --steps {args.steps} --seed 42 "
+            f"--randomize --randomize-weight")
 
-    # 2. Conditioned Policy Training
-    run_cmd(f"python agent/train_rl_conditioned.py --steps {args.steps} --seed 42")
+    # 2. Monte Carlo evaluation of that policy
+    run_cmd(f"python agent/evaluate.py --scenarios {args.eval_scenarios}")
 
-    # 3. Monte Carlo Evaluation
-    run_cmd("python agent/evaluate.py")
+    # 3. The same policy asked for every point of the trade-off. The weight is
+    # a query, not a retrain.
+    run_cmd(f"python agent/evaluate.py --sweep-weight --scenarios {args.eval_scenarios}")
 
-    # 4. Conditioned policy weight sweep
-    run_cmd("python agent/evaluate_conditioned.py --scenarios 100 --compare")
-
-    # 5. Ablation Study Training (Trains Pareto Frontier)
+    # 4. Ablation Study Training (Trains Pareto Frontier)
     run_cmd(f"python agent/train_rl_ablation.py --steps {args.ablation_steps} "
             f"--scenarios {args.scenarios} --slots {args.slots}")
 
-    # 6. Classical Baselines
+    # 5. Classical Baselines
     run_cmd("python baselines/run_baselines.py")
 
-    # 7. Generate all Visualizations
+    # 6. Generate all Visualizations
     run_cmd("python viz/plot_results.py")
     run_cmd("python viz/plot_eval.py")
     run_cmd("python viz/plot_baselines_comparison.py")
 
-    # 8. Rebuild the result tables quoted in the documentation
+    # 7. Rebuild the result tables quoted in the documentation
     run_cmd("python agent/summarize_results.py")
 
     print("="*80)

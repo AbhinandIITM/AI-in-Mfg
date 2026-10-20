@@ -9,12 +9,13 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT_ROOT))
 
 import env
+from env.milling_env import OBSERVATION_SIZE, PHYSICS_FEATURES
 from config.physics_constants import ALL_CONSTANTS, MACHINE_CONSTRAINTS, ENGINEERING_CONSTRAINTS
 from config.physics import cutting_speed
 
 def test_action_clipping():
     """Test that out-of-bounds actions are correctly clipped and handled."""
-    env_inst = gym.make("MillingDTEnv-v1")
+    env_inst = gym.make(env.ENV_ID)
     obs, _ = env_inst.reset(seed=42)
 
     # Test extreme out-of-bounds actions
@@ -34,7 +35,7 @@ def test_action_clipping():
 
 def test_truncated_flag():
     """Test Gymnasium API compliance regarding the truncated flag and max steps."""
-    env_inst = gym.make("MillingDTEnv-v1")
+    env_inst = gym.make(env.ENV_ID)
     env_inst.reset(seed=42)
 
     truncated = False
@@ -55,7 +56,7 @@ def test_truncated_flag():
 
 def test_soft_normalization():
     """Test soft normalization (tanh squashing) keeps values strictly within [0, 1]."""
-    env_inst = gym.make("MillingDTEnv-v1")
+    env_inst = gym.make(env.ENV_ID)
     env_inst.reset(seed=42)
 
     # Test internal _soft_normalize method across wide range of values
@@ -68,9 +69,35 @@ def test_soft_normalization():
     assert np.all(obs >= 0.0) and np.all(obs <= 1.0)
     env_inst.close()
 
+def test_observation_is_always_eleven_dimensional():
+    """Every configuration of the environment yields the same observation.
+
+    The context features are always present, so a policy trained with a
+    pinned weight and a policy trained over the whole weight range see the
+    same layout and the same observation space.
+    """
+    assert PHYSICS_FEATURES == 8
+    assert OBSERVATION_SIZE == 11
+
+    configurations = [
+        env.MillingDTEnv(),
+        env.MillingDTEnv(w2=0.75),
+        env.MillingDTEnv(randomize=True),
+        env.MillingDTEnv(randomize_weight=True),
+        env.MillingDTEnv(randomize=True, randomize_weight=True),
+        gym.make(env.ENV_ID).unwrapped,
+    ]
+
+    for env_inst in configurations:
+        obs, _ = env_inst.reset(seed=17)
+        assert obs.shape == (11,)
+        assert env_inst.observation_space.shape == (11,)
+        assert env_inst.observation_space.contains(obs)
+        env_inst.close()
+
 def test_physics_constants_sync():
     """Test that environment properly syncs physics constants from ALL_CONSTANTS."""
-    env_inst = gym.make("MillingDTEnv-v1")
+    env_inst = gym.make(env.ENV_ID)
     env_inst.reset(seed=42)
 
     assert env_inst.unwrapped.tool_wear_cfg == ALL_CONSTANTS['tool_wear']
@@ -83,7 +110,7 @@ def test_physics_constants_sync():
 
 def test_physics_overrides_are_honored():
     """Per-scenario material and tool coefficients must reach the physics."""
-    env_inst = gym.make("MillingDTEnv-v1", C_wear=0.05, k1=14.0, k2=1.1, k3=0.4, alpha=0.45)
+    env_inst = gym.make(env.ENV_ID, C_wear=0.05, k1=14.0, k2=1.1, k3=0.4, alpha=0.45)
     unwrapped = env_inst.unwrapped
 
     assert unwrapped.tool_wear_cfg['C_wear'] == 0.05
@@ -100,7 +127,7 @@ def test_physics_overrides_are_honored():
 
 def test_info_exports_accumulators():
     """The info payload must expose the running cycle time and energy totals."""
-    env_inst = gym.make("MillingDTEnv-v1")
+    env_inst = gym.make(env.ENV_ID)
     env_inst.reset(seed=42)
 
     _, _, _, _, info = env_inst.step(np.array([1.0, 1.0, 1.0], dtype=np.float32))
@@ -123,7 +150,7 @@ def test_energy_normalization_is_per_pass():
     A whole-part scale makes the per-step energy term two orders of magnitude
     smaller than the throughput term, and the energy weight stops mattering.
     """
-    env_inst = gym.make("MillingDTEnv-v1")
+    env_inst = gym.make(env.ENV_ID)
     unwrapped = env_inst.unwrapped
     env_inst.reset(seed=42)
 
@@ -137,7 +164,7 @@ def test_gymnasium_env_checker_passes():
     """The environment must satisfy the Gymnasium API contract."""
     from gymnasium.utils.env_checker import check_env
 
-    check_env(env_inst := gym.make("MillingDTEnv-v1").unwrapped, skip_render_check=True)
+    check_env(env_inst := gym.make(env.ENV_ID).unwrapped, skip_render_check=True)
     env_inst.close()
 
 def test_randomized_environment_draws_a_new_scenario():
@@ -185,6 +212,84 @@ def test_scenario_scales_follow_the_scenario():
     assert env_inst.MRR_max == pytest.approx(v_c_max * env_inst.ap_max * env_inst.f_max)
     assert env_inst.E_ref > 0.0
     assert env_inst.T_ref > 0.0
+    env_inst.close()
+
+
+def test_context_carries_the_pinned_energy_weight():
+    """A pinned weight is part of the observation the policy reads.
+
+    The task is the same environment with a constant in the context, so the
+    weight the part is optimized for is never hidden from the policy.
+    """
+    env_inst = env.MillingDTEnv(w2=0.75)
+    obs, _ = env_inst.reset(seed=5)
+
+    assert obs[8] == pytest.approx(0.75)
+    assert env_inst.reward_cfg['w2'] == 0.75
+    # The throughput weight is whatever is left of the energy weight.
+    assert env_inst.reward_cfg['w1'] == pytest.approx(1.0 - 0.75)
+
+    # It stays pinned over the episode.
+    obs, _, _, _, _ = env_inst.step(np.array([0.0, 0.0, 0.0], dtype=np.float32))
+    assert obs[8] == pytest.approx(0.75)
+    env_inst.close()
+
+
+def test_context_carries_the_material():
+    """The material of the part is part of the observation too.
+
+    The coefficients are normalized over the bands the scenarios span, so
+    the nominal material sits in the middle and an override moves the
+    feature the way the band says it should.
+    """
+    nominal_c_wear = ALL_CONSTANTS['tool_wear']['C_wear']
+    nominal_k1 = ALL_CONSTANTS['surface_roughness']['k1']
+
+    # The nominal material lands in the middle of both bands.
+    nominal = env.MillingDTEnv()
+    obs, _ = nominal.reset(seed=5)
+    assert obs[9] == pytest.approx(0.5)
+    assert obs[10] == pytest.approx(0.5)
+    nominal.close()
+
+    # The edges of the bands are the edges of the feature.
+    low = env.MillingDTEnv(C_wear=nominal_c_wear * 0.6, k1=nominal_k1 * 0.8)
+    obs, _ = low.reset(seed=5)
+    assert obs[9] == pytest.approx(0.0)
+    assert obs[10] == pytest.approx(0.0)
+    low.close()
+
+    high = env.MillingDTEnv(C_wear=nominal_c_wear * 1.4, k1=nominal_k1 * 1.2)
+    obs, _ = high.reset(seed=5)
+    assert obs[9] == pytest.approx(1.0)
+    assert obs[10] == pytest.approx(1.0)
+    high.close()
+
+    # A harder material moves its own feature and leaves the other alone.
+    harder = env.MillingDTEnv(C_wear=nominal_c_wear * 1.2)
+    obs, _ = harder.reset(seed=5)
+    assert obs[9] == pytest.approx((1.2 - 0.6) / (1.4 - 0.6))
+    assert obs[9] > 0.5
+    assert obs[10] == pytest.approx(0.5)
+    harder.close()
+
+
+def test_randomized_weight_draws_a_new_weight_at_every_reset():
+    """The energy weight is part of the scenario of the part."""
+    env_inst = env.MillingDTEnv(randomize_weight=True)
+
+    env_inst.reset(seed=1)
+    first_w2 = env_inst.reward_cfg['w2']
+    assert first_w2 == pytest.approx(env_inst._get_obs()[8])
+
+    env_inst.reset(seed=2)
+    second_w2 = env_inst.reward_cfg['w2']
+
+    assert first_w2 != second_w2, "A randomized weight must be drawn again"
+    assert 0.0 <= first_w2 <= 1.0
+    assert 0.0 <= second_w2 <= 1.0
+    # The throughput weight is whatever is left of the energy weight.
+    assert env_inst.reward_cfg['w1'] == pytest.approx(1.0 - second_w2)
     env_inst.close()
 
 
@@ -267,19 +372,27 @@ def test_environment_uses_the_shared_physics():
     env_inst.close()
 
 
-def test_reward_matches_an_independent_calculation():
+@pytest.mark.parametrize("w2", [0.0, 0.4, 0.75])
+def test_reward_matches_an_independent_calculation(w2):
     """The reward must equal what the physics says it should be.
 
     The reward is the sum of an objective term, a progress term, the
     constraint penalties and the completion bonus. This recomputes it from
     the physics module, independently of the code that assembles it, so a
     change in either one has to show up here.
+
+    The energy weight is pinned, and the throughput weight is what is left
+    of it, so the same check holds for every point of the trade-off.
     """
     from config.physics import material_removal_rate, pass_energy, cutting_speed
 
-    w1, w2 = 0.6, 0.4
-    env_inst = env.MillingDTEnv(w1=w1, w2=w2)
+    w1 = 1.0 - w2
+    env_inst = env.MillingDTEnv(w2=w2)
     env_inst.reset(seed=11)
+
+    # The environment holds the pinned weight and derives the other one.
+    assert env_inst.reward_cfg['w2'] == pytest.approx(w2)
+    assert env_inst.reward_cfg['w1'] == pytest.approx(w1)
 
     action = np.array([0.4, -0.3, 0.7], dtype=np.float32)
     _, reward, terminated, truncated, info = env_inst.step(action)
@@ -293,7 +406,11 @@ def test_reward_matches_an_independent_calculation():
     MRR = material_removal_rate(v_c, a_p, f_r)
     energy = pass_energy(n, f_r, a_p, env_inst.D, env_inst.L_cut, env_inst.energy_cfg)
 
-    objective = 5.0 * (w1 * MRR / env_inst.MRR_max - w2 * energy / env_inst.E_ref)
+    # Normalize first, then weight: the reward is assembled in the dtypes of
+    # the physics values, so the order of the operations is part of the value.
+    MRR_hat = MRR / env_inst.MRR_max
+    E_hat = energy / env_inst.E_ref
+    objective = 5.0 * (w1 * MRR_hat - w2 * E_hat)
     progress = 2.0 * (a_p / env_inst.kappa_total)
     step_penalty = -0.05
     # The part is not finished by this pass, so the roughness penalty and the

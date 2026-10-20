@@ -22,6 +22,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT_ROOT))
 
 from agent.evaluate import compute_statistics
+from config.paths import RESULTS_DIR, WEIGHT_SWEEP_DIR
 
 def monte_carlo_table():
     """Per-scenario statistics of the primary policy."""
@@ -120,21 +121,16 @@ def baseline_table():
         )
     return "\n".join(lines)
 
-def conditioned_table():
-    """The frontier of the conditioned policy, at both training budgets."""
-    out_dir = PROJECT_ROOT / "results" / "conditioned"
+def weight_sweep_table():
+    """The frontier of the production policy, swept at runtime."""
+    out_dir = WEIGHT_SWEEP_DIR
 
     blocks = []
-    for filename, title in (("conditioned_frontier.csv",
-                             "One conditioned policy, 1,000,000 steps"),
-                            ("conditioned_frontier_150k.csv",
-                             "One conditioned policy, 150,000 steps, the same budget as the sweep")):
-        path = out_dir / filename
-        if not path.exists():
-            continue
+    path = out_dir / "weight_sweep.csv"
+    if path.exists():
         df = pd.read_csv(path).sort_values('w2')
         lines = [
-            f"### {title}\n",
+            "### One policy, asked for every point of the trade-off\n",
             "| w2 (energy weight) | MRR (mm3/min) | Energy per part (kJ) | Cycle time (s) | Spindle (RPM) | Feed (mm/r) | Ra violation rate |",
             "| ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
         ]
@@ -146,11 +142,27 @@ def conditioned_table():
             )
         blocks.append("\n".join(lines))
 
+    comparison_path = out_dir / "weight_sweep_vs_ablation.csv"
+    if comparison_path.exists():
+        df = pd.read_csv(comparison_path).sort_values('w2')
+        lines = [
+            "### One policy against 21 policies, one per weight\n",
+            "| w2 (energy weight) | MRR, one policy | MRR, per-weight | MRR gap | Energy, one policy | Energy, per-weight | Energy gap |",
+            "| ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
+        ]
+        for _, r in df.iterrows():
+            lines.append(
+                f"| {r['w2']:.1f} | {r['MRR_mean_sweep']:.1f} | {r['MRR_mean_ablation']:.1f} | "
+                f"{r['MRR_gap_pct']:+.1f}% | {r['Energy_mean_sweep']:.1f} | "
+                f"{r['Energy_mean_ablation']:.1f} | {r['Energy_gap_pct']:+.1f}% |"
+            )
+        blocks.append("\n".join(lines))
+
     return "\n\n".join(blocks) if blocks else None
 
 
 def transfer_table():
-    """Zero shot, fine tuned and from scratch on a new material."""
+    """Zero shot, fine tuned, from scratch and the production policy on a new material."""
     path = PROJECT_ROOT / "results" / "transfer" / "transfer_results.csv"
     if not path.exists():
         return None
@@ -162,6 +174,13 @@ def transfer_table():
         f"| Source policy, zero shot | {df['zero_shot_reward']:.1f} | {df['zero_shot_ra_violation']*100:.1f}% | {df['zero_shot_success']*100:.1f}% |",
         f"| Source policy, fine tuned | {df['finetuned_reward']:.1f} | {df['finetuned_ra_violation']*100:.1f}% | {df['finetuned_success']*100:.1f}% |",
         f"| Trained on the target from scratch | {df['from_scratch_reward']:.1f} | {df['from_scratch_ra_violation']*100:.1f}% | {df['from_scratch_success']*100:.1f}% |",
+    ]
+    if 'production_reward' in df:
+        lines.append(
+            f"| Production policy, zero shot | {df['production_reward']:.1f} | "
+            f"{df['production_ra_violation']*100:.1f}% | {df['production_success']*100:.1f}% |"
+        )
+    lines += [
         "",
         f"Source policy: {int(df['source_steps']):,} steps on the nominal material. "
         f"Adaptation budget: {int(df['adapt_budget']):,} steps on the target.",
@@ -193,12 +212,11 @@ def main():
         parts.append("Artifact: `results/ablation/ablation_summary.csv`\n")
         parts.append(ab + "\n")
 
-    cond = conditioned_table()
-    if cond:
-        parts.append("## Conditioned policy, weight swept at runtime\n")
-        parts.append("Artifacts: `results/conditioned/conditioned_frontier.csv` and "
-                     "`results/conditioned/conditioned_frontier_150k.csv`\n")
-        parts.append(cond + "\n")
+    ws = weight_sweep_table()
+    if ws:
+        parts.append("## Production policy, weight swept at runtime\n")
+        parts.append("Artifact: `results/weight_sweep/weight_sweep.csv`\n")
+        parts.append(ws + "\n")
 
     bl = baseline_table()
     if bl:

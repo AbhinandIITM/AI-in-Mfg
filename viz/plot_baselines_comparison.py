@@ -19,10 +19,16 @@ sys.path.insert(0, str(PROJECT_ROOT))
 
 from viz.plotting_utils import set_style
 from config.paths import PRIMARY_MODEL_DIR
+from config.physics_constants import ALL_CONSTANTS
 import env
 from env.milling_env import MillingDTEnv
 from stable_baselines3 import PPO
 from stable_baselines3.common.vec_env import DummyVecEnv, VecNormalize
+
+# The learned policy is queried at the configured energy weight, the same
+# weight the classical baselines are scored at. It is pinned here so the
+# table states the weight it was measured at.
+QUERY_WEIGHT = float(ALL_CONSTANTS['reward']['w2'])
 
 def collect_ppo_baseline_eval(n_episodes=50, seed=42):
     model_dir = PRIMARY_MODEL_DIR
@@ -33,7 +39,7 @@ def collect_ppo_baseline_eval(n_episodes=50, seed=42):
     rows = []
 
     for ep in range(n_episodes):
-        test_env = MillingDTEnv()
+        test_env = MillingDTEnv(w2=QUERY_WEIGHT)
         vec_env = DummyVecEnv([lambda: test_env])
         vec_env = VecNormalize.load(str(model_dir / "vecnormalize.pkl"), vec_env)
         vec_env.training = False
@@ -63,6 +69,7 @@ def collect_ppo_baseline_eval(n_episodes=50, seed=42):
         rows.append({
             "policy": "PPO (Ours)",
             "episode": ep,
+            "energy_weight": QUERY_WEIGHT,
             "total_reward": total_rew,
             "passes": steps,
             "broken": info.get("broken", False),
@@ -147,7 +154,9 @@ def plot_comparison():
     axes[2].axhline(df_ppo["total_reward"].mean(), color="#2ca02c", linestyle=":", alpha=0.7, label=f"PPO Mean: {df_ppo['total_reward'].mean():.1f}")
     axes[2].legend(loc="lower right")
 
-    plt.suptitle("Benchmark: Dynamic DRL (PPO) vs. Classical & Metaheuristic Baselines", fontsize=15, fontweight="bold", y=1.02)
+    plt.suptitle("Benchmark: Dynamic DRL (PPO) vs. Classical & Metaheuristic Baselines\n"
+                 f"The learned policy is queried at the energy weight w2 = {QUERY_WEIGHT:.2f}",
+                 fontsize=15, fontweight="bold", y=1.06)
     plt.tight_layout()
 
     out_plot = PROJECT_ROOT / "results" / "plots" / "baseline_vs_ppo_comparison.png"
@@ -165,6 +174,8 @@ def plot_comparison():
     })
     print("\nBenchmark Summary Table:")
     print(summary)
+    print(f"\nThe learned policy was queried at the energy weight w2 = {QUERY_WEIGHT:.2f}. "
+          "The classical baselines are scored at the same weight.")
 
 if __name__ == "__main__":
     plot_comparison()
