@@ -207,9 +207,14 @@ def plot_ablation(agg, weights, plots_dir):
         if len(front) > 1:
             ax.plot(front[energy_col], front['MRR_mean'], '--', color='#ea580c',
                     linewidth=2.2, zorder=1, label='Pareto frontier')
-        for index, (_, row) in enumerate(agg.iterrows()):
-            # Stagger the labels so the close points do not overprint.
-            offset = (8, 6 if index % 2 == 0 else -12)
+        # Place the labels around the points, in energy order, so the close
+        # points on the frontier do not overprint each other.
+        ordered = agg.sort_values(energy_col).reset_index()
+        for position, (_, row) in enumerate(ordered.iterrows()):
+            if position % 2 == 0:
+                offset = (9, 7)
+            else:
+                offset = (-9, -14)
             ax.annotate(f"w2={row['w2']:.1f}", (row[energy_col], row['MRR_mean']),
                         textcoords="offset points", xytext=offset, fontsize=9,
                         color='#334155')
