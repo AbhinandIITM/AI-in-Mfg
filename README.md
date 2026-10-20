@@ -109,6 +109,7 @@ Both the weight and the scenario are drawn per episode during training, so a sin
 |   |-- train_rl_ablation.py     # Energy weight ablation (7 weights x 3 seeds)
 |   |-- train_rl_conditioned.py  # Conditioned policy over the weight and the scenario
 |-- app.py                       # Streamlit interactive CNC Digital Twin workstation
+|-- PROJECT.md                   # Every plan and reference document, in one file
 |-- baselines/
 |   |-- receding_horizon.py      # Controller that re-solves at every pass
 |   |-- run_baselines.py         # Constant-high, constant-safe, rule-based, NSGA-II and receding horizon
@@ -116,11 +117,8 @@ Both the weight and the scenario are drawn per episode during training, so a sin
 |   |-- physics_constants.py     # Centralized physical, machine, and material constants
 |   |-- scenarios.py             # Randomized machining scenarios, shared by training and evaluation
 |-- docs/
-|   |-- ENVIRONMENT_SPEC.md      # The environment contract and the acceptance status
-|   |-- INTERACTIVE_SIMULATOR_PLAN.md # Design of the Streamlit workstation
-|   |-- LITERATURE_COMPARISON.md # Position against the three papers in docs/papers/
-|   |-- METHOD_UPGRADE_PLAN.md   # Conditioned policies, transfer, and the controller teacher
-|   |-- references.md             # Where every physics equation comes from
+|   |-- papers/                   # The three papers this work is compared against
+|   |-- Gym_Env_and_Project_Plan_Simple.pdf # The original project proposal
 |-- env/
 |   |-- __init__.py              # Single registration point for the environments
 |   |-- milling_env.py           # Gymnasium-compliant CNC Milling Digital Twin
@@ -235,7 +233,7 @@ larger network, or an off-policy algorithm with a replay buffer.
 
 1. **Robustness over 100 randomized scenarios.** The policy is trained across randomized machining scenarios and evaluated on 100 held-out scenarios of the same kind. It completed 98.0% of the parts, kept the finished surface inside the roughness limit in **100%** of them, never exceeded the flank wear limit, and broke a tool in 2%. Material removal rate 1325.7 mm3/min [95% CI 1204.9-1446.5], energy 55.2 kJ per part, cycle time 16.7 s. The worst pass of an episode exceeds the roughness limit in 40% of the scenarios, which is the roughing pass: the reward constrains the finishing pass, because that is the pass that sets the surface of the part.
 
-2. **The energy weight moves the operating point.** Over 7 weights and 3 seeds, the energy of a part falls by 21% (79.1 to 62.4 kJ) and the cycle time by 53% (62.6 to 29.1 s) as the weight goes from 0.0 to 1.0, with the part completion rate between 0.99 and 1.00 throughout. The material removal rate rises over the same range (835 to 952 mm3/min), and that is not a mistake in the experiment: the energy of a part is $k_c V + P_{\text{idle}} T_{\text{part}}$, so the cutting term is fixed by the volume, and the idle term falls exactly when the cycle time falls, which is also what raises the removal rate. In this digital twin the two objectives point the same way, and the energy weight is not a trade-off against throughput. `docs/LITERATURE_COMPARISON.md` states what would be needed to open one.
+2. **The energy weight moves the operating point.** Over 7 weights and 3 seeds, the energy of a part falls by 21% (79.1 to 62.4 kJ) and the cycle time by 53% (62.6 to 29.1 s) as the weight goes from 0.0 to 1.0, with the part completion rate between 0.99 and 1.00 throughout. The material removal rate rises over the same range (835 to 952 mm3/min), and that is not a mistake in the experiment: the energy of a part is $k_c V + P_{\text{idle}} T_{\text{part}}$, so the cutting term is fixed by the volume, and the idle term falls exactly when the cycle time falls, which is also what raises the removal rate. In this digital twin the two objectives point the same way, and the energy weight is not a trade-off against throughput. Part 3 of `PROJECT.md` states what would be needed to open one.
 
 3. **One conditioned policy replaces 21 weight-specific policies.** At the same training budget per model, the single conditioned policy beats every weight-specific policy: 12% to 22% more material removal rate and 8% to 19% less energy per part, from one training run instead of 21. The energy weight stays a runtime query rather than a retrain.
 
@@ -247,9 +245,9 @@ larger network, or an off-policy algorithm with a replay buffer.
 
 Every number below is generated from the artifacts in `results/` by
 `python agent/summarize_results.py`, which writes the same tables to
-`results/RESULTS.md`. The methods behind each result are described in
-`docs/METHOD_UPGRADE_PLAN.md`, and the position against the published work is
-in `docs/LITERATURE_COMPARISON.md`.
+`results/RESULTS.md`. The methods behind each result are described in Part 2
+of `PROJECT.md`, the position against the published work is in Part 3, and the
+environment contract is in Part 1.
 
 ---
 

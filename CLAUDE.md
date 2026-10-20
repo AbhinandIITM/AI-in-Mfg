@@ -12,10 +12,14 @@
 
 ## Documentation
 - `README.md`: overview, method, and the measured findings
-- `docs/ENVIRONMENT_SPEC.md`: the environment contract and the acceptance status
-- `docs/LITERATURE_COMPARISON.md`: position against the three papers in `docs/papers/`
-- `docs/METHOD_UPGRADE_PLAN.md`: the conditioned policy, the transfer experiment, the controller
-- `docs/references.md`: where every physics equation comes from
+- `PROJECT.md`: every plan and reference document, in one file
+  - Part 1: the environment contract and the acceptance status
+  - Part 2: the conditioned policy, the transfer experiment, the controller
+  - Part 3: position against the three papers in `docs/papers/`
+  - Part 4: the design of the Streamlit workstation
+  - Part 5: where every physics equation comes from
+  - Parts 6 and 7: the original improvement plan and the audit of it
+- `results/RESULTS.md`: the result tables, generated from the artifacts
 
 <!-- antislop:start -->
 ## antislop

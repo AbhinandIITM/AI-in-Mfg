@@ -1,7 +1,7 @@
 """
 agent/summarize_results.py
 
-Builds the result tables quoted in README.md and docs/LITERATURE_COMPARISON.md
+Builds the result tables quoted in README.md and in Part 3 of PROJECT.md
 straight from the committed artifacts, so the documentation cannot drift away
 from the runs that produced it.
 
