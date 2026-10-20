@@ -1,3 +1,14 @@
+"""
+agent/evaluate.py
+
+Monte Carlo robustness sweep for a trained policy.
+
+Every scenario perturbs the calibrated operating point: workpiece geometry,
+material and tool coefficients, and the initial flank wear of the tool. The
+sweep reports means with 95% confidence intervals so that a robustness claim
+carries its own uncertainty.
+"""
+
 import sys
 import pandas as pd
 import numpy as np
@@ -11,29 +22,117 @@ sys.path.insert(0, str(PROJECT_ROOT))
 
 import gymnasium as gym
 from stable_baselines3 import PPO
-from stable_baselines3.common.vec_env import VecNormalize
+from stable_baselines3.common.vec_env import DummyVecEnv, VecNormalize
 
 
 import env # Triggers registration
 from utils.seeding import set_seed
-from config.physics_constants import ENGINEERING_CONSTRAINTS
+from config.physics_constants import ALL_CONSTANTS, ENGINEERING_CONSTRAINTS
+
+# Perturbation bands applied to the calibrated coefficients, as a fraction of
+# their nominal value. The sweep explores the neighbourhood of the operating
+# point the policy was trained on, not a regime it has never seen.
+COEFFICIENT_BANDS = {
+    'C_wear': (0.6, 1.4),
+    'k1': (0.8, 1.2),
+    'k2': (0.8, 1.2),
+    'k3': (0.8, 1.2),
+}
 
 def generate_random_configs(n=100, seed=42):
+    """Generate randomized machining scenarios for the Monte Carlo sweep.
+
+    Randomized per scenario:
+        kappa_total, D, L_cut  workpiece and tool geometry
+        C_wear                  Taylor-expanded wear coefficient
+        k1, k2, k3              surface roughness regression coefficients
+        VB_0                    initial flank wear of the tool [mm]
+
+    The coefficient bands are applied multiplicatively around the calibrated
+    values in config/physics_constants.py.
     """
-    Generate randomized machining scenarios for Monte Carlo sweep.
-    """
-    np.random.seed(seed)
+    rng = np.random.default_rng(seed)
+    wear = ALL_CONSTANTS['tool_wear']
+    rough = ALL_CONSTANTS['surface_roughness']
+    eng = ALL_CONSTANTS['engineering']
+
     configs = {}
     for i in range(n):
-        configs[f"Random_{i:03d}"] = {
-            "kappa_total": np.random.uniform(2.0, 15.0),
-            "D": np.random.uniform(40.0, 150.0),
-            "L_cut": np.random.uniform(50.0, 200.0),
-            "C_wear": np.random.uniform(1.0e-2, 6.0e-2),
-            "k1": np.random.uniform(10.0, 15.0),
-            "k2": np.random.uniform(0.5, 1.2),
+        scenario = {
+            "kappa_total": float(rng.uniform(2.0, 15.0)),
+            "D": float(rng.uniform(40.0, 150.0)),
+            "L_cut": float(rng.uniform(50.0, 200.0)),
+            "VB_0": float(rng.uniform(0.0, 0.8 * eng['VB_max'])),
         }
+        for key, band in COEFFICIENT_BANDS.items():
+            nominal = wear[key] if key == 'C_wear' else rough[key]
+            scenario[key] = float(nominal * rng.uniform(*band))
+        configs[f"Scenario_{i:03d}"] = scenario
     return configs
+
+def evaluate_policy_on_scenarios(model, vec_norm_path, configs, seed=42, deterministic=False):
+    """Run one policy over a set of scenarios, returning one row per scenario.
+
+    The same scenario set is used for every policy that is compared, so the
+    rows are directly comparable.
+    """
+    rows = []
+
+    for idx, (name, env_kwargs) in enumerate(configs.items()):
+        eval_env = gym.make("MillingDTEnv-v1", **env_kwargs)
+        # Seed the underlying environment so every scenario is reproducible.
+        # VecNormalize.reset() takes no seed, so the seed goes in first.
+        eval_env.reset(seed=seed + idx)
+
+        vec_env = DummyVecEnv([lambda: eval_env])
+        vec_env = VecNormalize.load(str(vec_norm_path), vec_env)
+        vec_env.training = False
+        vec_env.norm_reward = False
+
+        obs = vec_env.reset()
+        done = False
+        info = {}
+        ep_MRR, ep_Energy, ep_Ra, ep_VB = [], [], [], []
+        ep_n, ep_f, ep_ap = [], [], []
+
+        while not done:
+            action, _ = model.predict(obs, deterministic=deterministic)
+            obs, reward, done, info_list = vec_env.step(action)
+            info = info_list[0]
+
+            ep_MRR.append(info['MRR'])
+            ep_Energy.append(info['Energy'])
+            ep_Ra.append(info['Ra'])
+            ep_VB.append(info['VB'])
+            ep_n.append(info['n'])
+            ep_f.append(info['f_r'])
+            ep_ap.append(info['a_p'])
+
+            done = bool(done[0])
+
+        rows.append({
+            'config': name,
+            'MRR_mean': float(np.mean(ep_MRR)),
+            'Energy_total': float(np.sum(ep_Energy)),
+            'Ra_max': float(np.max(ep_Ra)),
+            'VB_max': float(np.max(ep_VB)),
+            'T_total': float(info.get('T_total', 0.0)),
+            'n_mean': float(np.mean(ep_n)),
+            'f_r_mean': float(np.mean(ep_f)),
+            'a_p_mean': float(np.mean(ep_ap)),
+            'passes': len(ep_MRR),
+            'Ra_violation': int(np.max(ep_Ra) > ENGINEERING_CONSTRAINTS['Ra_max']),
+            'VB_violation': int(np.max(ep_VB) > ENGINEERING_CONSTRAINTS['VB_max']),
+            'Broken': int(bool(info.get('broken', False))),
+            'Success': int(bool(info.get('is_finishing', False))
+                           and not info.get('broken', False)
+                           and np.max(ep_VB) <= ENGINEERING_CONSTRAINTS['VB_max'])
+        })
+
+        vec_env.close()
+        eval_env.close()
+
+    return rows
 
 def compute_statistics(df, ci=0.95):
     """
@@ -77,115 +176,78 @@ def compute_statistics(df, ci=0.95):
 
     return stats_dict
 
-def evaluate(num_scenarios=100, seed=42):
+def find_model_dir(algo="PPO"):
+    """Locate a trained policy directory, preferring the seed 42 run."""
+    candidates = [
+        PROJECT_ROOT / "models" / f"{algo}_seed42",
+        PROJECT_ROOT / "models" / f"{algo}_seed1",
+        PROJECT_ROOT / "models" / algo
+    ] + list((PROJECT_ROOT / "models").glob(f"{algo}_seed*"))
+
+    for cand in candidates:
+        if (cand / "final_model.zip").exists():
+            return cand
+    return None
+
+def evaluate(num_scenarios=100, seed=42, algo="PPO"):
     set_seed(seed)
     logs_dir = PROJECT_ROOT / "results" / "monte_carlo"
     logs_dir.mkdir(parents=True, exist_ok=True)
 
     print("=" * 70)
-    print("  MASSIVE MONTE CARLO INFERENCE: STATISTICAL RIGOR SWEEP (PPO)")
+    print(f"  MONTE CARLO INFERENCE: STATISTICAL RIGOR SWEEP ({algo})")
     print("=" * 70)
 
-    algos = ["PPO"]
+    model_dir = find_model_dir(algo)
+    if model_dir is None:
+        print(f"Skipping {algo}: Model not found in models/")
+        return None
+
+    model_path = model_dir / "final_model.zip"
+    vec_norm_path = model_dir / "vecnormalize.pkl"
+
+    print(f"Loading {algo} model from {model_dir}...")
+    model = PPO.load(str(model_path), device="cpu")
+
     configs = generate_random_configs(num_scenarios, seed=seed)
 
-    summary_results = []
+    print(f"Running sweep for {algo}...")
+    scenario_metrics = evaluate_policy_on_scenarios(
+        model, vec_norm_path, configs, seed=seed
+    )
 
-    for algo in algos:
-        # Search for available PPO models (prefer seed42, seed1, then any PPO_seed*)
-        candidate_dirs = [
-            PROJECT_ROOT / "models" / f"{algo}_seed42",
-            PROJECT_ROOT / "models" / f"{algo}_seed1",
-            PROJECT_ROOT / "models" / algo
-        ] + list((PROJECT_ROOT / "models").glob(f"{algo}_seed*"))
+    df_algo = pd.DataFrame(scenario_metrics)
+    df_algo.to_csv(logs_dir / f"eval_{algo}_MC_v5.csv", index=False)
 
-        model_dir = None
-        for cand in candidate_dirs:
-            if (cand / "final_model.zip").exists():
-                model_dir = cand
-                break
+    stats_dict = compute_statistics(df_algo)
 
-        if model_dir is None:
-            print(f"Skipping {algo}: Model not found in models/")
-            continue
+    print(f"\nResults for {algo} over {len(df_algo)} scenarios:")
+    print(f"  MRR:        {stats_dict['MRR_mean']['mean']:.2f} +/- {stats_dict['MRR_mean']['std']:.2f} [95% CI: {stats_dict['MRR_mean']['ci_lower']:.2f}-{stats_dict['MRR_mean']['ci_upper']:.2f}]")
+    print(f"  Energy:     {stats_dict['Energy_total']['mean']:.2f} +/- {stats_dict['Energy_total']['std']:.2f} [95% CI: {stats_dict['Energy_total']['ci_lower']:.2f}-{stats_dict['Energy_total']['ci_upper']:.2f}]")
+    print(f"  Cycle time: {stats_dict['T_total']['mean']:.2f} +/- {stats_dict['T_total']['std']:.2f} s [95% CI: {stats_dict['T_total']['ci_lower']:.2f}-{stats_dict['T_total']['ci_upper']:.2f}]")
+    print(f"  Ra Viol:    {stats_dict['Ra_violation']['rate']*100:.1f}% [95% CI: {stats_dict['Ra_violation']['ci_lower']*100:.1f}-{stats_dict['Ra_violation']['ci_upper']*100:.1f}%]")
+    print(f"  VB Viol:    {stats_dict['VB_violation']['rate']*100:.1f}% [95% CI: {stats_dict['VB_violation']['ci_lower']*100:.1f}-{stats_dict['VB_violation']['ci_upper']*100:.1f}%]")
+    print(f"  Broken:     {stats_dict['Broken']['rate']*100:.1f}%")
+    print(f"  Success:    {df_algo['Success'].mean()*100:.1f}%")
+    print(f"  Mean n:     {df_algo['n_mean'].mean():.0f} RPM | Mean f_r: {df_algo['f_r_mean'].mean():.3f} mm/r")
 
-        model_path = model_dir / "final_model.zip"
-        vec_norm_path = model_dir / "vecnormalize.pkl"
+    summary = [{
+        'Algorithm': algo,
+        'MRR_mean': stats_dict['MRR_mean']['mean'],
+        'MRR_ci_lower': stats_dict['MRR_mean']['ci_lower'],
+        'MRR_ci_upper': stats_dict['MRR_mean']['ci_upper'],
+        'Energy_mean': stats_dict['Energy_total']['mean'],
+        'Energy_ci_lower': stats_dict['Energy_total']['ci_lower'],
+        'Energy_ci_upper': stats_dict['Energy_total']['ci_upper'],
+        'T_total_mean': stats_dict['T_total']['mean'],
+        'Ra_violation_rate': stats_dict['Ra_violation']['rate'],
+        'VB_violation_rate': stats_dict['VB_violation']['rate'],
+        'Broken_rate': stats_dict['Broken']['rate'],
+        'Success_rate': df_algo['Success'].mean(),
+    }]
+    pd.DataFrame(summary).to_csv(logs_dir / "eval_summary_v5.csv", index=False)
 
-        print(f"Loading {algo} model from {model_dir}...")
-        model = PPO.load(str(model_path), device="cpu")
-
-
-
-        scenario_metrics = []
-
-        print(f"Running sweep for {algo}...")
-        for conf_name, env_kwargs in tqdm(configs.items()):
-            # Create a specialized env for this scenario
-            eval_env = gym.make("MillingDTEnv-v1", **env_kwargs)
-
-            # Load normalization stats
-            # VecNormalize requires a vectorized env
-            from stable_baselines3.common.vec_env import DummyVecEnv
-            vec_env = DummyVecEnv([lambda: eval_env])
-            vec_env = VecNormalize.load(str(vec_norm_path), vec_env)
-            vec_env.training = False
-            vec_env.norm_reward = False
-
-            obs = vec_env.reset()
-            done = False
-
-            ep_MRR = []
-            ep_Energy = []
-            ep_Ra = []
-            ep_VB = []
-            ep_T = 0
-
-            while not done:
-                action, _ = model.predict(obs, deterministic=False)
-                obs, reward, done, info = vec_env.step(action)
-                info = info[0]
-
-                ep_MRR.append(info['MRR'])
-                ep_Energy.append(info.get('Energy', 0))
-                ep_Ra.append(info['Ra'])
-                ep_VB.append(info['VB'])
-                ep_T = info.get('T_total', 0) # Accumulated time
-                done = info.get('terminated', done) or info.get('truncated', False)
-
-            scenario_metrics.append({
-                'config': conf_name,
-                'MRR_mean': np.mean(ep_MRR),
-                'Energy_total': np.sum(ep_Energy),
-                'Ra_max': np.max(ep_Ra),
-                'VB_max': np.max(ep_VB),
-                'T_total': ep_T,
-                'Ra_violation': 1 if np.max(ep_Ra) > ENGINEERING_CONSTRAINTS['Ra_max'] else 0,
-                'VB_violation': 1 if np.max(ep_VB) > ENGINEERING_CONSTRAINTS['VB_max'] else 0,
-                'Broken': 1 if info.get('broken', False) else 0,
-                'Success': 1 if info.get('is_finishing', False) and not info.get('broken', False) and info['VB'] <= ENGINEERING_CONSTRAINTS['VB_max'] else 0
-            })
-
-        df_algo = pd.DataFrame(scenario_metrics)
-        df_algo.to_csv(logs_dir / f"eval_{algo}_MC_v4.csv", index=False)
-
-        stats_dict = compute_statistics(df_algo)
-
-        print(f"\nResults for {algo}:")
-        print(f"  MRR:        {stats_dict['MRR_mean']['mean']:.2f} ± {stats_dict['MRR_mean']['std']:.2f} [95% CI: {stats_dict['MRR_mean']['ci_lower']:.2f}-{stats_dict['MRR_mean']['ci_upper']:.2f}]")
-        print(f"  Energy:     {stats_dict['Energy_total']['mean']:.2f} ± {stats_dict['Energy_total']['std']:.2f} [95% CI: {stats_dict['Energy_total']['ci_lower']:.2f}-{stats_dict['Energy_total']['ci_upper']:.2f}]")
-        print(f"  Ra Viol:    {stats_dict['Ra_violation']['rate']*100:.1f}% [95% CI: {stats_dict['Ra_violation']['ci_lower']*100:.1f}-{stats_dict['Ra_violation']['ci_upper']*100:.1f}%]")
-        print(f"  VB Viol:    {stats_dict['VB_violation']['rate']*100:.1f}%")
-        print(f"  Success:    {df_algo['Success'].mean()*100:.1f}%")
-
-        summary_results.append({
-            'Algorithm': algo,
-            'MRR_mean': stats_dict['MRR_mean']['mean'],
-            'Energy_mean': stats_dict['Energy_total']['mean'],
-            'Success_rate': df_algo['Success'].mean()
-        })
-
-    pd.DataFrame(summary_results).to_csv(logs_dir / "eval_summary_v4.csv", index=False)
+    return df_algo
 
 if __name__ == "__main__":
     evaluate()
