@@ -704,7 +704,7 @@ budget as the sweep).
 
 One training run of 1,000,000 steps covers the whole weight range and beats
 the 21 weight-specific policies of 150,000 steps each, which is 3,150,000
-steps in total, by 13% to 27% of removal rate at the same or lower energy. At
+steps in total, by 13% to 27% of removal rate for at most 3% more energy. At
 a matched budget of 150,000 steps the two frontiers cross: the per-weight
 policies reach the throughput-heavy corner and the conditioned policy the
 energy-heavy one.
