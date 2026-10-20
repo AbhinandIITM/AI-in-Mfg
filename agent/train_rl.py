@@ -71,7 +71,7 @@ def train(algo="PPO", timesteps=1_000_000, seed=42, queue=None, device="auto", p
         policy: an existing policy to warm start from.
         env_id: which environment registration to train against.
         init_weights: callable that receives the fresh model before training,
-            used by the cloning experiment in agent/clone_expert.py.
+            used to seed a policy with pre-trained weights.
     """
     # Set seed
     set_seed(seed)
@@ -130,7 +130,7 @@ def train(algo="PPO", timesteps=1_000_000, seed=42, queue=None, device="auto", p
     model.learn(
         total_timesteps=timesteps,
         callback=callbacks,
-        tb_log_name=tb_log_name or f"PPO_v4_seed{seed}",
+        tb_log_name=tb_log_name or f"PPO_primary_seed{seed}",
         progress_bar=progress_bar
     )
 

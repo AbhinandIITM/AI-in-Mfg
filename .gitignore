@@ -78,6 +78,5 @@ models/*/
 results/tensorboard/
 results/workers/
 results/transfer/*.pkl
-results/cloning/*.pkl
 *.mp4
 events.out*

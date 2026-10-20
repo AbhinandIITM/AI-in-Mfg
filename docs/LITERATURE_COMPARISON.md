@@ -82,10 +82,10 @@ this repository, from `config/physics_constants.py`.
 5. A conditioned policy. The observation carries the energy weight and the
    material context, and both are drawn per episode, so one policy covers the
    whole weight range instead of one policy per weight.
-6. A receding-horizon controller as a classical baseline, which is also the
-   teacher for the cloning experiment. The static NSGA-II baseline cannot
-   react to the tool state; the receding-horizon one re-solves at every pass
-   and reaches a total reward of +204 against -45 for every other baseline.
+6. A receding-horizon controller as a classical baseline. The static NSGA-II
+   baseline cannot react to the tool state, and all four static baselines end
+   outside the roughness safety limit. The receding-horizon one re-solves at
+   every pass and is the only classical policy that stays inside it.
 7. A transfer experiment. A policy trained on one material is evaluated on a
    harder one, zero shot, then fine tuned, and compared against a policy
    trained on the new material from scratch for the same budget.
@@ -207,19 +207,15 @@ The four static policies end outside the roughness safety limit, which the
 reward penalizes with -50. The receding-horizon controller is the only
 classical policy that stays inside it.
 
-### 5.5 Transfer to a harder material, and cloning the controller
+### 5.5 Transfer to a harder material
 
-Artifacts: `results/transfer/transfer_results.csv` and
-`results/cloning/cloning_results.csv`
+Artifact: `results/transfer/transfer_results.csv`
 
 | Arm | Mean episode reward | Roughness violations | Parts completed |
 | :--- | ---: | ---: | ---: |
 | Source policy, zero shot | 184.5 | 100.0% | 93.3% |
 | Source policy, fine tuned 50,000 steps | 184.8 | 100.0% | 93.3% |
 | Trained on the target from scratch, 50,000 steps | 196.0 | 0.0% | 100.0% |
-
-Cloning the controller into the policy gives a head start of a few reward
-points between 25,000 and 75,000 steps and no advantage at 100,000 steps.
 
 
 ---

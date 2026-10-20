@@ -75,14 +75,3 @@ Artifact: `results/transfer/transfer_results.csv`
 | Trained on the target from scratch | 196.0 | 0.0% | 100.0% |
 
 Source policy: 300,000 steps on the nominal material. Adaptation budget: 50,000 steps on the target.
-
-## Cloned from the controller, against training from scratch
-
-Artifact: `results/cloning/cloning_results.csv`
-
-| Steps | Cloned from the controller | Trained from scratch |
-| ---: | ---: | ---: |
-| 25,000 | 196.2 | 195.5 |
-| 50,000 | 196.9 | 195.6 |
-| 75,000 | 200.7 | 190.0 |
-| 100,000 | 192.1 | 191.3 |

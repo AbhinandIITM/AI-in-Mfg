@@ -70,7 +70,7 @@ G:/My Drive/IITM/AI in Mfg/
 
  sim/
     __init__.py
-    machining_sim.py          # Core simulation runner & material removal geometry engine
+    machining_sim.py          # Trajectory simulation, surface profile and G-code synthesis
 
  app.py                         # Streamlit interactive application
 

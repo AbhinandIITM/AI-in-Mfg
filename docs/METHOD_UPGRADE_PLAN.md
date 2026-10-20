@@ -52,7 +52,7 @@ train across a distribution of contexts.
 | Multi-objective / conditioned RL (MORL style) | **Adopt** | Replaces the 21-run weight sweep with one policy that is conditioned on the energy weight, and gives the whole frontier from a single training run. |
 | Domain randomization in the environment | **Adopt** | The policy currently trains on one operating point and is measured on many. Training across the same distribution it is measured on is the cheapest possible fix for the robustness claim. |
 | Transfer learning | **Adopt** | Maps to a real deliverable (a new material or a different spindle limit), and is cheap because the observation space is fixed. |
-| Receding-horizon controller as a teacher, behavioural cloning as warm start | **Adopt** | The current NSGA-II baseline is static, so it understates the classical approach. A receding-horizon solver is a genuinely strong expert, and cloning it is the standard way to spend simulation time efficiently. It also gives an honest "learning from a strong controller" section. |
+| Receding-horizon controller as a teacher, behavioural cloning as warm start | **Adopt the controller, measure the cloning** | A receding-horizon solver is a genuinely strong expert, and it gives the classical comparison a fair baseline. Cloning it into the policy was measured and dropped: it was a head start, not a different policy. |
 | Continual learning in the classic sense | **Defer** | There is no task sequence yet. It becomes the right frame only if the target becomes non-stationarity, and then the conditioned policy with replay covers it. |
 | Representation learning | **Reject for now** | The state is 8 physics-derived features, so there is nothing to learn a representation of. It becomes relevant only if raw sensor data (acoustic emission) enters the design, which is a different project. |
 | Offline RL | **Reject** | No fixed dataset to be offline about. |
@@ -164,6 +164,9 @@ the new task is covered by what the policy already learned.
 
 ## 6. Phase 4: A receding-horizon controller, and cloning it
 
+The controller was kept and the cloning was removed after measurement. Both
+are recorded here, because the measurement is the reason.
+
 ### Design
 
 **The expert.** The existing `baselines/run_baselines.py` solves a static
@@ -173,22 +176,21 @@ flank wear, current scenario) and takes the knee point of the resulting
 Pareto set. This is a legitimate controller, and a much stronger classical
 baseline than the static one.
 
-**Cloning it.** The expert's trajectories are recorded as
-`(observation, action)` pairs. A small supervised model with the same shape as
-the PPO actor (256, 256, Tanh) is trained on them, and its weights are copied
-into the PPO policy as the starting point for RL fine-tuning. The comparison
-is against the same policy trained from scratch on the same step budget.
-
-**The measurement.** Two numbers: the steps to reach a given episode reward
-with and without the cloned initialization, and the final performance of each.
+**Cloning it.** The plan was to record the expert's trajectories as
+`(observation, action)` pairs, fit a supervised model with the same shape as
+the PPO actor, copy the fitted weights into the policy, and let reinforcement
+learning take it further. The measurements did not support keeping this: the
+cloned policy was ahead of one trained from scratch between 25,000 and 75,000
+steps and level by 100,000, so the initialization was a head start rather
+than a different policy, and the machinery was removed. The controller itself
+was kept, because it is the strongest baseline in the repository. The numbers
+are in the history of this repository.
 
 ### Files
 
-- `baselines/run_baselines.py`: add `solve_receding_horizon()`.
-- `agent/clone_expert.py`: dataset collection, the supervised fit, and the
-  weight transfer into a PPO policy.
-- `agent/train_rl.py`: accept a policy to warm start from.
-- `tests/`: the expert produces feasible actions on the nominal scenario.
+- `baselines/receding_horizon.py`: the controller.
+- `baselines/run_baselines.py`: adds it to the baseline comparison.
+- `tests/`: the controller produces feasible actions on the nominal scenario.
 
 ---
 
@@ -222,7 +224,7 @@ with and without the cloned initialization, and the final performance of each.
 | 1. Domain randomization | 1.5 h | The robustness claim, phase 2 |
 | 2. Conditioned policy | 3 h | Retires the 21-run sweep |
 | 3. Transfer experiment | 2 h | A deployment story |
-| 4. Controller teacher and cloning | 4 h | A fair classical comparison |
+| 4. Controller teacher | 4 h | A fair classical comparison |
 
 Each phase lands as its own commit with tests, and each produces an artifact
 that the documentation quotes.
@@ -236,7 +238,7 @@ that the documentation quotes.
 | 1. Domain randomization | `config/scenarios.py`, `env/milling_env.py` | `results/monte_carlo/eval_PPO_MC_v5.csv` | The finished surface stays inside the roughness limit in 100% of the 100 scenarios, the part completion rate is 98.0%, the flank wear limit is never exceeded. |
 | 2. Conditioned policy | `env/__init__.py`, `agent/train_rl_conditioned.py`, `agent/evaluate_conditioned.py` | `results/conditioned/` | At a matched budget of 150,000 steps per model, one conditioned policy beats all 21 weight-specific policies: 12% to 22% more removal rate and 8% to 19% less energy per part, from one run instead of 21. |
 | 3. Transfer experiment | `agent/transfer_experiment.py` | `results/transfer/` | Fine tuning the source policy for 50,000 steps removes no roughness violation (184.5 to 184.8), while a policy trained on the target from scratch for the same budget removes all of them (196.0). |
-| 4. Controller teacher and cloning | `baselines/receding_horizon.py`, `agent/clone_expert.py` | `results/baseline_results_v5.csv`, `results/cloning/` | The receding-horizon controller scores +204.3 against -45 for every static baseline, and cloning it gives a small early advantage that is gone by 100,000 steps. |
+| 4. Controller teacher | `baselines/receding_horizon.py` | `results/baseline_results_v5.csv` | The receding-horizon controller scores +204.3 against -45 for every static baseline, and is the only classical policy that stays inside the roughness safety limit. The cloning arm of this phase was measured and removed. |
 
 Two results contradict what the plan expected, and both are reported as they
 came out.

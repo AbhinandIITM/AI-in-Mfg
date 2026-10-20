@@ -87,7 +87,7 @@ Both the weight and the scenario are drawn per episode during training, so a sin
 `MillingDTEnv(randomize=True)` draws a new machining scenario for every part: the stock allowance, the tool diameter, the cutting length, the wear and roughness coefficients, and the initial flank wear of the tool. The bands live in `config/physics_constants.py` and are shared with the Monte Carlo sweep, so the policy is trained on the distribution it is measured on.
 
 ### Receding-Horizon Controller
-`baselines/receding_horizon.py` re-solves the next pass at every step, with the remaining stock and the current flank wear as the state, and keeps the candidate that scores best and stays inside the roughness and wear limits. It is a stronger classical baseline than the static NSGA-II solution, and it is the teacher for the cloning experiment: its trajectories are recorded, a supervised model with the same shape as the PPO actor is fitted on them, and the fitted weights are copied into the policy as the starting point for reinforcement learning.
+`baselines/receding_horizon.py` re-solves the next pass at every step, with the remaining stock and the current flank wear as the state, and keeps the candidate that scores best and stays inside the roughness and wear limits. It is a stronger classical baseline than the static NSGA-II solution: the four static baselines all end outside the roughness safety limit, and this one is the only classical policy that stays inside it.
 
 ### Transfer to a New Material
 `agent/transfer_experiment.py` measures how much of a new material a policy that was trained on another one already knows. The same target task (a harder alloy, a faster wearing tool) is evaluated three ways: the source policy zero shot, the source policy fine tuned, and a policy trained on the target from scratch for the same budget.
@@ -99,7 +99,6 @@ Both the weight and the scenario are drawn per episode during training, so a sin
 ```text
 .
 |-- agent/
-|   |-- clone_expert.py          # Clones the controller into the policy, compares against from scratch
 |   |-- evaluate.py              # Monte Carlo robustness sweep with 95% confidence intervals
 |   |-- evaluate_conditioned.py  # Weight sweep of the conditioned policy against the per-weight sweep
 |   |-- run_experiments.py       # Parallel supervisor for multi-seed runs
@@ -117,8 +116,11 @@ Both the weight and the scenario are drawn per episode during training, so a sin
 |   |-- physics_constants.py     # Centralized physical, machine, and material constants
 |   |-- scenarios.py             # Randomized machining scenarios, shared by training and evaluation
 |-- docs/
+|   |-- ENVIRONMENT_SPEC.md      # The environment contract and the acceptance status
+|   |-- INTERACTIVE_SIMULATOR_PLAN.md # Design of the Streamlit workstation
 |   |-- LITERATURE_COMPARISON.md # Position against the three papers in docs/papers/
 |   |-- METHOD_UPGRADE_PLAN.md   # Conditioned policies, transfer, and the controller teacher
+|   |-- references.md             # Where every physics equation comes from
 |-- env/
 |   |-- __init__.py              # Single registration point for the environments
 |   |-- milling_env.py           # Gymnasium-compliant CNC Milling Digital Twin
@@ -129,7 +131,6 @@ Both the weight and the scenario are drawn per episode during training, so a sin
 |-- results/
 |   |-- ablation/                # Ablation evaluation metrics and CSV summaries
 |   |-- baseline_results_v5.csv  # Classical baseline metrics
-|   |-- cloning/                 # Cloned policy against the policy trained from scratch
 |   |-- conditioned/             # Frontier of the conditioned policy
 |   |-- monte_carlo/             # Monte Carlo sweep per-scenario datasets
 |   |-- plots/                   # Generated evaluation plots and figures
@@ -181,10 +182,6 @@ python agent/run_pipeline.py --steps 1000000 --ablation_steps 100000
 - **Transfer to a new material** (zero shot, fine tuned, from scratch):
   ```bash
   python agent/transfer_experiment.py 300000 50000
-  ```
-- **Clone the controller into the policy** (cloned against from scratch):
-  ```bash
-  python agent/clone_expert.py 200 100000
   ```
 - **Rebuild the result tables** quoted in this file:
   ```bash
@@ -245,7 +242,7 @@ larger network, or an off-policy algorithm with a replay buffer.
 
 5. **Fine tuning does not fix a material change at this budget.** A policy trained on the nominal material scores 184.5 on a harder alloy and violates the roughness limit in every scenario. Fine tuning it for 50,000 steps moves the score to 184.8 and removes no violation. A policy trained on that alloy from scratch for the same 50,000 steps scores 196.0 with no violations at all. For this shift, training on the target distribution beats pre-training and fine-tuning, which is the argument for the domain randomization above.
 
-6. **Cloning the controller buys a small early advantage.** A policy initialized from the controller's behaviour is ahead of one trained from scratch between 25,000 and 75,000 steps (196.2 against 195.5, and 200.7 against 190.0), and the two are level at 100,000 steps. The controller's behaviour is simple enough that PPO reaches it on its own, so the cloning is a head start, not a different policy.
+6. **The learned policy and the classical controller are level.** On the same 50 episodes, the PPO policy scores 204.9 and the receding-horizon controller 204.3, and the controller is ahead on the material removal rate, the energy and the cycle time. The earlier comparison against the static baselines was hollow, because all four of them end outside the roughness safety limit. This digital twin does not yet show a reinforcement learning advantage, and the honest next experiment is to start the policy from the controller and fine-tune from there.
 
 Every number below is generated from the artifacts in `results/` by
 `python agent/summarize_results.py`, which writes the same tables to

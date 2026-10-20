@@ -4,10 +4,13 @@ agent/run_pipeline.py
 Master orchestrator script.
 Executes the full pipeline sequentially:
 1. Primary PPO Training
-2. Monte Carlo Evaluation (Primary Model)
-3. Ablation Study (Trains Pareto Frontier Models)
-4. Classical Baselines
-5. Viz Generation (Training Curves, MC Distributions, Baseline Comparison)
+2. Conditioned Policy Training
+3. Monte Carlo Evaluation (Primary Model)
+4. Conditioned Policy Weight Sweep
+5. Ablation Study (Trains Pareto Frontier Models)
+6. Classical Baselines
+7. Viz Generation (Training Curves, MC Distributions, Baseline Comparison)
+8. Result Tables (rebuilds results/RESULTS.md)
 """
 
 import os
@@ -41,22 +44,31 @@ def main():
     print("="*80)
 
     # 1. Primary Model Training
-    run_cmd(f"python agent/train_rl.py --algo PPO --steps {args.steps} --seed 42")
+    run_cmd(f"python agent/train_rl.py --algo PPO --steps {args.steps} --seed 42 --randomize")
 
-    # 2. Monte Carlo Evaluation
+    # 2. Conditioned Policy Training
+    run_cmd(f"python agent/train_rl_conditioned.py --steps {args.steps} --seed 42")
+
+    # 3. Monte Carlo Evaluation
     run_cmd("python agent/evaluate.py")
 
-    # 3. Ablation Study Training (Trains Pareto Frontier)
+    # 4. Conditioned policy weight sweep
+    run_cmd("python agent/evaluate_conditioned.py --scenarios 100 --compare")
+
+    # 5. Ablation Study Training (Trains Pareto Frontier)
     run_cmd(f"python agent/train_rl_ablation.py --steps {args.ablation_steps} "
             f"--scenarios {args.scenarios} --slots {args.slots}")
 
-    # 4. Classical Baselines
+    # 6. Classical Baselines
     run_cmd("python baselines/run_baselines.py")
 
-    # 5. Generate all Visualizations
+    # 7. Generate all Visualizations
     run_cmd("python viz/plot_results.py")
     run_cmd("python viz/plot_eval.py")
     run_cmd("python viz/plot_baselines_comparison.py")
+
+    # 8. Rebuild the result tables quoted in the documentation
+    run_cmd("python agent/summarize_results.py")
 
     print("="*80)
     print(" FULL PIPELINE COMPLETED SUCCESSFULLY!")
