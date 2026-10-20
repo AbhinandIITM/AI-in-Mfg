@@ -12,6 +12,7 @@ Improvements:
 - Soft normalization for observations (tanh squashing)
 - Energy-aware reward function
 - Intermediate feedback for progress
+- Per-scenario physics overrides (material, tool, machine, workpiece)
 """
 
 import numpy as np
@@ -21,45 +22,84 @@ from typing import Optional, Dict, Tuple, Any
 from config.physics_constants import ALL_CONSTANTS
 
 class MillingDTEnv(gym.Env):
+    """Multi-pass face milling digital twin.
+
+    Overridable kwargs (all optional, all default to config/physics_constants.py):
+        n_min, n_max          spindle speed bounds [RPM]
+        f_min, f_max          feed bounds [mm/r]
+        ap_min, ap_max        depth of cut bounds [mm]
+        VB_max, Ra_max        engineering limits
+        kappa_total, D, L_cut workpiece geometry
+        VB_0                  initial flank wear [mm]
+        C_wear, alpha, beta, gamma_wear   Taylor-expanded wear coefficients
+        k1, k2, k3            surface roughness regression coefficients
+        P_idle, k_c           energy model coefficients
+        w1, w2                reward weights (throughput, energy)
+    """
     metadata = {"render_modes": ["human", "rgb_array"], "render_fps": 10}
 
     def __init__(self, render_mode: Optional[str] = None, **kwargs):
         super().__init__()
 
 
-        # Load constants from central config
-        self.tool_wear_cfg = ALL_CONSTANTS['tool_wear']
-        self.roughness_cfg = ALL_CONSTANTS['surface_roughness']
-        self.energy_cfg = ALL_CONSTANTS['energy']
-        self.machine_cfg = ALL_CONSTANTS['machine']
-        self.eng_cfg = ALL_CONSTANTS['engineering']
-        self.workpiece_cfg = ALL_CONSTANTS['workpiece']
-        self.batch_cfg = ALL_CONSTANTS['batch']
+        # Load constants from central config.
+        # Per-instance copies: a scenario that overrides a coefficient must not
+        # write back into config.physics_constants, which every other
+        # consumer reads.
+        self.tool_wear_cfg = dict(ALL_CONSTANTS['tool_wear'])
+        self.roughness_cfg = dict(ALL_CONSTANTS['surface_roughness'])
+        self.energy_cfg = dict(ALL_CONSTANTS['energy'])
+        self.machine_cfg = dict(ALL_CONSTANTS['machine'])
+        self.eng_cfg = dict(ALL_CONSTANTS['engineering'])
+        self.workpiece_cfg = dict(ALL_CONSTANTS['workpiece'])
+        self.batch_cfg = dict(ALL_CONSTANTS['batch'])
         self.reward_cfg = dict(ALL_CONSTANTS['reward'])
+
+        # Physics overrides: per-scenario material, tool and machine variation
+        for key in ('C_wear', 'alpha', 'beta', 'gamma_wear'):
+            if key in kwargs:
+                self.tool_wear_cfg[key] = float(kwargs[key])
+        for key in ('k1', 'k2', 'k3'):
+            if key in kwargs:
+                self.roughness_cfg[key] = float(kwargs[key])
+        for key in ('P_idle', 'k_c'):
+            if key in kwargs:
+                self.energy_cfg[key] = float(kwargs[key])
+        for kwarg, cfg_key in (('n_min', 'n_min'), ('n_max', 'n_max'),
+                               ('f_min', 'f_r_min'), ('f_max', 'f_r_max'),
+                               ('ap_min', 'a_p_min'), ('ap_max', 'a_p_max')):
+            if kwarg in kwargs:
+                self.machine_cfg[cfg_key] = float(kwargs[kwarg])
+        for key in ('VB_max', 'Ra_max'):
+            if key in kwargs:
+                self.eng_cfg[key] = float(kwargs[key])
+        for key in ('kappa_total', 'D', 'L_cut'):
+            if key in kwargs:
+                self.workpiece_cfg[key] = float(kwargs[key])
         if 'w1' in kwargs:
-            self.reward_cfg['w1'] = kwargs['w1']
+            self.reward_cfg['w1'] = float(kwargs['w1'])
         if 'w2' in kwargs:
-            self.reward_cfg['w2'] = kwargs['w2']
+            self.reward_cfg['w2'] = float(kwargs['w2'])
 
         # Machine Limits
-        self.n_min = kwargs.get('n_min', self.machine_cfg['n_min'])
-        self.n_max = kwargs.get('n_max', self.machine_cfg['n_max'])
-        self.f_min = kwargs.get('f_min', self.machine_cfg['f_r_min'])
-        self.f_max = kwargs.get('f_max', self.machine_cfg['f_r_max'])
-        self.ap_min = kwargs.get('ap_min', 0.1) # Minimum depth of cut for stability
-        self.ap_max = kwargs.get('ap_max', self.machine_cfg.get('a_p', 2.5)) # Use fixed a_p from config as max
+        self.n_min = self.machine_cfg['n_min']
+        self.n_max = self.machine_cfg['n_max']
+        self.f_min = self.machine_cfg['f_r_min']
+        self.f_max = self.machine_cfg['f_r_max']
+        self.ap_min = self.machine_cfg['a_p_min'] # Minimum depth of cut for stability
+        self.ap_max = self.machine_cfg['a_p_max']
 
         # Engineering Limits
-        self.VB_max = kwargs.get('VB_max', self.eng_cfg['VB_max'])
+        self.VB_max = self.eng_cfg['VB_max']
         self.safety_factor = self.eng_cfg.get('safety_factor', 0.85)
         self.VB_safe = self.VB_max * self.safety_factor
-        self.Ra_max = kwargs.get('Ra_max', self.eng_cfg['Ra_max'])
+        self.Ra_max = self.eng_cfg['Ra_max']
         self.Ra_safe = self.Ra_max * self.safety_factor
 
         # Workpiece
-        self.kappa_total = kwargs.get('kappa_total', self.workpiece_cfg['kappa_total'])
-        self.D = kwargs.get('D', self.workpiece_cfg['D'])
-        self.L_cut = kwargs.get('L_cut', self.workpiece_cfg['L_cut'])
+        self.kappa_total = self.workpiece_cfg['kappa_total']
+        self.D = self.workpiece_cfg['D']
+        self.L_cut = self.workpiece_cfg['L_cut']
         self.VB_init = kwargs.get('VB_0', None)
 
         self.render_mode = render_mode
@@ -67,7 +107,18 @@ class MillingDTEnv(gym.Env):
         # Pre-compute normalization constants
         v_c_max = (np.pi * self.D * self.n_max) / 1000.0
         self.MRR_max = v_c_max * self.ap_max * self.f_max
-        self.E_max = (self.energy_cfg['P_idle'] + self.energy_cfg['k_c'] * self.MRR_max) * (self.L_cut / (self.n_min * self.f_min)) * 60 / 1000.0
+        # Per-pass energy scale. One pass draws
+        #   E = (P_idle + k_c * MRR) * t_cut,   t_cut = L_cut / (n * f_r)
+        # and MRR = (pi * D * n / 1000) * a_p * f_r, so the cutting term of E
+        # does not depend on n or f_r at all. The largest possible pass energy
+        # therefore sits at the slowest feed and the deepest cut. Scaling by
+        # this per-pass maximum, instead of a whole-episode total, keeps the
+        # energy term the same order of magnitude as the MRR term, which is
+        # what makes the throughput/energy trade-off learnable.
+        self.E_max = self.L_cut * (
+            self.energy_cfg['P_idle'] / (self.n_min * self.f_min)
+            + self.energy_cfg['k_c'] * (np.pi * self.D / 1000.0) * self.ap_max
+        ) * 60 / 1000.0
 
         # State: [VB_norm, kappa_norm, n_norm, f_norm, ap_norm, MRR_norm, Ra_norm, is_broken]
         self.observation_space = spaces.Box(low=0.0, high=1.0, shape=(8,), dtype=np.float32)
@@ -152,7 +203,7 @@ class MillingDTEnv(gym.Env):
         # 3. State Updates
         self.kappa -= a_p
         self.VB += delta_VB
-        self.T_total += t_cut
+        self.T_total += t_cut * 60.0 # seconds
         self.E_total += Energy
         self.step_idx += 1
 
@@ -201,7 +252,7 @@ class MillingDTEnv(gym.Env):
             reward += 200.0 # Large completion bonus
 
             # Additional Pareto efficiency reward
-            T_ref = 15.0
+            T_ref = 15.0 * 60.0 # seconds
             Ra_ref = 5.0
             T_term = max(0.0, T_ref - self.T_total)
             Ra_term = max(0.0, Ra_ref - Ra)
@@ -225,6 +276,8 @@ class MillingDTEnv(gym.Env):
             "MRR": MRR,
             "VB": self.VB,
             "Energy": Energy,
+            "T_total": self.T_total,
+            "E_total": self.E_total,
             "broken": self.broken,
             "is_finishing": is_finishing
         }

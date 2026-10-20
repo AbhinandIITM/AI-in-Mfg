@@ -79,3 +79,63 @@ def test_physics_constants_sync():
     assert env_inst.unwrapped.eng_cfg == ALL_CONSTANTS['engineering']
     assert env_inst.unwrapped.workpiece_cfg == ALL_CONSTANTS['workpiece']
     env_inst.close()
+
+def test_physics_overrides_are_honored():
+    """Per-scenario material and tool coefficients must reach the physics."""
+    env_inst = gym.make("MillingDTEnv-v1", C_wear=0.05, k1=14.0, k2=1.1, k3=0.4, alpha=0.45)
+    unwrapped = env_inst.unwrapped
+
+    assert unwrapped.tool_wear_cfg['C_wear'] == 0.05
+    assert unwrapped.tool_wear_cfg['alpha'] == 0.45
+    assert unwrapped.roughness_cfg['k1'] == 14.0
+    assert unwrapped.roughness_cfg['k2'] == 1.1
+    assert unwrapped.roughness_cfg['k3'] == 0.4
+
+    # The shared tables must be untouched: other consumers read them directly.
+    assert ALL_CONSTANTS['tool_wear']['C_wear'] != 0.05
+    assert ALL_CONSTANTS['surface_roughness']['k1'] == 12.5
+    assert unwrapped.tool_wear_cfg is not ALL_CONSTANTS['tool_wear']
+    env_inst.close()
+
+def test_info_exports_accumulators():
+    """The info payload must expose the running cycle time and energy totals."""
+    env_inst = gym.make("MillingDTEnv-v1")
+    env_inst.reset(seed=42)
+
+    _, _, _, _, info = env_inst.step(np.array([1.0, 1.0, 1.0], dtype=np.float32))
+    assert 'T_total' in info
+    assert 'E_total' in info
+    assert info['T_total'] > 0.0
+    assert info['E_total'] > 0.0
+
+    first_time = info['T_total']
+    first_energy = info['E_total']
+
+    _, _, _, _, info = env_inst.step(np.array([1.0, 1.0, 1.0], dtype=np.float32))
+    assert info['T_total'] > first_time
+    assert info['E_total'] > first_energy
+    env_inst.close()
+
+def test_energy_normalization_is_per_pass():
+    """Energy is normalized against the largest single pass, not a whole part.
+
+    A whole-part scale makes the per-step energy term two orders of magnitude
+    smaller than the throughput term, and the energy weight stops mattering.
+    """
+    env_inst = gym.make("MillingDTEnv-v1")
+    unwrapped = env_inst.unwrapped
+    env_inst.reset(seed=42)
+
+    for action in ([1.0, 1.0, 1.0], [-1.0, -1.0, -1.0], [1.0, -1.0, 1.0], [-1.0, 1.0, -1.0]):
+        _, _, _, _, info = env_inst.step(np.array(action, dtype=np.float32))
+        assert 0.0 < info['Energy'] <= unwrapped.E_max
+        assert 0.0 < info['Energy'] / unwrapped.E_max <= 1.0
+    env_inst.close()
+
+def test_gymnasium_env_checker_passes():
+    """The environment must satisfy the Gymnasium API contract."""
+    from gymnasium.utils.env_checker import check_env
+
+    check_env(env_inst := gym.make("MillingDTEnv-v1").unwrapped, skip_render_check=True)
+    env_inst.close()
+
