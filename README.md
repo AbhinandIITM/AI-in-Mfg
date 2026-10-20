@@ -32,7 +32,7 @@ The digital twin models empirical interactions derived from machining literature
   The specific cutting energy grows with the cutting speed, so the energy of a finished part is $E_{\text{part}} = k_c(v_c) V + P_{\text{idle}} T_{\text{part}}$: the cutting term rises as the spindle speeds up and the idle term falls as the cycle time shortens. The part energy therefore has an interior minimum, which is what makes the energy objective a trade-off against the removal rate rather than a duplicate of it.
 
 ### Calibrated Constants
-All values live in `config/physics_constants.py` and are shared by the environment, the baselines and the ablation study, so no consumer can drift from another.
+All values live in `MillingDT/config/physics_constants.yaml` and are shared by the environment, the baselines and the ablation study, so no consumer can drift from another.
 
 | Group | Coefficients | Values |
 | :--- | :--- | :--- |
@@ -86,20 +86,31 @@ optimized for and the material it is cut from, next to the eight physics
 features. Both the weight and the scenario are drawn per episode during
 training, so one policy covers the whole weight range and the whole material
 distribution. At runtime the weight is a query, not a retrain:
-`python agent/evaluate.py --sweep-weight` walks the frontier of that one
-policy, and `--compare` puts it against the 21 policies of the ablation study.
+`python -m experiments.evaluate --sweep-weight` walks the frontier of that one
+policy, and `--compare-only` puts it against the 21 policies of the ablation study.
 
 ### Domain Randomization
-`MillingDTEnv(randomize=True)` draws a new machining scenario for every part: the stock allowance, the tool diameter, the cutting length, the wear and roughness coefficients, and the initial flank wear of the tool. The bands live in `config/physics_constants.py` and are shared with the Monte Carlo sweep, so the policy is trained on the distribution it is measured on. `randomize_weight=True` draws the energy weight as well, which is what makes one policy cover the whole trade-off.
+`MillingDTEnv(randomize=True)` draws a new machining scenario for every part: the stock allowance, the tool diameter, the cutting length, the wear and roughness coefficients, and the initial flank wear of the tool. The bands live in `MillingDT/config/physics_constants.yaml` and are shared with the Monte Carlo sweep, so the policy is trained on the distribution it is measured on. `randomize_weight=True` draws the energy weight as well, which is what makes one policy cover the whole trade-off.
 
 ### One Physical Model
-`config/physics.py` holds the equations of the digital twin: the cutting speed, the specific cutting energy, the material removal rate, the flank wear, the surface roughness and the energy of a pass. The environment, the classical baselines and the dashboard all import them, so a scenario that overrides a coefficient gets the physics of that scenario everywhere and no consumer can drift from another.
+`MillingDT/config/physics.py` holds the equations of the digital twin: the cutting speed, the specific cutting energy, the material removal rate, the flank wear, the surface roughness and the energy of a pass. The environment, the classical baselines and the dashboard all import them, so a scenario that overrides a coefficient gets the physics of that scenario everywhere and no consumer can drift from another.
 
 ### Receding-Horizon Controller
-`baselines/receding_horizon.py` re-solves the next pass at every step, with the remaining stock and the current flank wear as the state, and keeps the candidate that scores best and stays inside the roughness and wear limits. It is a stronger classical baseline than the static NSGA-II solution: the four static baselines all end outside the roughness safety limit, and this one is the only classical policy that stays inside it.
+`MillingDT/baselines/receding_horizon.py` re-solves the next pass at every step, with the remaining stock and the current flank wear as the state, and keeps the candidate that scores best and stays inside the roughness and wear limits. It is a stronger classical baseline than the static NSGA-II solution: the four static baselines all end outside the roughness safety limit, and this one is the only classical policy that stays inside it.
 
 ### Transfer to a New Material
-`agent/transfer_experiment.py` measures how much of a new material a policy that was trained on another one already knows. The same target task (a harder alloy, a faster wearing tool) is evaluated four ways: the source policy zero shot, the source policy fine tuned, a policy trained on the target from scratch for the same budget, and the production policy, which was trained across a distribution of materials and needs no adaptation at all.
+`experiments/transfer_experiment.py` measures how much of a new material a policy that was trained on another one already knows. The same target task (a harder alloy, a faster wearing tool) is evaluated four ways: the source policy zero shot, the source policy fine tuned, a policy trained on the target from scratch for the same budget, and the production policy, which was trained across a distribution of materials and needs no adaptation at all.
+
+### Starting the Policy from the Controller
+`experiments/controller_experiment.py` asks whether a policy whose actor is
+initialized from the receding-horizon controller ends up better than the expert
+it started from. The machinery is in `MillingDT/agent/controller_init.py`. The
+controller's behaviour is recorded on 2000 randomized episodes, as
+(observation, action) pairs. A supervised actor with the same shape as the PPO
+actor is fitted on those trajectories, and the fitted weights are copied into a
+fresh PPO policy before the reinforcement learning starts. The intent is that
+the learning starts from a feasible behaviour instead of from noise. The
+measured outcome is in finding 6.
 
 ---
 
@@ -107,51 +118,53 @@ policy, and `--compare` puts it against the 21 policies of the ablation study.
 
 ```text
 .
-|-- agent/
-|   |-- evaluate.py              # Monte Carlo sweep, and the runtime weight sweep
-|   |-- run_experiments.py       # Parallel supervisor for multi-seed runs
-|   |-- run_pipeline.py          # Master execution script (train, eval, ablate, plot)
-|   |-- summarize_results.py     # Builds the result tables quoted in the docs from the artifacts
-|   |-- transfer_experiment.py   # Zero shot, fine tuned, from scratch and the production policy
-|   |-- train_rl.py              # The one training entry point
-|   |-- train_rl_ablation.py     # Energy weight ablation (7 weights x 3 seeds)
-|-- app.py                       # Streamlit interactive CNC Digital Twin workstation
-|-- PROJECT.md                   # Every plan and reference document, in one file
-|-- baselines/
-|   |-- receding_horizon.py      # Controller that re-solves at every pass
-|   |-- run_baselines.py         # Constant-high, constant-safe, rule-based, NSGA-II and receding horizon
-|-- config/
-|   |-- physics_constants.py     # Centralized physical, machine, and material constants
-|   |-- physics.py               # The physical model, shared by the environment, the baselines and the app
-|   |-- scenarios.py             # Randomized machining scenarios, shared by training and evaluation
+|-- MillingDT/                     # the library package
+|   |-- __init__.py                # exports ENV_ID, MillingDTEnv, ALL_CONSTANTS
+|   |-- agent/
+|   |   |-- controller_init.py     # the ClonedActor and the controller dataset
+|   |-- baselines/
+|   |   |-- receding_horizon.py    # the controller that re-solves at every pass
+|   |-- config/
+|   |   |-- __init__.py            # loads the two YAML files, exposes the constants and the paths
+|   |   |-- physics_constants.yaml # the calibrated constants, the reward weights, the scenario tables
+|   |   |-- paths.yaml             # where the project keeps its runs, logs, plots and tables
+|   |   |-- physics.py             # the physical model
+|   |   |-- scenarios.py           # the randomized machining scenarios
+|   |-- env/
+|   |   |-- __init__.py            # the single registration point
+|   |   |-- milling_env.py         # the Gymnasium environment
+|   |-- sim/machining_sim.py       # the trajectory simulation behind the dashboard
+|   |-- utils/seeding.py           # centralized reproducible seeding
+|-- experiments/                   # the entry points
+|   |-- controller_experiment.py   # the controller initialization experiment
+|   |-- evaluate.py                # the Monte Carlo sweep and the runtime weight sweep
+|   |-- run_baselines.py           # the five classical baselines
+|   |-- run_experiments.py         # the parallel supervisor for multi-seed runs
+|   |-- run_pipeline.py            # the master execution script
+|   |-- summarize_results.py       # builds the result tables quoted in the docs
+|   |-- train_rl.py                # the one training entry point
+|   |-- train_rl_ablation.py       # the energy weight ablation
+|   |-- transfer_experiment.py     # transfer to a new material
+|-- viz/                           # the figures
+|   |-- plot_results.py            # the training curves from the progress.csv files
+|   |-- plot_eval.py               # KDE distributions and failure landscape plots
+|   |-- plot_baselines_comparison.py # the comparison against the classical baselines
+|   |-- plotting_utils.py          # shared plotting helpers, single source for figure style
+|-- results/                       # every run, one directory per training configuration
+|   |-- run_<config>/
+|   |   |-- models/                # final_model.zip, vecnormalize.pkl
+|   |   |-- log/                   # progress.csv, the training curve
+|   |   |-- metrics/               # the evaluation tables of that policy
+|   |   |-- plots/                 # the figures of that policy
+|   |-- evaluation/                # the tables that compare several runs
+|   |-- plots/                     # the cross-run figures
+|   |-- RESULTS.md                 # the generated summary of every artifact
+|-- app.py                         # the Streamlit interactive CNC Digital Twin workstation
 |-- docs/
-|   |-- papers/                   # The three papers this work is compared against
-|   |-- Gym_Env_and_Project_Plan_Simple.pdf # The original project proposal
-|-- env/
-|   |-- __init__.py              # The single registration point for the environment
-|   |-- milling_env.py           # Gymnasium-compliant CNC Milling Digital Twin
-|-- models/
-|   |-- PPO_seed42/              # The production policy and its normalization stats
-|   |-- ablation_w2_*_seed*/     # Models trained across the energy weight grid
-|-- results/
-|   |-- ablation/                # Ablation evaluation metrics and CSV summaries
-|   |-- baseline_results_v5.csv  # Classical baseline metrics
-|   |-- curves/                  # Training curves, one progress.csv per run
-|   |-- monte_carlo/             # Monte Carlo sweep per-scenario datasets
-|   |-- plots/                   # Generated evaluation plots and figures
-|   |-- transfer/                # Transfer experiment results
-|   |-- weight_sweep/            # The frontier of the production policy, swept at runtime
-|   |-- RESULTS.md               # Generated summary of every artifact
-|-- sim/
-|   |-- machining_sim.py         # Trajectory simulation and G-code synthesis for the app
-|-- tests/                       # Pytest test suite for physical consistency
-|-- utils/
-|   |-- seeding.py               # Centralized reproducible seeding
-`-- viz/
-    |-- plot_baselines_comparison.py # Comparative analysis between PPO and classical baselines
-    |-- plot_eval.py             # Generates KDE distributions and failure landscape plots
-    |-- plot_results.py          # Plots the training curves from the progress.csv files
-    |-- plotting_utils.py        # Shared plotting helpers, single source for figure style
+|   |-- papers/                     # the three papers this work is compared against
+|   |-- Gym_Env_and_Project_Plan_Simple.pdf # the original project proposal
+|-- PROJECT.md                     # Every plan and reference document, in one file
+`-- tests/                         # Pytest test suite for physical consistency
 ```
 
 ---
@@ -161,55 +174,60 @@ policy, and `--compare` puts it against the 21 policies of the ablation study.
 ### 1. Master Pipeline (Recommended)
 To run the full workflow (production policy training, the Monte Carlo sweep, the runtime weight sweep, the energy weight ablation, the classical baselines, the plots and the result tables):
 ```bash
-python agent/run_pipeline.py --steps 1000000 --ablation_steps 150000
+python -m experiments.run_pipeline --steps 1000000 --ablation_steps 150000
 ```
 
 ### 2. Standalone Training & Evaluation
 - **Train the production policy** (randomized scenarios and a randomized energy weight, so one policy covers the whole trade-off and the whole material distribution):
   ```bash
-  python agent/train_rl.py --steps 1000000 --seed 42 --randomize --randomize-weight
+  python -m experiments.train_rl --steps 1000000 --seed 42 --randomize --randomize-weight
   ```
 - **Train a policy for one point of the trade-off** (used by the ablation study):
   ```bash
-  python agent/train_rl.py --steps 150000 --seed 42 --randomize --w2 0.6
+  python -m experiments.train_rl --steps 150000 --seed 42 --randomize --w2 0.6
   ```
 - **Monte Carlo Statistical Sweep:**
   ```bash
-  python agent/evaluate.py --scenarios 100
+  python -m experiments.evaluate --scenarios 100
   ```
 - **Runtime Weight Sweep** of the one policy, and the comparison against the per-weight policies:
   ```bash
-  python agent/evaluate.py --sweep-weight --scenarios 100 --compare
+  python -m experiments.evaluate --sweep-weight --scenarios 100
+  python -m experiments.evaluate --compare-only
   ```
 - **Energy Weight Ablation Study** (7 energy weights, 3 seeds each, trained in parallel):
   ```bash
-  python agent/train_rl_ablation.py --steps 150000 --scenarios 50 --slots 7
+  python -m experiments.train_rl_ablation --steps 150000 --scenarios 50 --slots 7
   ```
 - **Classical Baselines** (including the receding-horizon controller):
   ```bash
-  python baselines/run_baselines.py
+  python -m experiments.run_baselines
   ```
 - **Transfer to a new material** (zero shot, fine tuned, from scratch, production policy):
   ```bash
-  python agent/transfer_experiment.py 300000 50000
+  python -m experiments.transfer_experiment 300000 50000
+  ```
+- **Start the policy from the controller** (the controller, PPO from scratch, and PPO initialized from the controller, on the same 100 randomized scenarios):
+  ```bash
+  python -m experiments.controller_experiment 1000000 2000
   ```
 - **Rebuild the result tables** quoted in this file:
   ```bash
-  python agent/summarize_results.py
+  python -m experiments.summarize_results
   ```
 
 ### 3. Generate Visualizations
 - **Training Convergence Curves:**
   ```bash
-  python viz/plot_results.py
+  python -m viz.plot_results
   ```
 - **KDE Constraint Distributions & Failure Landscapes:**
   ```bash
-  python viz/plot_eval.py
+  python -m viz.plot_eval
   ```
 - **Comparative Baseline Benchmarks:**
   ```bash
-  python viz/plot_baselines_comparison.py
+  python -m viz.plot_baselines_comparison
   ```
 All output figures are saved to `results/plots/`.
 
@@ -234,7 +252,7 @@ math, so the measured throughput on this machine (16 cores, RTX 4060) is:
 Stable-Baselines3 warns about the same thing for a non-CNN policy. The
 training scripts therefore default to the CPU with one thread per process,
 and the parallelism comes from running the ablation policies as separate
-processes (`agent/run_experiments.py`, 7 slots by default), which is what
+processes (`experiments/run_experiments.py`, 7 slots by default), which is what
 uses the cores. A GPU would pay off for a convolutional policy, a much
 larger network, or an off-policy algorithm with a replay buffer.
 
@@ -252,10 +270,10 @@ larger network, or an off-policy algorithm with a replay buffer.
 
 5. **Training across materials is what transfers; fine tuning is not.** On a harder alloy, a policy trained on the nominal material scores 182.5 and violates the roughness limit in every scenario. Fine tuning it for 50,000 steps moves the score to 196.6 and removes every violation, and so does training on the target from scratch for the same budget. The production policy, which was trained across a distribution of materials with the material context in its observation, needs no adaptation at all and scores 200.3 with the finished surface in spec in every scenario. Its 60% worst-pass violations sit on the roughing passes, which the reward does not constrain.
 
-6. **The learned policy and the classical controller are level.** On the same 50 episodes, the PPO policy scores 204.1 and the receding-horizon controller 203.5, and the controller is ahead on the material removal rate (982 against 894 mm3/min) and the cycle time (4.8 against 5.6 s). The earlier comparison against the static baselines was hollow, because all four of them end outside the roughness safety limit. This digital twin does not yet show a reinforcement learning advantage, and the honest next experiment is to start the policy from the controller and fine-tune from there.
+6. **Starting the policy from the controller does not beat the controller.** Three arms were measured on the same 100 randomized scenarios at the same energy weight w2 = 0.4: the receding-horizon controller, the production policy trained from scratch, and a policy whose actor was initialized from the controller and then trained with PPO. The initialization does not produce a policy that beats the expert it started from. The controller still removes 38% more material per minute (1560.6 against 1126.1 mm3/min) and finishes a part in 13.5 s against 32.3 s. What it does produce is a far more consistent policy: the spread of the episode reward across the 100 scenarios falls from 30.0 to 3.4, an order of magnitude, and the tool breakage falls to zero. The consistency is paid for in throughput and energy, 6.6% less material removal rate and 12.9% more energy per part than the from-scratch policy. The mean reward difference against the from-scratch policy, 199.35 against 198.57, is inside the noise: the standard error of the mean over 100 scenarios is 30.0/sqrt(100) = 3.0 for the from-scratch arm, so a gap of 0.8 is not a result. The controller is the least reliable of the three arms, with a reward standard deviation of 65.9, 5% tool breakage and 95% of the parts completed.
 
 Every number below is generated from the artifacts in `results/` by
-`python agent/summarize_results.py`, which writes the same tables to
+`python -m experiments.summarize_results`, which writes the same tables to
 `results/RESULTS.md`. The methods behind each result are described in Part 2
 of `PROJECT.md`, the position against the published work is in Part 3, and the
 environment contract is in Part 1.

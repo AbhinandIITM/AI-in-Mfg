@@ -1,0 +1,30 @@
+# Where the project keeps things.
+#
+# The paths are relative to the project root, so a checkout in another
+# location works without editing anything.
+
+# The root of every run. One directory per training configuration, each
+# holding the policy, the training log, the metrics and the figures of
+# that run:
+#
+#   results/run_<name>/models/   the policy and its normalization stats
+#   results/run_<name>/log/      the training curve
+#   results/run_<name>/metrics/  the evaluation tables of that policy
+#   results/run_<name>/plots/    the figures of that policy
+results: results
+
+# The tables and the figures that compare several runs.
+evaluation: evaluation
+plots: plots
+
+# The logs of the training workers.
+workers: workers
+
+# The prefix of a run directory.
+run_prefix: "run_"
+
+# The runs this project ships with.
+primary_run: PPO_seed42
+controller_initialized_run: PPO_controller_init_seed42
+transfer_source_run: transfer_source_seed42
+transfer_scratch_run: transfer_scratch_seed42

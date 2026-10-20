@@ -12,7 +12,6 @@
 \usepackage{xcolor}
 \usepackage{listings}
 \usepackage{float}
-\usepackage{enumitem}
 \usepackage{multirow}
 \usepackage{makecell}
 \usepackage{tikz}
@@ -209,7 +208,7 @@
 % ========================================================================
 \section{Digital Twin Physics}
 
-\begin{frame}{Key Physics Equations (config/physics.py)}
+\begin{frame}{Key Physics Equations (MillingDT/config/physics.py)}
     \begin{columns}[T]
         \begin{column}{0.55\textwidth}
             \begin{align}
@@ -257,7 +256,7 @@
             \begin{itemize}
                 \item 0--7: $\tanh$-squashed $\VB$, $\kappa_{\text{rem}}$, previous $n, f_r, a_p$,
                       $\MRR/\MRR_{\text{max}}$, $\tanh$-squashed $\Ra$, tool-broken flag
-                \item 8--10: the context --- $w_2$, $C_\text{wear}$ over $[0.6,1.4]$,
+                \item 8--10: the context: $w_2$, $C_\text{wear}$ over $[0.6,1.4]$,
                       $k_1$ over $[0.8,1.2]$ of nominal
             \end{itemize}
 
@@ -289,9 +288,9 @@
         \item \textbf{Material/Tool:} $C_\text{wear}$ at $[0.6,1.4]\times$ nominal, $k_1, k_2, k_3$ at $[0.8,1.2]\times$ nominal
         \item \textbf{Initial wear:} $V_{B,0} \sim \mathcal{U}[0, 0.8] V_{B,\text{max}}$
         \item \textbf{Energy weight:} drawn $\mathcal{U}[0,1]$ per episode under \texttt{--randomize-weight}
-        \item \textbf{Shared tables:} same \texttt{config/scenarios.py} for training + Monte Carlo eval
+        \item \textbf{Shared tables:} same \texttt{MillingDT/config/scenarios.py} for training + Monte Carlo eval
         \item \smallskip
-        \item \textbf{Measured:} the normalized physics features the policy sees on the training and the evaluation sets agree to 0.041 in the mean (std = 1) --- the same distribution
+        \item \textbf{Measured:} the normalized physics features the policy sees on the training and the evaluation sets agree to 0.041 in the mean (std = 1), the same distribution
         \item \textbf{In the observation:} $C_\text{wear}$ and $k_1$ travel with the part, so the policy knows which material it is cutting
     \end{itemize}
 \end{frame}
@@ -331,7 +330,7 @@
             \begin{itemize}
                 \item \textbf{Production policy:} 1M steps, seed 42,
                       \texttt{--randomize --randomize-weight}
-                      $\to$ \texttt{models/PPO\_seed42/}
+                      $\to$ \texttt{results/run\_PPO\_seed42/}
                 \item \textbf{Ablation grid:} 7 $w_2$ $\times$ 3 seeds = 21 policies,
                       150k steps each
             \end{itemize}
@@ -353,7 +352,7 @@
 % ========================================================================
 \section{Results}
 
-\begin{frame}{Production Policy --- Monte Carlo Sweep (100 Scenarios)}
+\begin{frame}{Production Policy: Monte Carlo Sweep (100 Scenarios)}
     \small
     \begin{columns}[T]
         \begin{column}{0.5\textwidth}
@@ -394,7 +393,7 @@
     \begin{block}{Key Findings}
     \footnotesize
     \begin{itemize}
-        \item \alert{Finished surface always in spec} (0\% violations) --- the part quality holds
+        \item \alert{Finished surface always in spec} (0\% violations), the part quality holds
         \item \alert{Wear never exceeded} (0\% violations), 99\% of the parts completed
         \item 56\% of the passes exceed the safety margin $\RaSafe = 1.36\ \mu$m: the policy pushes and recovers by the finish pass
         \item Mean operating point: 7199 RPM, 0.247 mm/r, 2.11 mm, 4.0 passes
@@ -497,6 +496,73 @@
     \end{itemize}
 \end{frame}
 
+\begin{frame}{Controller Initialization: Method and Result}
+    \small
+    \footnotesize\textbf{Question:} does a policy that starts from the controller end up better than the expert it started from?
+
+    \begin{block}{Method}
+    \footnotesize
+    \begin{enumerate}
+        \item Record the controller on 2000 randomized episodes
+        \item Fit a supervised actor (2$\times$256, Tanh) on those trajectories by regression
+        \item Copy the fitted weights into a fresh PPO policy
+        \item Train with the production budget (1M steps), evaluate on 100 scenarios at $w_2 = 0.4$
+    \end{enumerate}
+    \footnotesize
+    \texttt{MillingDT/agent/controller\_init.py} \quad \texttt{experiments/controller\_experiment.py}
+    \end{block}
+
+    \centering
+    \scriptsize
+    \begin{tabular}{@{}lccc@{}}
+    \toprule
+    \textbf{Metric} & \makecell{\textbf{Receding-horizon}\\\textbf{controller}} & \makecell{\textbf{PPO}\\\textbf{from scratch}} & \makecell{\textbf{PPO initialized}\\\textbf{from controller}} \\
+    \midrule
+    Mean episode reward & 187.96 & 198.57 & \alert{199.35} \\
+    Reward std & 65.92 & 30.03 & \alert{3.35} \\
+    $\MRR$ (mm$^3$/min) & \alert{1560.6} & 1205.1 & 1126.1 \\
+    Energy per part (kJ) & 68.01 & 68.35 & 77.17 \\
+    Cycle time (s) & \alert{13.54} & 20.25 & 32.35 \\
+    Tool breakage & 5\% & 1\% & \alert{0\%} \\
+    Parts completed & 95\% & 99\% & \alert{100\%} \\
+    \bottomrule
+    \end{tabular}
+\end{frame}
+
+\begin{frame}{Controller Initialization: What It Shows}
+    \small
+    \begin{columns}[T]
+        \begin{column}{0.48\textwidth}
+            \begin{alertblock}{No advantage over the controller}
+            \footnotesize
+            \begin{itemize}
+                \item The controller still removes 38\% more material per minute (1560.6 against 1126.1 mm$^3$/min)
+                \item and finishes in 13.5 s against 32.3 s
+                \item The reward cannot separate the two learned policies: 199.35 against 198.57 is a gap of 0.8, while the standard error of the mean over 100 scenarios is $30.0/\sqrt{100} = 3.0$
+                \item All three arms keep the finished surface in spec (0\% violations)
+            \end{itemize}
+            \end{alertblock}
+        \end{column}
+        \begin{column}{0.48\textwidth}
+            \begin{block}{Consistency, paid for with throughput and energy}
+            \footnotesize
+            \begin{itemize}
+                \item Reward std across the 100 scenarios falls from 30.0 to \alert{3.4}, tool breakage falls to \alert{zero}, every part is completed
+                \item Against the from-scratch policy: 6.6\% less removal rate and 12.9\% more energy per part
+                \item The controller is the least reliable arm of the three: std 65.9, 5\% breakage, 95\% of the parts completed
+            \end{itemize}
+            \end{block}
+        \end{column}
+    \end{columns}
+
+    \vspace{0.4em}
+    \begin{alertblock}{What the work claims}
+    \footnotesize
+    The reinforcement learning agent navigates the energy/throughput trade-off inside a fixed constraint set.
+    It does not beat a classical controller that re-optimizes every pass with the exact physics.
+    \end{alertblock}
+\end{frame}
+
 \begin{frame}{Transfer Experiment: Cross-Material Adaptation}
     \small
     \footnotesize
@@ -525,7 +591,7 @@
     context in its observation, so the harder material is inside its training distribution and it
     needs \alert{no adaptation at all}. It scores the highest reward (200.3) and the finished
     surface is in spec in every scenario; its 60\% worst-pass violations fall on the roughing
-    passes, which the reward does not constrain --- the finished surface, which is the part quality,
+    passes, which the reward does not constrain: the finished surface, which is the part quality,
     is in spec everywhere. The nominal-trained source policy cannot do this: 182.5, and it violates
     the roughness limit on the worst pass in every scenario. Fine tuning it for 50,000 steps, or
     training on the target from scratch, both fix it, and both land at 196.6.
@@ -562,25 +628,23 @@
         \begin{column}{0.5\textwidth}
             \textbf{Module Structure}
             \begin{itemize}
-                \item \texttt{config/}: Physics, scenarios, paths (single source)
-                \item \texttt{env/}: Gymnasium env, 1 registration
-                \item \texttt{agent/}: Train, eval, ablation, transfer, pipeline
-                \item \texttt{baselines/}: 5 classical + receding-horizon
-                \item \texttt{sim/}: Stock depletion, topography, G-code
-                \item \texttt{viz/}: Shared plotting utilities
+                \item \texttt{MillingDT/}: config, env, agent (controller init), baselines, sim, utils
+                \item \texttt{experiments/}: train, eval, ablation, baselines, transfer, controller, pipeline
+                \item \texttt{viz/}: shared plotting utilities
+                \item \texttt{results/}: one directory per run (models, log, metrics, plots)
             \end{itemize}
 
             \textbf{Reproducibility}
             \begin{itemize}
                 \item Global seeding (Python, NumPy, PyTorch, CUDA)
                 \item Shared scenario tables (train = eval)
-                \item \texttt{summarize\_results.py} regenerates \texttt{RESULTS.md}
+                \item \texttt{experiments/summarize\_results.py} regenerates \texttt{RESULTS.md}
             \end{itemize}
         \end{column}
         \begin{column}{0.5\textwidth}
             \textbf{Test Coverage (34 tests)}
             \begin{itemize}
-                \item 22 env tests: clipping, truncation, soft norm, 11-D observation, constants, overrides, accumulators, energy norm, Gym checker, randomization, pinned values, scenario scales, context (weight, material, random weight), speed dependence, energy minimum, shared physics
+                \item 22 env tests: clipping, truncation, soft norm, 11-D observation, constants, overrides, energy norm, Gym checker, randomization, pinned values, scenario scales, context (weight, material), speed dependence, energy minimum, shared physics
                 \item 2 reward tests: golden values ($w_2 = 0.0, 0.4, 0.75$), finishing penalty
                 \item 5 integration: train$\to$eval roundtrip, one registration, context in the observation, one policy at a pinned weight, baseline artifact
                 \item 3 callback: heartbeat, failure report, interval
@@ -590,7 +654,7 @@
             \textbf{Code Quality}
             \begin{itemize}
                 \item No unused imports (AST verified)
-                \item Literature citations in \texttt{physics\_constants.py}
+                \item Constants and paths in \texttt{MillingDT/config/}
             \end{itemize}
         \end{column}
     \end{columns}
@@ -602,7 +666,7 @@
 \section{Discussion}
 
 \begin{frame}{Discussion}
-    \small
+    \footnotesize
     \begin{columns}[T]
         \begin{column}{0.33\textwidth}
             \begin{block}{What Worked}
@@ -612,13 +676,14 @@
                 \item One policy beats the 21 per-weight policies
                 \item Training across materials makes adaptation unnecessary
                 \item Receding-horizon = strong, fair baseline
-            \end{itemize}
+                \item Controller initialization buys consistency: reward std 30.0 $\to$ 3.4, no breakage            \end{itemize}
             \end{block}
         \end{column}
         \begin{column}{0.33\textwidth}
             \begin{alertblock}{Limitations}
             \begin{itemize}
                 \item PPO is level with receding-horizon, not ahead of it
+                \item Initializing from the controller does not close the gap: more uniform, but 6.6\% less removal rate and 12.9\% more energy
                 \item Ablation: 150k steps/weight (vs 1M production)
                 \item Reward charges a pass, metric is a part
                 \item Sim-only, no real calibration yet
@@ -628,7 +693,7 @@
         \begin{column}{0.33\textwidth}
             \begin{exampleblock}{Future Work}
             \begin{itemize}
-                \item Controller-initialized RL (BC + fine-tune)
+                \item Compare against a restricted controller (is the gap an information gap?)
                 \item Sim-to-real: calibrate, add noise/delay
                 \item True multi-objective RL (Pareto, hypervolume)
                 \item Online $w_2$ adaptation for energy budget
@@ -644,19 +709,20 @@
 \section{Conclusion}
 
 \begin{frame}{Conclusion}
-    \footnotesize
+    \scriptsize
     \begin{itemize}
         \item \textbf{Digital Twin} with speed-dependent cutting energy, tool wear, roughness, stochastic breakage
         \item \textbf{One Gymnasium Environment} (\texttt{MillingDTEnv-v1}) with domain randomization and an 11-D observation that always carries the context
         \item \textbf{One Production Policy} (1M steps): the energy weight is a runtime query, not a retrain
         \item \textbf{Rigorous Evaluation}: Monte Carlo (100 scenarios, 95\% CIs), ablation frontier, weight sweep against the 21 per-weight policies
-        \item \textbf{Baselines}: six policies on the same 50 episodes --- level on the reward, so no RL advantage yet
+        \item \textbf{Baselines}: six policies on the same 50 episodes, level on the reward, so no RL advantage yet
+        \item \textbf{Controller Initialization}: more uniform (reward std 3.4 against 30.0), no tool breakage, but the controller still removes 38\% more material per minute
         \item \textbf{Transfer Experiment}: the production policy needs no adaptation; the nominal-trained one does
         \item \textbf{Interactive Workstation}: 2D stock depletion, micro-topography, G-code, multi-controller comparison
         \item \textbf{Full Reproducibility}: every result table from committed artifacts by one script
     \end{itemize}
 
-    \vspace{0.5em}
+    \vspace{0.2em}
     \begin{alertblock}{Key Scientific Finding}
     \scriptsize
     The speed-dependent specific cutting energy creates a \textbf{genuine energy/throughput trade-off}, and DRL learns to navigate it pass-by-pass while respecting surface quality and tool life constraints. Across the measured frontier the removal rate falls \alert{8.4\%} while the energy of the part falls \alert{9.5\%}. One conditioned policy reaches that whole frontier at runtime, beats the 21 policies trained per weight, and transfers to a harder material with no adaptation.
@@ -676,16 +742,18 @@
     \textbf{Task} & \textbf{Command} \\
     \midrule
     Tests & \texttt{pytest tests/ -v} \\
-    Production & \texttt{python agent/train\_rl.py --steps 1000000 --seed 42 --randomize --randomize-weight} \\
-    Pinned weight & \texttt{python agent/train\_rl.py --steps 150000 --seed 42 --randomize --w2 0.4} \\
-    Ablation grid & \texttt{python agent/train\_rl\_ablation.py --steps 150000 --scenarios 50 --slots 7} \\
-    MC eval & \texttt{python agent/evaluate.py --scenarios 100} \\
-    Weight sweep & \texttt{python agent/evaluate.py --sweep-weight --compare} \\
-    Baselines & \texttt{python baselines/run\_baselines.py} \\
-    Transfer & \texttt{python agent/transfer\_experiment.py} \\
-    Results & \texttt{python agent/summarize\_results.py} \\
+    Production & \texttt{python -m experiments.train\_rl --steps 1000000 --seed 42 --randomize --randomize-weight} \\
+    Pinned weight & \texttt{python -m experiments.train\_rl --steps 150000 --seed 42 --randomize --w2 0.6} \\
+    Ablation grid & \texttt{python -m experiments.train\_rl\_ablation --steps 150000 --scenarios 50 --slots 7} \\
+    MC eval & \texttt{python -m experiments.evaluate --scenarios 100} \\
+    Weight sweep & \texttt{python -m experiments.evaluate --sweep-weight --scenarios 100} \\
+    Compare & \texttt{python -m experiments.evaluate --compare-only} \\
+    Baselines & \texttt{python -m experiments.run\_baselines} \\
+    Transfer & \texttt{python -m experiments.transfer\_experiment 300000 50000} \\
+    Controller init & \texttt{python -m experiments.controller\_experiment 1000000 2000} \\
+    Results & \texttt{python -m experiments.summarize\_results} \\
     Workstation & \texttt{streamlit run app.py} \\
-    Full pipeline & \texttt{python agent/run\_pipeline.py --steps 1000000} \\
+    Full pipeline & \texttt{python -m experiments.run\_pipeline --steps 1000000} \\
     \bottomrule
     \end{tabular}
 \end{frame}

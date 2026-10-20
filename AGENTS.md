@@ -4,7 +4,8 @@ This repository hosts an intelligent manufacturing Digital Twin for dynamic CNC 
 
 ## Guidelines & Principles
 - All UI work adheres to anti-slop guidelines: no generic purple glows, no AI-slop marketing copy, authentic engineering telemetry, and explicit domain-grounded manufacturing visuals.
-- Reproducibility and physical consistency are enforced via `config/physics_constants.py` and `utils/seeding.py`.
+- Reproducibility and physical consistency are enforced via `MillingDT/config/physics_constants.yaml` and `MillingDT/utils/seeding.py`.
+- The library lives in the `MillingDT/` package, the entry points in `experiments/`, the figures in `viz/`, and every run in `results/run_<configuration>/`.
 - Unit tests (`pytest tests/ -v`) must remain 100% green with 0 warnings.
 
 <!-- antislop:start -->

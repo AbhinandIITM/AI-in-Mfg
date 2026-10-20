@@ -130,7 +130,7 @@ add_text_box(slide, Inches(1), Inches(1), Inches(11.333), Inches(1.5),
     font_size=36, bold=True, color=WHITE, alignment=PP_ALIGN.CENTER)
 
 add_text_box(slide, Inches(1), Inches(3.1), Inches(11.333), Inches(0.8),
-    "ME6324 — AI in Manufacturing  |  Course Project Report",
+    "ME6324, AI in Manufacturing  |  Course Project Report",
     font_size=22, color=IIT_GOLD, alignment=PP_ALIGN.CENTER)
 
 add_text_box(slide, Inches(1), Inches(4.2), Inches(11.333), Inches(0.6),
@@ -270,7 +270,7 @@ slide = prs.slides.add_slide(prs.slide_layouts[6])
 add_background(slide, WHITE)
 add_shape(slide, Inches(0), Inches(0), Inches(13.333), Inches(1.1), fill_color=IIT_BLUE)
 add_text_box(slide, Inches(0.5), Inches(0.2), Inches(12), Inches(0.7),
-    "Digital Twin Physics (config/physics.py — single source of truth)",
+    "Digital Twin Physics (MillingDT/config/physics.py, single source of truth)",
     font_size=30, bold=True, color=WHITE)
 
 equations = [
@@ -328,7 +328,7 @@ left_items = [
     "Observation (11-D, always the same shape):",
     "  0-7: V_B, κ_rem, prev n, f_r, a_p, MRR/MRR_max,",
     "       R_a, tool-broken flag",
-    "  8-10: the context — w₂, C_wear [0.6,1.4], k₁ [0.8,1.2]",
+    "  8-10: the context: w₂, C_wear [0.6,1.4], k₁ [0.8,1.2]",
     "",
     "Action: continuous [-1,1]³ → clipped → machine envelope",
 ]
@@ -414,7 +414,7 @@ add_text_box(slide, Inches(7.3), Inches(1.6), Inches(5.2), Inches(0.5), "Trainin
 runs = [
     "1️⃣ Production policy: 1M steps, seed 42",
     "    --randomize --randomize-weight",
-    "    → models/PPO_seed42/",
+    "    → results/run_PPO_seed42/",
     "",
     "2️⃣ Ablation grid: 7 weights × 3 seeds = 21 policies",
     "    w₂ ∈ {0.0, 0.2, 0.4, 0.5, 0.6, 0.8, 1.0}",
@@ -434,7 +434,7 @@ slide = prs.slides.add_slide(prs.slide_layouts[6])
 add_background(slide, WHITE)
 add_shape(slide, Inches(0), Inches(0), Inches(13.333), Inches(1.1), fill_color=IIT_BLUE)
 add_text_box(slide, Inches(0.5), Inches(0.2), Inches(12), Inches(0.7),
-    "Results: Production Policy — Monte Carlo Sweep (100 Scenarios)",
+    "Results: Production Policy, Monte Carlo Sweep (100 Scenarios)",
     font_size=30, bold=True, color=WHITE)
 
 # Main metrics table
@@ -482,7 +482,7 @@ style_table(vio_table, font_size=13)
 add_shape(slide, Inches(0.5), Inches(4.35), Inches(12.3), Inches(2.6), fill_color=RGBColor(230, 245, 230), line_color=GREEN, line_width=Pt(2))
 add_text_box(slide, Inches(0.8), Inches(4.5), Inches(11.7), Inches(0.5), "✅ Key Findings", font_size=22, bold=True, color=GREEN)
 takeaways = [
-    "• Finished surface ALWAYS within spec (0% violations) — the part quality holds",
+    "• Finished surface ALWAYS within spec (0% violations), the part quality holds",
     "• Flank wear NEVER exceeded (0% violations); 99% of the parts completed",
     "• 56% of the passes exceed the roughness safety margin (1.36 μm): the policy pushes and recovers by the finish pass",
     "• High MRR variance (std = 49% of mean) → domain randomization works: diverse operating points",
@@ -491,7 +491,7 @@ takeaways = [
 add_bullet_list(slide, Inches(0.8), Inches(5.1), Inches(11.7), Inches(1.7), takeaways, font_size=15, color=DARK_GRAY, spacing=Pt(4))
 
 # ============================================================
-# SLIDE 9: Ablation — Pareto Frontier
+# SLIDE 9: Ablation, Pareto Frontier
 # ============================================================
 slide = prs.slides.add_slide(prs.slide_layouts[6])
 add_background(slide, WHITE)
@@ -626,7 +626,105 @@ analysis = [
 add_bullet_list(slide, Inches(0.8), Inches(4.85), Inches(11.7), Inches(2.0), analysis, font_size=15, color=DARK_GRAY, spacing=Pt(4))
 
 # ============================================================
-# SLIDE 12: Transfer Experiment
+# SLIDE 12: Controller Initialization, Method and Result
+# ============================================================
+slide = prs.slides.add_slide(prs.slide_layouts[6])
+add_background(slide, WHITE)
+add_shape(slide, Inches(0), Inches(0), Inches(13.333), Inches(1.1), fill_color=IIT_BLUE)
+add_text_box(slide, Inches(0.5), Inches(0.2), Inches(12), Inches(0.7),
+    "Controller Initialization: Method and Result",
+    font_size=30, bold=True, color=WHITE)
+
+add_text_box(slide, Inches(0.5), Inches(1.25), Inches(12.3), Inches(0.5),
+    "Question: does a policy that starts from the controller end up better than the expert it started from?",
+    font_size=16, bold=True, color=RED)
+
+# Method box
+add_shape(slide, Inches(0.5), Inches(1.9), Inches(5.5), Inches(4.9), fill_color=LIGHT_GRAY, line_color=IIT_BLUE, line_width=Pt(1.5))
+add_text_box(slide, Inches(0.8), Inches(2.05), Inches(5.0), Inches(0.5), "Method", font_size=22, bold=True, color=IIT_BLUE)
+method_items = [
+    "1. Record the controller on 2000 episodes",
+    "",
+    "2. Fit a supervised actor (2x256, Tanh) by",
+    "   regression on those trajectories",
+    "",
+    "3. Copy the fitted weights into a fresh PPO policy",
+    "",
+    "4. Train with the production budget (1M steps),",
+    "   evaluate on 100 scenarios at w₂ = 0.4",
+    "",
+    "MillingDT/agent/controller_init.py",
+    "experiments/controller_experiment.py",
+]
+add_bullet_list(slide, Inches(0.8), Inches(2.65), Inches(5.0), Inches(4.0), method_items, font_size=14, color=DARK_GRAY, spacing=Pt(3))
+
+# Three arms table
+ci_data = [
+    ("Metric", "Receding-horizon\ncontroller", "PPO\nfrom scratch", "PPO initialized\nfrom controller"),
+    ("Mean episode reward", "187.96", "198.57", "199.35"),
+    ("Reward std", "65.92", "30.03", "3.35"),
+    ("MRR (mm³/min)", "1560.6", "1205.1", "1126.1"),
+    ("Energy per part (kJ)", "68.01", "68.35", "77.17"),
+    ("Cycle time (s)", "13.54", "20.25", "32.35"),
+    ("Ra viol., finished", "0.0%", "0.0%", "0.0%"),
+    ("Tool breakage", "5%", "1%", "0%"),
+    ("Parts completed", "95%", "99%", "100%"),
+]
+
+table_shape = slide.shapes.add_table(len(ci_data), 4, Inches(6.3), Inches(1.9), Inches(6.5), Inches(3.6))
+table = table_shape.table
+for j, w in enumerate([2.1, 1.5, 1.4, 1.5]):
+    table.columns[j].width = Inches(w)
+
+for i, row in enumerate(ci_data):
+    for j, val in enumerate(row):
+        table.cell(i, j).text = val
+style_table(table, font_size=12)
+
+# Reading box under the table
+add_shape(slide, Inches(6.3), Inches(5.65), Inches(6.5), Inches(1.15), fill_color=RGBColor(255, 248, 220), line_color=IIT_GOLD, line_width=Pt(2))
+add_text_box(slide, Inches(6.55), Inches(5.75), Inches(6.0), Inches(0.4), "Same 100 scenarios, same energy weight w₂ = 0.4", font_size=15, bold=True, color=IIT_GOLD)
+add_bullet_list(slide, Inches(6.55), Inches(6.15), Inches(6.0), Inches(0.6), [
+    "All three arms keep the finished surface in spec (0% violations)",
+], font_size=13, color=DARK_GRAY, spacing=Pt(2))
+
+# ============================================================
+# SLIDE 13: Controller Initialization, What It Shows
+# ============================================================
+slide = prs.slides.add_slide(prs.slide_layouts[6])
+add_background(slide, WHITE)
+add_shape(slide, Inches(0), Inches(0), Inches(13.333), Inches(1.1), fill_color=IIT_BLUE)
+add_text_box(slide, Inches(0.5), Inches(0.2), Inches(12), Inches(0.7),
+    "Controller Initialization: What It Shows",
+    font_size=30, bold=True, color=WHITE)
+
+# Left: no advantage
+add_shape(slide, Inches(0.5), Inches(1.35), Inches(6.05), Inches(3.6), fill_color=RGBColor(255, 248, 220), line_color=IIT_GOLD, line_width=Pt(2))
+add_text_box(slide, Inches(0.8), Inches(1.5), Inches(5.5), Inches(0.5), "No advantage over the controller", font_size=20, bold=True, color=IIT_GOLD)
+add_bullet_list(slide, Inches(0.8), Inches(2.1), Inches(5.5), Inches(2.7), [
+    "• The controller still removes 38% more material per minute (1560.6 against 1126.1 mm³/min)",
+    "• and finishes in 13.5 s against 32.3 s",
+    "• The reward cannot separate the two learned policies: 199.35 against 198.57 is a gap of 0.8, while the standard error of the mean over 100 scenarios is 30.0/√100 = 3.0",
+], font_size=15, color=DARK_GRAY, spacing=Pt(6))
+
+# Right: consistency
+add_shape(slide, Inches(6.8), Inches(1.35), Inches(6.05), Inches(3.6), fill_color=LIGHT_GRAY, line_color=IIT_BLUE, line_width=Pt(1.5))
+add_text_box(slide, Inches(7.1), Inches(1.5), Inches(5.5), Inches(0.8), "Consistency, paid for with throughput and energy", font_size=20, bold=True, color=IIT_BLUE)
+add_bullet_list(slide, Inches(7.1), Inches(2.1), Inches(5.5), Inches(2.7), [
+    "• Reward std across the 100 scenarios falls from 30.0 to 3.4, tool breakage falls to zero, every part is completed",
+    "• Against the from-scratch policy: 6.6% less removal rate and 12.9% more energy per part",
+    "• The controller is the least reliable arm of the three: std 65.9, 5% breakage, 95% of the parts completed",
+], font_size=15, color=DARK_GRAY, spacing=Pt(6))
+
+# Claim box
+add_shape(slide, Inches(0.5), Inches(5.2), Inches(12.35), Inches(1.6), fill_color=RGBColor(230, 240, 250), line_color=IIT_BLUE, line_width=Pt(1.5))
+add_text_box(slide, Inches(0.8), Inches(5.35), Inches(11.7), Inches(0.5), "What the work claims", font_size=20, bold=True, color=IIT_BLUE)
+add_bullet_list(slide, Inches(0.8), Inches(5.9), Inches(11.7), Inches(0.8), [
+    "The reinforcement learning agent navigates the energy/throughput trade-off inside a fixed constraint set. It does not beat a classical controller that re-optimizes every pass with the exact physics.",
+], font_size=16, color=DARK_GRAY, spacing=Pt(4))
+
+# ============================================================
+# SLIDE 14: Transfer Experiment
 # ============================================================
 slide = prs.slides.add_slide(prs.slide_layouts[6])
 add_background(slide, WHITE)
@@ -672,7 +770,7 @@ conc_items = [
 add_bullet_list(slide, Inches(0.8), Inches(5.1), Inches(11.7), Inches(1.8), conc_items, font_size=14, color=DARK_GRAY, spacing=Pt(4))
 
 # ============================================================
-# SLIDE 13: Interactive Workstation
+# SLIDE 15: Interactive Workstation
 # ============================================================
 slide = prs.slides.add_slide(prs.slide_layouts[6])
 add_background(slide, WHITE)
@@ -701,7 +799,7 @@ add_text_box(slide, Inches(0.5), Inches(6.8), Inches(12), Inches(0.5),
     font_size=20, bold=True, color=IIT_BLUE, alignment=PP_ALIGN.CENTER)
 
 # ============================================================
-# SLIDE 14: Software Engineering & Reproducibility
+# SLIDE 16: Software Engineering & Reproducibility
 # ============================================================
 slide = prs.slides.add_slide(prs.slide_layouts[6])
 add_background(slide, WHITE)
@@ -712,19 +810,20 @@ add_text_box(slide, Inches(0.5), Inches(0.2), Inches(12), Inches(0.7),
 
 left_items = [
     "Architecture:",
-    "  config/  →  physics, scenarios, paths (single source)",
-    "  env/     →  Gymnasium env, 1 registration",
-    "  agent/   →  train, eval, ablation, transfer, pipeline",
-    "  baselines/ →  5 classical + receding-horizon",
-    "  sim/     →  stock depletion, micro-topography, G-code",
-    "  viz/     →  shared plotting utilities",
+    "  MillingDT/  →  config, env, agent (controller init),",
+    "                  baselines, sim, utils",
+    "  experiments/ →  train, eval, ablation, baselines,",
+    "                  transfer, controller experiment, pipeline",
+    "  viz/         →  shared plotting utilities",
+    "  results/     →  one directory per run (models, log,",
+    "                  metrics, plots)",
     "",
     "Reproducibility:",
     "  • Global seeding (Python, NumPy, PyTorch, CUDA)",
     "  • Shared scenario tables (train = eval)",
-    "  • summarize_results.py regenerates RESULTS.md",
+    "  • experiments/summarize_results.py regenerates RESULTS.md",
     "  • All randomness deterministic given seed",
-    "  • Centralized paths (config/paths.py), env ID (env/__init__.py)",
+    "  • Centralized constants and paths (MillingDT/config/)",
 ]
 right_items = [
     "Testing (34 tests):",
@@ -744,7 +843,7 @@ right_items = [
     "Code Quality:",
     "  • No unused imports (AST verified)",
     "  • Conventional commits, clean git history",
-    "  • Lit citations in physics_constants.py",
+    "  • Constants and paths in MillingDT/config/",
 ]
 
 add_two_column(slide, Inches(0.5), Inches(1.3), Inches(12.3), Inches(5.9),
@@ -752,7 +851,7 @@ add_two_column(slide, Inches(0.5), Inches(1.3), Inches(12.3), Inches(5.9),
     title_left="Architecture & Reproducibility", title_right="Test Coverage & Quality")
 
 # ============================================================
-# SLIDE 15: Discussion
+# SLIDE 17: Discussion
 # ============================================================
 slide = prs.slides.add_slide(prs.slide_layouts[6])
 add_background(slide, WHITE)
@@ -771,17 +870,19 @@ contents = [
         "One policy beats the 21 per-weight policies",
         "Training across materials makes the adaptation unnecessary",
         "Receding-horizon = strong, fair baseline (same physics)",
+        "Controller initialization buys consistency: reward std 30.0 → 3.4, no tool breakage",
         "Full reproducibility: one script regenerates all tables",
     ],
     [
         "PPO is level with the receding-horizon, not ahead of it",
+        "Initializing from the controller does not close the gap: more uniform, but 6.6% less removal rate and 12.9% more energy",
         "Ablation uses 150k steps/weight (vs 1M production)",
         "The reward charges a pass, the metric is a part",
         "Micro-topography is simplified (no chatter/vibration)",
-        "Sim-only — no real machine calibration yet",
+        "Sim-only, no real machine calibration yet",
     ],
     [
-        "Controller-initialized RL (BC + fine-tune)",
+        "Compare against a restricted controller (is the gap an information gap?)",
         "Sim-to-real: calibrate on machine data, add noise/delay",
         "True multi-objective RL (Pareto-conditioned, hypervolume)",
         "Online adaptation: runtime w₂ optimizer for energy budget",
@@ -798,7 +899,7 @@ for title, items in zip(titles, contents):
     x += col_w + Inches(0.15)
 
 # ============================================================
-# SLIDE 16: Conclusion
+# SLIDE 18: Conclusion
 # ============================================================
 slide = prs.slides.add_slide(prs.slide_layouts[6])
 add_background(slide, IIT_BLUE)
@@ -813,16 +914,17 @@ conclusions = [
     "🤖 One environment (MillingDTEnv-v1): domain randomization, 11-D observation with the context",
     "📊 One production policy (1M steps): the energy weight is a runtime query, not a retrain",
     "🔬 Monte Carlo (100 scenarios, 95% CIs), ablation frontier, sweep vs 21 per-weight policies",
-    "⚔️ Six baselines on the same 50 episodes — level on the reward, no RL advantage yet",
+    "⚔️ Six baselines on the same 50 episodes, level on the reward, no RL advantage yet",
+    "🧬 Controller init: more uniform (std 3.4 vs 30.0), no tool breakage, no gain on throughput",
     "🔄 Transfer: the production policy needs no adaptation; the nominal-trained one does",
     "🖥️ Interactive workstation: 2D stock depletion, micro-topography, G-code, controllers",
     "🔁 Full reproducibility: every result table from committed artifacts by one script",
 ]
 
-y = Inches(2.25)
+y = Inches(2.15)
 for c in conclusions:
     add_text_box(slide, Inches(1), y, Inches(11.333), Inches(0.45), c, font_size=16, color=WHITE, alignment=PP_ALIGN.LEFT)
-    y += Inches(0.5)
+    y += Inches(0.45)
 
 add_shape(slide, Inches(1), Inches(6.2), Inches(11.333), Pt(4), fill_color=IIT_GOLD)
 add_text_box(slide, Inches(1), Inches(6.32), Inches(11.333), Inches(0.9),
@@ -830,7 +932,7 @@ add_text_box(slide, Inches(1), Inches(6.32), Inches(11.333), Inches(0.9),
     font_size=15, bold=True, color=IIT_GOLD, alignment=PP_ALIGN.CENTER)
 
 # ============================================================
-# SLIDE 17: Reproducibility Commands
+# SLIDE 19: Reproducibility Commands
 # ============================================================
 slide = prs.slides.add_slide(prs.slide_layouts[6])
 add_background(slide, WHITE)
@@ -841,27 +943,29 @@ add_text_box(slide, Inches(0.5), Inches(0.2), Inches(12), Inches(0.7),
 
 cmds = [
     ("Tests", "pytest tests/ -v"),
-    ("Production policy", "python agent/train_rl.py --steps 1000000 --seed 42 --randomize --randomize-weight"),
-    ("One pinned weight", "python agent/train_rl.py --steps 150000 --seed 42 --randomize --w2 0.4"),
-    ("Ablation grid", "python agent/train_rl_ablation.py --steps 150000 --scenarios 50 --slots 7"),
-    ("Monte Carlo eval", "python agent/evaluate.py --scenarios 100"),
-    ("Weight sweep + compare", "python agent/evaluate.py --sweep-weight --compare"),
-    ("Classical baselines", "python baselines/run_baselines.py"),
-    ("Transfer experiment", "python agent/transfer_experiment.py"),
-    ("Regenerate RESULTS.md", "python agent/summarize_results.py"),
+    ("Production policy", "python -m experiments.train_rl --steps 1000000 --seed 42 --randomize --randomize-weight"),
+    ("One pinned weight", "python -m experiments.train_rl --steps 150000 --seed 42 --randomize --w2 0.6"),
+    ("Ablation grid", "python -m experiments.train_rl_ablation --steps 150000 --scenarios 50 --slots 7"),
+    ("Monte Carlo eval", "python -m experiments.evaluate --scenarios 100"),
+    ("Weight sweep", "python -m experiments.evaluate --sweep-weight --scenarios 100"),
+    ("Compare with per-weight policies", "python -m experiments.evaluate --compare-only"),
+    ("Classical baselines", "python -m experiments.run_baselines"),
+    ("Transfer experiment", "python -m experiments.transfer_experiment 300000 50000"),
+    ("Controller initialization", "python -m experiments.controller_experiment 1000000 2000"),
+    ("Regenerate RESULTS.md", "python -m experiments.summarize_results"),
     ("Launch workstation", "streamlit run app.py"),
-    ("Full pipeline", "python agent/run_pipeline.py --steps 1000000"),
+    ("Full pipeline", "python -m experiments.run_pipeline --steps 1000000"),
 ]
 
-y = Inches(1.4)
+y = Inches(1.35)
 for idx, (name, cmd) in enumerate(cmds):
-    add_shape(slide, Inches(0.5), y, Inches(12.3), Inches(0.45), fill_color=LIGHT_GRAY if idx % 2 == 0 else WHITE)
-    add_text_box(slide, Inches(0.7), y + Inches(0.02), Inches(2.5), Inches(0.4), name, font_size=15, bold=True, color=IIT_BLUE)
-    add_text_box(slide, Inches(3.3), y + Inches(0.02), Inches(9.3), Inches(0.4), cmd, font_size=14, color=DARK_GRAY, font_name='Consolas')
-    y += Inches(0.5)
+    add_shape(slide, Inches(0.5), y, Inches(12.3), Inches(0.42), fill_color=LIGHT_GRAY if idx % 2 == 0 else WHITE)
+    add_text_box(slide, Inches(0.7), y + Inches(0.02), Inches(3.0), Inches(0.4), name, font_size=15, bold=True, color=IIT_BLUE)
+    add_text_box(slide, Inches(3.8), y + Inches(0.02), Inches(8.9), Inches(0.4), cmd, font_size=13, color=DARK_GRAY, font_name='Consolas')
+    y += Inches(0.45)
 
 # ============================================================
-# SLIDE 18: Thank You / Questions
+# SLIDE 20: Thank You / Questions
 # ============================================================
 slide = prs.slides.add_slide(prs.slide_layouts[6])
 add_background(slide, IIT_BLUE)
@@ -884,7 +988,7 @@ add_text_box(slide, Inches(1), Inches(4.8), Inches(11.333), Inches(0.6),
     font_size=18, color=RGBColor(180, 200, 220), alignment=PP_ALIGN.CENTER)
 
 add_text_box(slide, Inches(1), Inches(5.8), Inches(11.333), Inches(0.6),
-    "ME6324 — AI in Manufacturing  •  IIT Madras",
+    "ME6324, AI in Manufacturing  •  IIT Madras",
     font_size=18, color=IIT_GOLD, alignment=PP_ALIGN.CENTER)
 
 # Save

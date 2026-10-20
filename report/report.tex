@@ -24,6 +24,10 @@
 \usepackage{pgfplots}
 \pgfplotsset{compat=1.18}
 
+% Long file paths cannot be hyphenated, so give the line breaker a little
+% extra stretch to fall back on instead of running past the margin.
+\setlength{\emergencystretch}{3em}
+
 % A cross mark for the comparison tables.
 \newcommand{\xmark}{\ding{55}}
 
@@ -106,7 +110,6 @@
 \newcommand{\VBSafe}{V_{B,\text{safe}}}
 \newcommand{\VB}{V_B}
 \newcommand{\VBMax}{V_{B,\text{max}}}
-\newcommand{\TODO}[1]{\textcolor{red}{[TODO: #1]}}
 
 % ========================================================================
 % Document
@@ -188,7 +191,7 @@ Key innovations:
     \item Transfer experiment on a harder alloy: a policy trained across a distribution of materials needs no adaptation there, while a policy trained on the nominal material violates the roughness limit until it is fine tuned.
     \item Interactive Streamlit workstation with 2D stock depletion, micro-topography, G-code generation, and multi-controller comparison.
     \item Full reproducibility: all results regenerated from committed artifacts by\\
-    \texttt{agent/summarize\_results.py}.
+    \texttt{experiments/summarize\_results.py}.
 \end{enumerate}
 
 % ========================================================================
@@ -233,7 +236,7 @@ The speed-dependent cutting energy model (Section~\ref{sec:physics}) is the key 
 \section{Digital Twin Physics}
 \label{sec:physics}
 
-All equations are implemented in \texttt{config/physics.py} and used by the environment, baselines, simulator, and evaluation scripts -- a single source of truth. The state the agent sees is the 11-dimensional observation of Section~\ref{sec:obs}: eight physics features followed by the conditioning context, and the context is present in every task, so the equations below are the same equations for every task.
+All equations are implemented in \texttt{MillingDT/config/physics.py} and used by the environment, baselines, simulator, and evaluation scripts -- a single source of truth. The state the agent sees is the 11-dimensional observation of Section~\ref{sec:obs}: eight physics features followed by the conditioning context, and the context is present in every task, so the equations below are the same equations for every task.
 
 \subsection{Geometry and Kinematics}
 Cutter diameter $D = 50\ \text{mm}$, cutting length $L_\text{cut} = 100\ \text{mm}$, total machining allowance $\kappa_\text{total} = 5.0\ \text{mm}$.
@@ -293,7 +296,7 @@ where $\MRR_\text{max}$ is the removal rate of the machine envelope at its upper
 \section{Environment Design}
 
 \subsection{Registrations}
-One Gymnasium environment is registered in \texttt{env/\_\_init\_\_.py}, and it is exported as the constant \texttt{env.ENV\_ID}:
+One Gymnasium environment is registered in \texttt{MillingDT/\allowbreak env/\_\_init\_\_.py}, and it is exported as the constant \texttt{MillingDT.env.ENV\_ID}:
 
 \begin{enumerate}
     \item \texttt{MillingDTEnv-v1}: the only registration. The observation is always $\R^{11}$: the eight physics features followed by the conditioning context (the energy weight $w_2$, the wear coefficient $C_\text{wear}$ and the roughness coefficient $k_1$). The flags \texttt{randomize} and \texttt{randomize\_weight} decide whether the scenario and the energy weight are drawn per \texttt{reset()}. A task with a pinned weight is the same environment with a constant in the context, so there is a single observation shape across the whole project.
@@ -356,7 +359,7 @@ plus, on a part finished inside spec, a $+200$ completion bonus and a Pareto mar
 
 The objective term carries a scale factor of 5 so that it competes with the shaping terms. Without it the progress bonus and the constraint penalties decide the policy on their own, and the energy weight $w_2$ has no visible effect at all: an earlier revision of the reward produced 21 identical ablation policies. The constraint penalties and the completion bonus are an order of magnitude larger on purpose, so that breaking a constraint is never worth a throughput or energy gain. $\RaSafe = 0.85\,\RaMax$, $w_1 + w_2 = 1$, and $E_\text{ref}$ is the energy of a pass under the reference condition, recomputed for every scenario from that scenario's diameter, cutting length and energy coefficients.
 
-The reward is validated by \texttt{test\_reward\_matches\_an\_independent\_calculation}, which recomputes it from \texttt{config/physics.py}, independently of the code that assembles it, and asserts agreement to $10^{-9}$.
+The reward is validated by \texttt{test\_reward\_matches\_an\_independent\_calculation}, which recomputes it from \texttt{MillingDT/config/physics.py}, independently of the code that assembles it, and asserts agreement to $10^{-9}$.
 
 \subsection{Episode Logic}
 \begin{itemize}
@@ -366,7 +369,7 @@ The reward is validated by \texttt{test\_reward\_matches\_an\_independent\_calcu
 \end{itemize}
 
 \subsection{Domain Randomization}
-When \texttt{randomize=True}, each \texttt{reset()} samples a new scenario from \texttt{config/scenarios.py}:
+When \texttt{randomize=True}, each \texttt{reset()} samples a new scenario from \texttt{MillingDT/\allowbreak config/\allowbreak scenarios.py}:
 \begin{itemize}
     \item Workpiece: $\kappa_\text{total} \in [2, 15]\ \text{mm}$, $D \in [40, 150]\ \text{mm}$, $L_\text{cut} \in [50, 200]\ \text{mm}$
     \item Material/Tool: $C_\text{wear}$ at $[0.6, 1.4]\times$ nominal, $k_1, k_2, k_3$ each at $[0.8, 1.2]\times$ nominal
@@ -412,14 +415,14 @@ Training uses a custom \texttt{ProgressQueueCallback} that sends a heartbeat eve
 \subsection{Training Runs}
 \begin{enumerate}
     \item \textbf{Production policy:} 1,000,000 steps, seed 42, \texttt{--randomize --randomize-weight}. Both the machining scenario and the energy weight are drawn per episode, so one network covers the whole weight range and the whole material distribution. Model at\\
-    \texttt{models/PPO\_seed42/}. This is the policy the dashboard, the Monte Carlo sweep, the runtime weight sweep and the baseline comparison all use.
-    \item \textbf{Ablation grid:} 7 weights $w_2 \in \{0.0, 0.2, 0.4, 0.5, 0.6, 0.8, 1.0\} \times$ 3 seeds $\{42,43,44\}$, 150,000 steps each, trained in parallel via \texttt{run\_experiments.py}. Every ablation policy is trained with its energy weight \textbf{pinned} and is evaluated at the weight it was trained for, so it is always asked the question it was trained for. The model directories follow the pattern \texttt{ablation\_w2\_0\_4\_seed42}, one per weight and seed.
+    \texttt{results/run\_PPO\_seed42/}. This is the policy the dashboard, the Monte Carlo sweep, the runtime weight sweep and the baseline comparison all use.
+    \item \textbf{Ablation grid:} 7 weights $w_2 \in \{0.0, 0.2, 0.4, 0.5, 0.6, 0.8, 1.0\} \times$ 3 seeds $\{42,43,44\}$, 150,000 steps each, trained in parallel via \texttt{experiments/run\_experiments.py}. Every ablation policy is trained with its energy weight \textbf{pinned} and is evaluated at the weight it was trained for, so it is always asked the question it was trained for. The model directories follow the pattern \texttt{results/run\_ablation\_w2\_0\_4\_seed42}, one per weight and seed.
 \end{enumerate}
 
-Both training paths use the same script, \texttt{agent/train\_rl.py}: \texttt{--randomize} draws a new machining scenario per episode, \texttt{--randomize-weight} draws a new energy weight per episode, and \texttt{--w2} pins the weight of the task.
+Both training paths use the same script, \texttt{experiments/train\_rl.py}: \texttt{--randomize} draws a new machining scenario per episode, \texttt{--randomize-weight} draws a new energy weight per episode, and \texttt{--w2} pins the weight of the task.
 
 \subsection{Monte Carlo Evaluation}
-\texttt{python agent/evaluate.py --scenarios 100} runs the production policy over 100 randomized scenarios (fixed seed 42). Each scenario is a full machining episode. Reports mean $\pm$ std and 95\% CI (t-distribution) for:
+\texttt{python -m experiments.evaluate --scenarios 100} runs the production policy over 100 randomized scenarios (fixed seed 42). Each scenario is a full machining episode. Reports mean $\pm$ std and 95\% CI (t-distribution) for:
 \begin{itemize}
     \item $\MRR$, Energy/part, Cycle time
     \item Max $\Ra$, Max $\VB$
@@ -433,7 +436,7 @@ Both training paths use the same script, \texttt{agent/train\_rl.py}: \texttt{--
 \section{Classical Baselines}
 \label{sec:baselines}
 
-Five non-RL baselines implemented in \texttt{baselines/run\_baselines.py}:
+Five non-RL baselines implemented in \texttt{experiments/run\_baselines.py}:
 
 \begin{enumerate}
     \item \textbf{Constant-High:} $n=8000, f_r=0.35, a_p=2.5$ (upper bounds).
@@ -443,7 +446,7 @@ Five non-RL baselines implemented in \texttt{baselines/run\_baselines.py}:
     \item \textbf{Receding-Horizon Controller:} Vectorized grid search over $(n, f_r, a_p)$ at \textit{every pass}, simulating the remaining passes with the current $\VB$ and $\kappa_\text{rem}$. Keeps feasible candidates, picks the best by the same scalarization $w_1 \MRR - w_2 E$. This is the strongest classical baseline.
 \end{enumerate}
 
-All baselines use the \textit{same physics} (\texttt{config/physics.py}) and are evaluated on the same 50 episodes of the nominal machining condition, at the same energy weight $w_2 = 0.4$ at which the learned policy is queried.
+All baselines use the \textit{same physics} (\texttt{MillingDT/config/physics.py}) and are evaluated on the same 50 episodes of the nominal machining condition, at the same energy weight $w_2 = 0.4$ at which the learned policy is queried.
 
 % ========================================================================
 % 7. RESULTS
@@ -451,7 +454,7 @@ All baselines use the \textit{same physics} (\texttt{config/physics.py}) and are
 \section{Results}
 
 All tables below are regenerated from committed CSVs by\\
-\texttt{python agent/summarize\_results.py}.
+\texttt{python -m experiments.summarize\_results}.
 
 \subsection{Production Policy -- Monte Carlo Sweep (100 Scenarios)}
 \label{sec:mc}
@@ -523,7 +526,7 @@ The dominated points ($w_2 = 0.0, 0.2, 0.6$) all spend more energy than a point 
 \subsection{Runtime Weight Sweep of the Production Policy}
 \label{sec:weightsweep}
 
-The weight is a query, not a retrain: the same policy is asked for each point of the trade-off at runtime (\texttt{python agent/evaluate.py --sweep-weight}) over the same 100 scenarios.
+The weight is a query, not a retrain: the same policy is asked for each point of the trade-off at runtime (\texttt{python -m experiments.evaluate --sweep-weight}) over the same 100 scenarios.
 
 \begin{table}[H]
 \centering
@@ -549,7 +552,7 @@ As the weight goes from 0.0 to 1.0 the removal rate falls from 1213.6 to 1096.0 
 \subsection{One Policy against the Per-Weight Policies}
 \label{sec:conditioned}
 
-The production policy is compared against the 21 ablation policies, one per weight, each trained and evaluated with its weight pinned (\texttt{python agent/evaluate.py --sweep-weight --compare}).
+The production policy is compared against the 21 ablation policies, one per weight, each trained and evaluated with its weight pinned (\texttt{python -m experiments.evaluate --sweep-weight --compare-only}).
 
 \begin{table}[H]
 \centering
@@ -596,8 +599,38 @@ Constant-Safe & 1.6 & 1506.8 & 3000.0 & $-139.25$ \\
 \begin{itemize}
     \item \textbf{The four static policies finish outside the roughness safety limit} ($\RaSafe = 0.85 \times 1.6 = 1.36\ \mu$m), which the reward penalizes with $-50$. The receding-horizon controller is the only classical policy that stays inside it, and it reaches $+203.45$ against $-46$ for the rest.
     \item \textbf{The learned policy and the controller are level on the reward} ($+204.09$ against $+203.45$), while the controller is ahead on the removal rate (981.7 against 894.3 mm$^3$/min) and on the cycle time (4.80 s against 5.56 s). The energy of the part is close (18.02 kJ against 18.40 kJ).
-    \item \textbf{This digital twin does not yet show a reinforcement learning advantage.} The next experiment is to initialize the policy from the controller and fine-tune from there.
+    \item \textbf{This digital twin does not yet show a reinforcement learning advantage.} The next experiment initializes the policy from the controller and fine-tunes from there (Section~\ref{sec:controllerinit}).
 \end{itemize}
+
+\subsection{Controller Initialization Experiment}
+\label{sec:controllerinit}
+
+The baseline comparison left one question open: the controller re-solves the next pass with the exact state and the exact physics, and the learned policy is level with it on the reward but behind it on the physical metrics. The experiment asks whether a policy that starts from the controller ends up better than the expert it started from.
+
+The method is a behavior cloning step used as an initialization. The controller's behavior is recorded on 2000 randomized episodes, a supervised actor with the same shape as the PPO actor (two hidden layers of 256 with Tanh) is fitted on those trajectories by regression, and the fitted weights are copied into a fresh PPO policy. The reinforcement learning therefore starts from a feasible behavior instead of from noise. The policy is then trained with the same budget as the production policy (1,000,000 steps) and evaluated on the same 100 randomized scenarios at the same energy weight $w_2 = 0.4$. The clone lives in \texttt{MillingDT/\allowbreak agent/\allowbreak controller\_init.py}, the experiment in \texttt{experiments/\allowbreak controller\_experiment.py}, and the trained policy in \texttt{results/\allowbreak run\_PPO\_controller\_init\_seed42/}.
+
+\begin{table}[H]
+\centering
+\caption{Controller initialization experiment: three arms on the same 100 scenarios at $w_2 = 0.4$. Std is the standard deviation of the episode reward over the scenarios.}
+\label{tab:controllerinit}
+\footnotesize
+\setlength{\tabcolsep}{3pt}
+\begin{tabular}{@{}lcccccccc@{}}
+\toprule
+\textbf{Arm} & \textbf{Mean reward} & \textbf{Std} & \makecell{\textbf{$\MRR$}\\(mm$^3$/min)} & \makecell{\textbf{Energy}\\(kJ/part)} & \makecell{\textbf{Cycle}\\(s)} & \makecell{\textbf{$\Ra$ viol.}\\finished} & \makecell{\textbf{Tool}\\breakage} & \makecell{\textbf{Parts}\\completed} \\
+\midrule
+\makecell[l]{Receding-horizon\\controller} & 187.96 & 65.92 & \alert{1560.6} & 68.01 & \alert{13.54} & 0.0\% & 5\% & 95\% \\
+PPO from scratch & 198.57 & 30.03 & 1205.1 & 68.35 & 20.25 & 0.0\% & 1\% & 99\% \\
+\makecell[l]{PPO initialized from\\the controller} & \alert{199.35} & \alert{3.35} & 1126.1 & 77.17 & 32.35 & 0.0\% & \alert{0\%} & \alert{100\%} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\textbf{The initialization does not produce a policy that beats the controller.} The controller still removes 38\% more material per minute (1560.6 against 1126.1 mm$^3$/min) and finishes in 13.5 s against 32.3 s. The reward cannot separate the two learned policies either: 199.35 against 198.57 is a gap of 0.8, and the standard error of the mean over the 100 scenarios is $30.0/\sqrt{100} = 3.0$ for the from-scratch arm. A gap of 0.8 is inside the noise, so it is not a result.
+
+\textbf{What it does produce is consistency.} The spread of the episode reward across the 100 scenarios falls from 30.0 to 3.4, the tool breakage falls to zero, and every part is completed. The controller itself is the least reliable of the three arms, with a reward std of 65.9, 5\% tool breakage and 95\% of the parts completed.
+
+\textbf{The consistency is paid for with throughput and energy.} Against the from-scratch policy the initialized policy removes 6.6\% less material per minute and spends 12.9\% more energy per part. Starting from the feasible behavior of the controller gives a policy that scores almost the same on every scenario, and that operating point is slower and more expensive than the one a policy started from noise finds.
 
 \subsection{Transfer Experiment}
 
@@ -643,7 +676,7 @@ The Streamlit application (\texttt{app.py}) provides an industrial-grade interfa
     \item \textbf{Cached Policy Loading:} \texttt{@st.cache\_resource} ensures model loads once per session.
 \end{enumerate}
 
-The workstation loads the production policy (\texttt{models/PPO\_seed42}) and exposes the energy weight as a runtime slider, so the whole trade-off is reachable from the browser without a retrain.
+The workstation loads the production policy (\texttt{results/run\_PPO\_seed42}) and exposes the energy weight as a runtime slider, so the whole trade-off is reachable from the browser without a retrain.
 
 Launch: \texttt{streamlit run app.py}
 
@@ -654,20 +687,25 @@ Launch: \texttt{streamlit run app.py}
 
 \subsection{Architecture}
 \begin{itemize}
-    \item \texttt{config/}: Physics constants, equations, scenario distributions, paths (single source of truth)
-    \item \texttt{env/}: Gymnasium environment, one registration (\texttt{MillingDTEnv-v1})
-    \item \texttt{agent/}: One training script, one evaluation script, ablation, transfer, pipeline orchestration
-    \item \texttt{baselines/}: 5 classical baselines + receding-horizon controller
-    \item \texttt{sim/}: Simulation engine for Streamlit (stock depletion, micro-topography, G-code)
+    \item \texttt{MillingDT/config/}: Calibrated constants and paths (YAML), the shared physics equations, the scenario distributions (single source of truth)
+    \item \texttt{MillingDT/env/}: Gymnasium environment, one registration (\texttt{MillingDTEnv-v1})
+    \item \texttt{MillingDT/agent/}: The controller initialization, the behavior clone of the receding-horizon controller
+    \item \texttt{MillingDT/baselines/}: The receding-horizon controller
+    \item \texttt{MillingDT/sim/}: Simulation engine for Streamlit (stock depletion, micro-topography, G-code)
+    \item \texttt{MillingDT/utils/}: Seeding, reproducibility
+    \item \texttt{experiments/}: The entry points: training, evaluation, ablation, baselines, transfer, controller experiment, pipeline orchestration
     \item \texttt{viz/}: Plotting utilities, training curves, MC distributions, baseline comparison
-    \item \texttt{utils/}: Seeding, reproducibility
+    \item \texttt{results/}: One directory per run, holding the policy, the log, the metrics and the figures of that run
 \end{itemize}
+
+\subsection{Behavior Cloning as an Initialization}
+The receding-horizon controller is a competent expert, so it can supply the starting point of the learner instead of leaving the learner to start from noise. The module \texttt{MillingDT/\allowbreak agent/\allowbreak controller\_init.py} records what the controller does, fits a supervised actor of the same shape as the PPO actor on those trajectories by regression, and copies the fitted weights into a fresh PPO policy. The initialization stays a separate concern: the clone knows nothing about the training loop, the copy is a weight assignment between two tensors of the same shape, and the rest of the run is an ordinary PPO training, selected with the \texttt{--init-\allowbreak from-\allowbreak controller} flag. The same separation is what makes the arm comparable: the three arms of Table~\ref{tab:controllerinit} share the environment, the scenarios, the budget and the evaluation code, so the only difference between them is where the weights start.
 
 \subsection{Reproducibility}
 \begin{itemize}
-    \item Global seeding via \texttt{utils/seeding.py} (Python, NumPy, PyTorch, CUDA deterministic)
-    \item \texttt{config/scenarios.py} shared by training and Monte Carlo -- no drift
-    \item \texttt{agent/summarize\_results.py} rebuilds \texttt{RESULTS.md} from committed CSVs
+    \item Global seeding via \texttt{MillingDT/utils/seeding.py} (Python, NumPy, PyTorch, CUDA deterministic)
+    \item \texttt{MillingDT/config/scenarios.py} shared by training and Monte Carlo -- no drift
+    \item \texttt{experiments/summarize\_results.py} rebuilds \texttt{RESULTS.md} from committed CSVs
     \item All random draws (scenarios, weights, seeds) are deterministic given the seed
 \end{itemize}
 
@@ -682,9 +720,9 @@ Launch: \texttt{streamlit run app.py}
 
 \subsection{Code Quality}
 \begin{itemize}
-    \item Centralized constants (\texttt{config/physics\_constants.py}) with literature citations
-    \item Centralized paths (\texttt{config/paths.py}) -- no hardcoded strings
-    \item Environment ID exported from \texttt{env/\_\_init\_\_.py}
+    \item Centralized constants (\texttt{MillingDT/\allowbreak config/\allowbreak physics\_constants.yaml}), one calibrated value per line with its unit in the file
+    \item Centralized paths (\texttt{MillingDT/\allowbreak config/\allowbreak paths.yaml}) -- no hardcoded strings
+    \item Environment ID exported from \texttt{MillingDT/env/\_\_init\_\_.py}
     \item No unused imports (AST-verified)
     \item Conventional commits, clean git history
 \end{itemize}
@@ -701,12 +739,13 @@ Launch: \texttt{streamlit run app.py}
     \item Putting the energy weight in the observation reduces the ablation cost from 21 training runs to one, and the one policy beats the 21 per-weight policies at every weight.
     \item Training across a distribution of materials removes the need for an adaptation step: on a harder alloy the production policy is the best of the four transfer arms zero shot, while a policy trained on the nominal material violates the roughness limit until it is fine tuned.
     \item The receding-horizon controller is a strong, fair baseline using the same physics. It also exposed that the earlier baseline comparison was hollow.
+    \item Initializing the policy from the controller does not make it beat the controller, but it does make it uniform: the reward std over the 100 scenarios falls from 30.0 to 3.4, the tool breakage falls to zero and every part is completed (Table~\ref{tab:controllerinit}).
     \item The test suite catches physics regressions (energy interior minimum, cutting energy speed dependence) and reward regressions (golden-value test).
 \end{enumerate}
 
 \subsection{Limitations}
 \begin{enumerate}
-    \item The learned policy does not outperform the receding-horizon controller on the reward (Table~\ref{tab:baselines}), and the controller is ahead on the physical metrics. The controller re-solves with perfect physics; the policy has to learn the dynamics from experience.
+    \item The learned policy does not outperform the receding-horizon controller on the reward (Table~\ref{tab:baselines}), and the controller is ahead on the physical metrics. The controller re-solves with perfect physics; the policy has to learn the dynamics from experience. Initializing the policy from the controller does not close that gap: the initialized policy is more consistent (reward std 3.4 against 30.0) but slower and more hungry for energy (6.6\% less removal rate and 12.9\% more energy per part against the from-scratch policy), and the difference in mean reward, 199.35 against 198.57, is inside the standard error of the mean of 3.0.
     \item The energy weight ablation uses 150,000 steps per weight against 1,000,000 for the production policy, so the ablation frontier is a lower bound on what a pinned policy can reach and may shift with more training.
     \item The reward charges the energy of a pass, while the reported metric is the energy of a part. A part cut in many shallow passes draws less power per pass but spends more time on the idle machine, so the two can move in opposite directions. Both are reported.
     \item Stochastic tool breakage (1\% rate) introduces variance; the reward penalty could be shaped more carefully.
@@ -717,7 +756,7 @@ Launch: \texttt{streamlit run app.py}
 
 \subsection{Future Work}
 \begin{enumerate}
-    \item \textbf{Controller-initialized RL:} Initialize PPO from the receding-horizon controller's trajectories (behavior cloning) then fine-tune with RL.
+    \item \textbf{Against a restricted controller:} The controller re-solves every pass with the exact state and the exact physics, so it is an oracle that a learned policy cannot match from its observation alone. Restricting the controller's information, or pricing the cycle time explicitly in the reward, would tell whether the remaining gap is an information gap or an optimization gap.
     \item \textbf{Sim-to-real:} Calibrate physics coefficients on real machine data; add sensor noise and delay to the environment.
     \item \textbf{Multi-objective RL:} Replace scalarization with Pareto-conditioned networks or hypervolume maximization.
     \item \textbf{Runtime energy budget:} Drive the production policy with an optimizer that sets $w_2$ from an energy budget. The weight is a query, not a retrain.
@@ -735,12 +774,15 @@ This project demonstrates a complete pipeline for DRL-based CNC milling optimiza
     \item A Gymnasium environment with domain randomization, an always 11-dimensional conditioned observation, and an energy-aware reward whose objective terms are scaled to compete with the shaping terms.
     \item PPO policies trained with proper experimental rigor: Monte Carlo evaluation with confidence intervals, an ablation study mapping the empirical Pareto frontier, and one production policy covering the frontier in a single run.
     \item Strong classical baselines including a receding-horizon controller that re-optimizes at every pass.
+    \item A controller initialization experiment, which records the receding-horizon controller on 2000 episodes, clones its actor into a fresh PPO policy and trains it with the same 1,000,000-step budget. The initialized policy is much more uniform (reward std 3.4 against 30.0 over the 100 scenarios), breaks no tools and completes every part, but it does not beat the controller: the controller removes 38\% more material per minute and finishes in 13.5 s against 32.3 s.
     \item A transfer experiment on a harder alloy, which finds that a policy trained across a distribution of materials needs no adaptation there, while a policy trained on the nominal material violates the roughness limit until it is fine tuned.
     \item An interactive workstation for visualization, G-code generation, and multi-controller comparison.
     \item Full reproducibility: every result table is generated from committed artifacts by a single script.
 \end{enumerate}
 
 The key scientific finding is that \textbf{the speed-dependent specific cutting energy creates a genuine energy/throughput trade-off}, and a DRL agent can learn to navigate it pass-by-pass while respecting surface quality and tool life constraints. Across the measured frontier the removal rate falls 8.4\% while the energy of the part falls 9.5\%, a symmetric trade-off, and the spindle speed falls with the energy weight, which is the mechanism the model predicts. One policy with the weight in its observation makes the whole trade-off accessible at runtime, and it beats the 21 per-weight policies at every point of it.
+
+The result on the classical side is the opposite of an advantage: the receding-horizon controller still removes more material per minute and finishes sooner than the learned policy, and initializing the policy from it does not change that. What the initialization does buy is consistency, and it buys it with throughput and energy. The claim this work supports is therefore that the reinforcement learning agent navigates the energy/throughput trade-off within a fixed constraint set, not that it beats a classical controller that re-optimizes with perfect physics.
 
 All code, data, and results are available in the repository at \texttt{G:/My Drive/IITM/AI in Mfg}.
 
@@ -773,36 +815,45 @@ All commands run from the project root \texttt{G:/My Drive/IITM/AI in Mfg}:
 pytest tests/ -v
 
 # Train the production policy (1M steps, scenario and weight drawn per episode)
-python agent/train_rl.py --steps 1000000 --seed 42 --randomize --randomize-weight
+python -m experiments.train_rl --steps 1000000 --seed 42 --randomize --randomize-weight
+
+# Train the production policy with the energy weight pinned
+python -m experiments.train_rl --steps 150000 --seed 42 --randomize --w2 0.6
 
 # Monte Carlo sweep of the production policy (100 scenarios)
-python agent/evaluate.py --scenarios 100
+python -m experiments.evaluate --scenarios 100
 
-# Runtime weight sweep of the same policy, and the comparison with the per-weight policies
-python agent/evaluate.py --sweep-weight --scenarios 100 --compare
+# Runtime weight sweep of the same policy (100 scenarios)
+python -m experiments.evaluate --sweep-weight --scenarios 100
+
+# Compare the saved weight sweep against the per-weight policies
+python -m experiments.evaluate --compare-only
 
 # Ablation study (7 weights x 3 seeds, 150k steps each, weight pinned)
-python agent/train_rl_ablation.py --steps 150000 --scenarios 50 --slots 7
+python -m experiments.train_rl_ablation --steps 150000 --scenarios 50 --slots 7
 
 # Classical baselines
-python baselines/run_baselines.py
+python -m experiments.run_baselines
 
-# Transfer experiment
-python agent/transfer_experiment.py
+# Transfer experiment (300k source steps, 50k adaptation steps)
+python -m experiments.transfer_experiment 300000 50000
+
+# Controller initialization experiment (1M steps, 2000 controller episodes)
+python -m experiments.controller_experiment 1000000 2000
 
 # Regenerate all plots
-python viz/plot_eval.py
-python viz/plot_results.py
-python viz/plot_baselines_comparison.py
+python -m viz.plot_results
+python -m viz.plot_eval
+python -m viz.plot_baselines_comparison
 
 # Regenerate RESULTS.md from artifacts
-python agent/summarize_results.py
+python -m experiments.summarize_results
 
 # Launch interactive workstation
 streamlit run app.py
 
 # Full pipeline (sequential)
-python agent/run_pipeline.py --steps 1000000 --ablation_steps 150000 --eval_scenarios 100 --scenarios 50 --slots 7
+python -m experiments.run_pipeline --steps 1000000 --ablation_steps 150000
 \end{lstlisting}
 
 % ========================================================================
@@ -811,51 +862,61 @@ python agent/run_pipeline.py --steps 1000000 --ablation_steps 150000 --eval_scen
 \section{Project Structure}
 \label{app:structure}
 
-The project holds one Gymnasium registration, \texttt{MillingDTEnv-v1} (exported as \texttt{env.ENV\_ID}), one training script and one evaluation script. There is no separate conditioned environment, no separate conditioned training script and no \texttt{results/conditioned/} directory.
+The project holds one Gymnasium registration, \texttt{MillingDTEnv-v1}, one training script and one evaluation script. The registration is exported as the constant \texttt{MillingDT.env.\allowbreak ENV\_ID}. There is no separate conditioned environment, no separate conditioned training script and no \texttt{results/conditioned/} directory. The reusable code lives in the \texttt{MillingDT/} package, the entry points in \texttt{experiments/}, and every training configuration keeps its own directory under \texttt{results/}.
 
 \begin{lstlisting}[style=bash, caption=Project directory tree]
 G:\My Drive\IITM\AI in Mfg
-|-- agent/
-|   |-- train_rl.py                 # The one training script (--randomize, --randomize-weight, --w2)
-|   |-- train_rl_ablation.py        # Energy weight ablation (one policy per weight, pinned)
-|   |-- evaluate.py                 # Monte Carlo sweep, runtime weight sweep, comparison
-|   |-- transfer_experiment.py      # Cross-material transfer
-|   |-- run_experiments.py          # Parallel training supervisor
-|   |-- run_pipeline.py             # Full pipeline orchestrator
-|   |-- summarize_results.py        # Regenerates RESULTS.md
-|   `-- __init__.py
-|-- baselines/
-|   |-- run_baselines.py            # 5 classical baselines
-|   |-- receding_horizon.py         # Receding-horizon controller
-|   `-- __init__.py
-|-- config/
-|   |-- physics_constants.py        # All constants with citations
-|   |-- physics.py                  # Shared physics equations
-|   |-- scenarios.py                # Randomized scenario sampling
-|   |-- paths.py                    # Centralized paths
-|   `-- __init__.py
-|-- env/
-|   |-- milling_env.py              # Gymnasium environment (always 11-dimensional observation)
-|   `-- __init__.py                 # Exports ENV_ID (the one registration)
-|-- sim/
-|   |-- machining_sim.py            # Stock depletion, micro-topography, G-code
+|-- MillingDT/                      # The library package
+|   |-- __init__.py                  # Exports ENV_ID, ALL_CONSTANTS
+|   |-- config/
+|   |   |-- __init__.py              # Loads the two YAML files
+|   |   |-- physics_constants.yaml   # The calibrated constants
+|   |   |-- paths.yaml               # Where the runs are kept
+|   |   |-- physics.py               # Shared physics equations
+|   |   `-- scenarios.py             # Randomized scenario sampling
+|   |-- env/
+|   |   |-- milling_env.py           # Gymnasium environment (11-D observation)
+|   |   `-- __init__.py              # Exports ENV_ID (one registration)
+|   |-- agent/
+|   |   |-- controller_init.py       # Behavior clone of the controller
+|   |   `-- __init__.py
+|   |-- baselines/
+|   |   |-- receding_horizon.py      # Receding-horizon controller
+|   |   `-- __init__.py
+|   |-- sim/
+|   |   |-- machining_sim.py         # Stock depletion, topography, G-code
+|   |   `-- __init__.py
+|   `-- utils/
+|       |-- seeding.py               # Global deterministic seeding
+|       `-- __init__.py
+|-- experiments/                     # The entry points
+|   |-- train_rl.py                  # The one training script
+|   |-- train_rl_ablation.py         # Energy weight ablation, pinned
+|   |-- evaluate.py                  # Monte Carlo sweep, weight sweep
+|   |-- run_baselines.py             # 5 classical baselines
+|   |-- transfer_experiment.py       # Cross-material transfer
+|   |-- controller_experiment.py     # Controller initialization, 3 arms
+|   |-- run_experiments.py           # Parallel training supervisor
+|   |-- run_pipeline.py              # Full pipeline orchestrator
+|   |-- summarize_results.py         # Regenerates RESULTS.md
 |   `-- __init__.py
 |-- viz/
-|   |-- plotting_utils.py           # Shared plotting functions
-|   |-- plot_eval.py                # Monte Carlo distributions
-|   |-- plot_results.py             # Training curves
+|   |-- plotting_utils.py            # Shared plotting functions
+|   |-- plot_eval.py                 # Monte Carlo distributions
+|   |-- plot_results.py              # Training curves
 |   |-- plot_baselines_comparison.py # Baseline comparison charts
 |   `-- __init__.py
-|-- utils/
-|   `-- seeding.py                  # Global deterministic seeding
 |-- tests/
-|   |-- test_env.py                 # 24 environment and reward tests
-|   |-- test_training.py            # 2 training tests
-|   |-- test_progress_callback.py   # 3 callback tests
-|   `-- test_integration.py         # 5 integration tests
-|-- results/                        # Committed artifacts (CSVs, plots)
-|-- models/                         # Trained models (gitignored, regenerated)
-|-- app.py                          # Streamlit workstation
+|   |-- test_env.py                  # Environment and reward tests
+|   |-- test_training.py             # Training tests
+|   |-- test_progress_callback.py    # Callback tests
+|   `-- test_integration.py          # Integration tests
+|-- results/                         # One directory per configuration
+|   |-- run_<config>/                # models/, log/, metrics/, plots/
+|   |-- evaluation/                  # The tables that compare runs
+|   |-- plots/                       # The cross-run figures
+|   `-- RESULTS.md
+|-- app.py                           # Streamlit workstation
 |-- AUDIT_REPORT.md                 # Code audit with dispositions
 |-- PROJECT.md                      # Consolidated documentation
 |-- README.md                       # Project overview

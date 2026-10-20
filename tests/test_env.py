@@ -5,13 +5,13 @@ import sys
 from pathlib import Path
 
 # Add project root to path
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(PROJECT_ROOT))
 
-import env
-from env.milling_env import OBSERVATION_SIZE, PHYSICS_FEATURES
-from config.physics_constants import ALL_CONSTANTS, MACHINE_CONSTRAINTS, ENGINEERING_CONSTRAINTS
-from config.physics import cutting_speed
+from MillingDT import env
+from MillingDT.env.milling_env import OBSERVATION_SIZE, PHYSICS_FEATURES
+from MillingDT.config import ALL_CONSTANTS, MACHINE_CONSTRAINTS, ENGINEERING_CONSTRAINTS
+from MillingDT.config.physics import cutting_speed
 
 def test_action_clipping():
     """Test that out-of-bounds actions are correctly clipped and handled."""
@@ -300,7 +300,7 @@ def test_cutting_energy_grows_with_the_cutting_speed():
     throughput: the cutting term of the part energy rises with the speed
     while the idle term falls.
     """
-    from config.physics import specific_cutting_energy
+    from MillingDT.config.physics import specific_cutting_energy
 
     D = ALL_CONSTANTS['workpiece']['D']
     slow = specific_cutting_energy(cutting_speed(D, 2000), D)
@@ -354,7 +354,7 @@ def test_environment_uses_the_shared_physics():
     The baselines import the same functions from config/physics.py, so this
     is what keeps the environment and the baselines from drifting apart.
     """
-    from config.physics import pass_energy
+    from MillingDT.config.physics import pass_energy
 
     env_inst = env.MillingDTEnv()
     env_inst.reset(seed=1)
@@ -384,7 +384,7 @@ def test_reward_matches_an_independent_calculation(w2):
     The energy weight is pinned, and the throughput weight is what is left
     of it, so the same check holds for every point of the trade-off.
     """
-    from config.physics import material_removal_rate, pass_energy, cutting_speed
+    from MillingDT.config.physics import material_removal_rate, pass_energy, cutting_speed
 
     w1 = 1.0 - w2
     env_inst = env.MillingDTEnv(w2=w2)
@@ -441,8 +441,8 @@ def test_reward_penalizes_a_finishing_pass_out_of_spec():
 
 def test_sweep_and_environment_share_the_scenario_tables():
     """The sweep scenarios and the training scenarios come from one source."""
-    from config.scenarios import generate_random_configs, sample_scenario
-    from config.physics_constants import SCENARIO_RANGES
+    from MillingDT.config.scenarios import generate_random_configs, sample_scenario
+    from MillingDT.config import SCENARIO_RANGES
 
     configs = generate_random_configs(5, seed=42)
     assert len(configs) == 5

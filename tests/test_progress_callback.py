@@ -4,10 +4,10 @@ from pathlib import Path
 import pytest
 
 # Add project root to path
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(PROJECT_ROOT))
 
-from agent.train_rl import ProgressQueueCallback
+from experiments.train_rl import ProgressQueueCallback
 
 
 class _RecordingQueue:

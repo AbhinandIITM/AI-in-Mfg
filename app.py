@@ -23,15 +23,14 @@ import sys
 PROJECT_ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
-from sim.machining_sim import (
+from MillingDT.sim.machining_sim import (
     load_ppo_policy,
     run_single_simulation,
     generate_surface_micro_profile,
     generate_cnc_gcode
 )
-from agent.evaluate import WEIGHTS
-from config.paths import PRIMARY_MODEL_DIR
-from config.physics_constants import ALL_CONSTANTS, ENGINEERING_CONSTRAINTS
+from experiments.evaluate import WEIGHTS
+from MillingDT.config import ALL_CONSTANTS, ENGINEERING_CONSTRAINTS, PRIMARY_MODEL_DIR
 
 # -----------------------------------------------------------------------------
 # Page Configuration & Industrial Styling

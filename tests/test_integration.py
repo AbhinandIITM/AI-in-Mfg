@@ -7,12 +7,12 @@ import numpy as np
 import pandas as pd
 import pytest
 
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(PROJECT_ROOT))
 
-import env
-from env import ENV_ID
-from utils.seeding import set_seed
+from MillingDT import env
+from MillingDT.env import ENV_ID
+from MillingDT.utils.seeding import set_seed
 
 
 def test_training_to_evaluation_roundtrip(tmp_path):
@@ -27,8 +27,8 @@ def test_training_to_evaluation_roundtrip(tmp_path):
     from stable_baselines3.common.env_util import make_vec_env
     from stable_baselines3.common.vec_env import DummyVecEnv, VecNormalize
 
-    from agent.evaluate import evaluate_policy_on_scenarios
-    from config.scenarios import generate_random_configs
+    from experiments.evaluate import evaluate_policy_on_scenarios
+    from MillingDT.config.scenarios import generate_random_configs
 
     set_seed(7)
     train_env = make_vec_env(ENV_ID, n_envs=2, seed=7, env_kwargs={"randomize": True})
@@ -103,8 +103,8 @@ def test_one_policy_answers_a_pinned_weight(tmp_path):
     from stable_baselines3.common.env_util import make_vec_env
     from stable_baselines3.common.vec_env import VecNormalize
 
-    from agent.evaluate import evaluate_policy_on_scenarios
-    from config.scenarios import generate_random_configs
+    from experiments.evaluate import evaluate_policy_on_scenarios
+    from MillingDT.config.scenarios import generate_random_configs
 
     set_seed(9)
     train_env = make_vec_env(ENV_ID, n_envs=2, seed=9,
@@ -141,11 +141,11 @@ def test_one_policy_answers_a_pinned_weight(tmp_path):
 
 def test_baseline_comparison_writes_its_artifact():
     """The baseline script must produce a table with a row per policy."""
-    from baselines.run_baselines import evaluate_all_baselines
+    from experiments.run_baselines import evaluate_all_baselines
+    from MillingDT.config import EVALUATION_DIR
 
     # Two episodes per policy is enough to check the plumbing.
-    results_dir = PROJECT_ROOT / "results"
-    original = (results_dir / "baseline_results_v5.csv")
+    original = EVALUATION_DIR / "baselines.csv"
     backup = original.read_bytes() if original.exists() else None
     try:
         evaluate_all_baselines()

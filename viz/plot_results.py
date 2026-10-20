@@ -4,12 +4,12 @@ viz/plot_results.py
 Plots the training curves from the progress.csv files that
 Stable-Baselines3 writes during training.
 
-Every run of the project writes its curve to results/curves/<run_name>:
+Every run of the project writes its curve to results/run_<run_name>/log:
   PPO_seed42                   the production policy, the weight and the
                                scenario drawn per episode
   ablation_w2_<w2>_seed<seed>  the ablation grid, one policy per energy
                                weight with that weight pinned
-  transfer_<arm>               the transfer experiment
+  transfer_<arm>_seed42        the transfer experiment
 """
 
 import sys
@@ -22,7 +22,7 @@ import matplotlib.pyplot as plt
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT_ROOT))
 
-from config.paths import CURVES_DIR, PLOTS_DIR
+from MillingDT.config import PLOTS_DIR, RESULTS_DIR, run_dir, run_log
 from viz.plotting_utils import set_style
 
 # The runs that are labelled by name, and how they are labelled.
@@ -43,9 +43,9 @@ STEP_COLUMN = "time/total_timesteps"
 REWARD_COLUMN = "rollout/ep_rew_mean"
 
 
-def read_curve(run_dir):
+def read_curve(log_dir):
     """The reward curve of one run, or None when it has nothing to plot."""
-    curve_path = run_dir / "progress.csv"
+    curve_path = log_dir / "progress.csv"
     if not curve_path.exists():
         return None
 
@@ -96,15 +96,14 @@ def plot_training_curves():
 
     production, ablation, transfer, skipped = [], [], [], []
 
-    for run_dir in sorted(CURVES_DIR.iterdir() if CURVES_DIR.exists() else []):
-        if not run_dir.is_dir():
+    for run_path in sorted(RESULTS_DIR.glob("run_*")):
+        if not run_path.is_dir():
             continue
-        df = read_curve(run_dir)
+        name = run_path.name[len("run_"):]
+        df = read_curve(run_log(name))
         if df is None:
-            skipped.append(run_dir.name)
+            skipped.append(name)
             continue
-
-        name = run_dir.name
         if name.startswith(ABLATION_PREFIX):
             ablation.append((name, df))
         elif name.startswith("transfer"):
@@ -145,8 +144,8 @@ def plot_training_curves():
     plotted = len(production) + len(transfer) + len(ablation)
     print(f"Plot saved to {plot_path} ({plotted} runs)")
     if not production:
-        print("No production policy curve yet (results/curves/PPO_seed42). "
-              "agent/train_rl.py writes it.")
+        print(f"No production policy curve yet ({run_dir('PPO_seed42')}). "
+              "experiments/train_rl.py writes it.")
     if skipped:
         print(f"Runs without a usable curve, not plotted: {', '.join(skipped)}")
 

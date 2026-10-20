@@ -1,42 +1,33 @@
-import os
 import sys
-import glob
 from pathlib import Path
 import pandas as pd
 
 # Add project root to sys.path
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(PROJECT_ROOT))
 
 from viz.plotting_utils import set_style, plot_kde_distribution, plot_failure_landscape
-from config.physics_constants import ENGINEERING_CONSTRAINTS
+from MillingDT.config import ENGINEERING_CONSTRAINTS, PRIMARY_RUN, run_metrics, run_plots
 
 def plot_mc_results():
-    plots_dir = PROJECT_ROOT / "results" / "plots"
+    plots_dir = run_plots(PRIMARY_RUN)
     plots_dir.mkdir(parents=True, exist_ok=True)
-    mc_dir = PROJECT_ROOT / "results" / "monte_carlo"
+    mc_path = run_metrics(PRIMARY_RUN) / "monte_carlo.csv"
 
-    # Only load PPO episode/scenario CSVs, ignore summary files
-    files = [f for f in glob.glob(str(mc_dir / "*.csv")) if "summary" not in os.path.basename(f).lower() and "ppo" in os.path.basename(f).lower()]
-
-    if not files:
-        print(f"No PPO Monte Carlo CSVs found in {mc_dir}")
+    # The episode table of the primary run. The summary table beside it
+    # holds other rows and is not plotted here.
+    if not mc_path.exists():
+        print(f"No Monte Carlo table found at {mc_path}")
         return
 
-    data = []
-    for f in files:
-        df = pd.read_csv(f)
-        df['algo'] = "PPO"
+    df_all = pd.read_csv(mc_path)
+    df_all['algo'] = "PPO"
 
-        # Normalize column names between v3 (Ra_um, VB_mm) and v4 (Ra_max, VB_max)
-        if 'Ra_max' in df.columns and 'Ra_um' not in df.columns:
-            df['Ra_um'] = df['Ra_max']
-        if 'VB_max' in df.columns and 'VB_mm' not in df.columns:
-            df['VB_mm'] = df['VB_max']
-
-        data.append(df)
-
-    df_all = pd.concat(data, ignore_index=True)
+    # Normalize column names between v3 (Ra_um, VB_mm) and v4 (Ra_max, VB_max)
+    if 'Ra_max' in df_all.columns and 'Ra_um' not in df_all.columns:
+        df_all['Ra_um'] = df_all['Ra_max']
+    if 'VB_max' in df_all.columns and 'VB_mm' not in df_all.columns:
+        df_all['VB_mm'] = df_all['VB_max']
 
     set_style()
 

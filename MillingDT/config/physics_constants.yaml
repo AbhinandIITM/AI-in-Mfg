@@ -1,0 +1,82 @@
+# Physical model of the digital twin.
+#
+# Every value the environment, the baselines, the controller and the dashboard
+# use comes from this file. The equations that consume them live in
+# config/physics.py, and the paths live in config/paths.yaml.
+
+# Tool wear, Taylor-expanded model
+tool_wear:
+  C_wear: 1.1e-4        # Wear coefficient
+  alpha: 0.3            # Cutting speed exponent
+  beta: 0.2             # Feed rate exponent
+  gamma_wear: 0.15       # Depth of cut exponent
+
+# Surface roughness, empirical regression
+surface_roughness:
+  k1: 12.5              # Feed rate coefficient
+  k2: 0.8               # Tool wear coefficient
+  k3: 0.5               # Cutting speed coefficient
+
+# Energy consumption, specific cutting energy
+energy:
+  P_idle: 500           # Idle/spindle motor power [W]
+  k_c: 2.5              # Specific cutting energy at the reference condition [W min/mm3]
+  # Exponent of the speed dependence of the specific cutting energy. The
+  # energy per unit volume removed rises as the spindle speeds up, so a
+  # faster cut costs more energy per part. Zero restores the speed
+  # independent model, in which the energy objective is a duplicate of the
+  # throughput objective.
+  k_c_speed_exponent: 0.6
+
+# Machine constraints
+machine:
+  n_min: 2000           # Spindle speed min [RPM]
+  n_max: 8000           # Spindle speed max [RPM]
+  f_r_min: 0.05         # Feed rate min [mm/r]
+  f_r_max: 0.35         # Feed rate max [mm/r]
+  a_p_min: 0.1          # Depth of cut min [mm]
+  a_p_max: 2.5          # Depth of cut max [mm]
+
+# Engineering constraints
+engineering:
+  VB_max: 0.3           # Tool wear limit [mm]
+  Ra_max: 1.6           # Surface roughness limit [um]
+  safety_factor: 0.85   # Safety margin for the reward bounds
+
+# Workpiece parameters
+workpiece:
+  D: 50                 # Tool/workpiece diameter [mm]
+  L_cut: 100            # Cutting length [mm]
+  kappa_total: 5.0      # Total machining allowance [mm]
+
+# Batch processing
+batch:
+  batch_size: 50        # Parts per batch
+
+# Reward weighting
+reward:
+  w1: 0.6               # MRR weight (throughput)
+  w2: 0.4               # Energy weight (green manufacturing, tunable)
+
+# The reference cutting condition. A pass cut under it draws the calibrated
+# specific cutting energy k_c, and it is the anchor of the reward scales.
+reference_cutting_condition:
+  n: 5000                # Spindle speed [RPM]
+  f_r: 0.2               # Feed per revolution [mm/r]
+  a_p: 2.5               # Depth of cut [mm]
+
+# The randomized machining scenarios. The environment samples the training
+# scenarios from these tables and the Monte Carlo sweep samples the
+# evaluation scenarios from the same ones, so the policy is measured on the
+# distribution it was trained on.
+scenarios:
+  ranges:                # Absolute ranges of the workpiece and tool geometry
+    kappa_total: [2.0, 15.0]    # Stock allowance [mm]
+    D: [40.0, 150.0]            # Tool/workpiece diameter [mm]
+    L_cut: [50.0, 200.0]        # Cutting length [mm]
+  bands:                 # Multiplicative bands around the nominal coefficients
+    C_wear: [0.6, 1.4]
+    k1: [0.8, 1.2]
+    k2: [0.8, 1.2]
+    k3: [0.8, 1.2]
+  initial_wear: [0.0, 0.8]      # Initial flank wear, as a fraction of VB_max

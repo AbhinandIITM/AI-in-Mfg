@@ -4,7 +4,7 @@ viz/plot_baselines_comparison.py
 Generates publication-quality comparison charts:
 1. PPO vs Non-RL Baselines (Constant High, Constant Safe, Rule-Based, NSGA-II)
    across MRR, Total Energy, and Cumulative Reward.
-2. Exports to results/plots/baseline_vs_ppo_comparison.png
+2. Exports to experiments/plots/baseline_vs_ppo_comparison.png
 """
 
 import sys
@@ -14,14 +14,13 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
 
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(PROJECT_ROOT))
 
 from viz.plotting_utils import set_style
-from config.paths import PRIMARY_MODEL_DIR
-from config.physics_constants import ALL_CONSTANTS
-import env
-from env.milling_env import MillingDTEnv
+from MillingDT.config import ALL_CONSTANTS, EVALUATION_DIR, PLOTS_DIR, PRIMARY_MODEL_DIR, PRIMARY_RUN
+import MillingDT.env
+from MillingDT.env.milling_env import MillingDTEnv
 from stable_baselines3 import PPO
 from stable_baselines3.common.vec_env import DummyVecEnv, VecNormalize
 
@@ -33,7 +32,9 @@ QUERY_WEIGHT = float(ALL_CONSTANTS['reward']['w2'])
 def collect_ppo_baseline_eval(n_episodes=50, seed=42):
     model_dir = PRIMARY_MODEL_DIR
     if not (model_dir / "final_model.zip").exists():
-        raise FileNotFoundError("PPO model not found at models/PPO_seed42")
+        raise FileNotFoundError(
+            f"PPO model not found at experiments/run_{PRIMARY_RUN}/models. "
+            "Train the primary run first.")
 
     model = PPO.load(str(model_dir / "final_model.zip"), device="cpu")
     rows = []
@@ -85,10 +86,10 @@ def collect_ppo_baseline_eval(n_episodes=50, seed=42):
 
 def plot_comparison():
     set_style()
-    baselines_path = PROJECT_ROOT / "results" / "baseline_results_v5.csv"
+    baselines_path = EVALUATION_DIR / "baselines.csv"
     if not baselines_path.exists():
         print("Running run_baselines.py first...")
-        from baselines.run_baselines import evaluate_all_baselines
+        from experiments.run_baselines import evaluate_all_baselines
         evaluate_all_baselines()
 
     df_base = pd.read_csv(baselines_path)
@@ -159,7 +160,8 @@ def plot_comparison():
                  fontsize=15, fontweight="bold", y=1.06)
     plt.tight_layout()
 
-    out_plot = PROJECT_ROOT / "results" / "plots" / "baseline_vs_ppo_comparison.png"
+    out_plot = PLOTS_DIR / "baseline_vs_ppo_comparison.png"
+    out_plot.parent.mkdir(parents=True, exist_ok=True)
     plt.savefig(out_plot, dpi=300, bbox_inches="tight")
     plt.close()
     print(f"Comparison plot saved to {out_plot}")

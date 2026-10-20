@@ -1,9 +1,10 @@
 # Code Audit Report: Digital Twin CNC Milling
 
-**Date:** 2026-10-20
+**Date:** 2026-10-21
 **Branch:** main
 **Audited revision:** `20d9e83` (the line references below are against that revision)
-**Disposition revision:** `01f5e35` and the commits that follow it
+**Disposition revision:** the commits that follow `01f5e35`, including the
+consolidation onto the `MillingDT` package and the restructure of the run tree
 **Project:** Digital Twin-Driven DRL for Energy-Aware CNC Milling Parameter Optimization (ME6324 - AI in Manufacturing, IIT Madras)
 
 ---
@@ -22,7 +23,7 @@ regenerated on the strength of those two findings, because there was nothing
 to regenerate for.
 
 The findings that do hold were fixed, and the fixes are listed against each
-item. The test suite grew from 21 tests to 26.
+item. The test suite grew from 21 tests to 34.
 
 | | Count |
 | :--- | ---: |
@@ -38,12 +39,12 @@ item. The test suite grew from 21 tests to 26.
 
 | Area | Assessment | Details |
 |------|------------|---------|
-| **Modularity** | ✅ Excellent | Clean separation: `config/` (physics, scenarios, constants, paths), `env/` (Gymnasium env), `agent/` (training/eval), `baselines/`, `viz/`, `sim/`, `utils/` |
-| **Physics Centralization** | ✅ Excellent | All equations in `config/physics.py` — used by env, baselines, sim, eval. No duplication. |
-| **Constants Management** | ✅ Excellent | Single source of truth in `config/physics_constants.py` with literature citations |
-| **Scenario Management** | ✅ Excellent | Shared `config/scenarios.py` for training and Monte Carlo evaluation — ensures no drift |
-| **Experiment Orchestration** | ✅ Good | `run_pipeline.py` sequences the full pipeline; `run_experiments.py` handles parallel training with heartbeat monitoring |
-| **Result Reproducibility** | ✅ Good | `summarize_results.py` rebuilds `RESULTS.md` from committed artifacts; seeding via `utils/seeding.py` |
+| **Modularity** | ✅ Excellent | Clean separation: the `MillingDT` package holds the library (`env/`, `config/`, `agent/`, `baselines/`, `sim/`, `utils/`), `experiments/` holds the entry points, `viz/` holds the figures and `results/` holds the runs |
+| **Physics Centralization** | ✅ Excellent | All equations in `MillingDT/config/physics.py`, used by env, baselines, sim, eval. No duplication. |
+| **Constants Management** | ✅ Excellent | Single source of truth in `MillingDT/config/physics_constants.yaml`, loaded by `MillingDT/config/__init__.py`, with the literature citations |
+| **Scenario Management** | ✅ Excellent | Shared `MillingDT/config/scenarios.py` for training and Monte Carlo evaluation, ensures no drift |
+| **Experiment Orchestration** | ✅ Good | `experiments/run_pipeline.py` sequences the full pipeline; `experiments/run_experiments.py` handles parallel training with heartbeat monitoring |
+| **Result Reproducibility** | ✅ Good | `experiments/summarize_results.py` rebuilds `results/RESULTS.md` from the committed artifacts; seeding via `MillingDT/utils/seeding.py` |
 
 ---
 
@@ -98,7 +99,7 @@ action is clipped to `[-1, 1]` before the physical parameters are computed,
 so `f_r` cannot reach zero and `t_cut = L_cut / (n f_r)` stays finite. The
 report itself notes this and asks for documentation.
 
-**Fixed:** `env/milling_env.py` now states that the action space is the
+**Fixed:** `MillingDT/env/milling_env.py` now states that the action space is the
 normalized box, that the policy output is unbounded, and that the clip is
 the guard that keeps the physics inside the machine envelope.
 
@@ -157,7 +158,7 @@ is unchanged.
 The report's own verification confirmed the behaviour is correct and asked for
 documentation.
 
-**Fixed:** `env/milling_env.py` now states that the breakage draw comes from
+**Fixed:** `MillingDT/env/milling_env.py` now states that the breakage draw comes from
 the environment's own generator, which `reset(seed=...)` seeds, so a scenario
 replayed with the same seed breaks in the same place.
 
@@ -167,30 +168,33 @@ replayed with the same seed breaks in the same place.
 
 ### 3.1 Duplicate Function Definitions — **FIXED**
 
-The `generate_random_configs` wrapper in `agent/evaluate.py` was real: it
-re-exported the function from `config/scenarios.py` under the same name, and
-the same function was imported twice in one file.
+The `generate_random_configs` wrapper in `experiments/evaluate.py` was real: it
+re-exported the function from `MillingDT/config/scenarios.py` under the same
+name, and the same function was imported twice in one file.
 
-**Fixed:** the wrapper is gone. `agent/evaluate.py` and
-`agent/train_rl_ablation.py` import it from `config/scenarios.py` directly.
-`agent/transfer_experiment.py` already did.
+**Fixed:** the wrapper is gone. `experiments/evaluate.py` and
+`experiments/train_rl_ablation.py` import it from
+`MillingDT/config/scenarios.py` directly. `experiments/transfer_experiment.py`
+already did.
 
 ### 3.2 Hardcoded Paths & Magic Strings — **FIXED**
 
-**Fixed:** there is now one environment identifier, `env.ENV_ID`, exported from
-`env/__init__.py` and used by the registration itself. The model and result
-directories are in `config/paths.py` (`MODELS_DIR`, `RESULTS_DIR`, `PLOTS_DIR`,
-`CURVES_DIR`, `WORKERS_DIR`, `PRIMARY_MODEL_DIR`, `WEIGHT_SWEEP_DIR`,
-`ABLATION_DIR`), and the files that repeated the literals now import them. The
-consolidation that followed removed the second registration, so the two
-identifier constants this finding asked for are now one.
+**Fixed:** there is now one environment identifier, `MillingDT.env.ENV_ID`,
+exported from `MillingDT/env/__init__.py` and used by the registration
+itself. The paths are in `MillingDT/config/paths.yaml`, loaded by
+`MillingDT/config/__init__.py`, which exposes `RESULTS_DIR`, `EVALUATION_DIR`,
+`PLOTS_DIR`, `WORKERS_DIR` and the `run_dir`, `run_models`, `run_log`,
+`run_plots`, `run_metrics` helpers. Every run writes into its own directory,
+`results/run_<configuration>/`, and the files that repeated the literals now
+import them. The consolidation that followed removed the second registration,
+so the two identifier constants this finding asked for are now one.
 
 ### 3.3 Training Callback Redundancy — **NO CHANGE, AGREED**
 
 The recommendation is to keep the heartbeat callback, and the report says so.
 It is kept, and the reason is now in its docstring: the queue heartbeat is
-what tells `run_experiments.py` that a worker is alive, and a dropped
-heartbeat is indistinguishable from a hung one.
+what tells `experiments/run_experiments.py` that a worker is alive, and a
+dropped heartbeat is indistinguishable from a hung one.
 
 ### 3.4 Inconsistent Error Handling in `run_experiments.py` — **PARTLY FIXED**
 
@@ -199,7 +203,10 @@ opened, the worker died before it trained anything, and the supervisor saw a
 worker that exited without a heartbeat.
 
 **Fixed:** the redirection is guarded. A worker that cannot open its log file
-reports it and trains anyway, instead of dying silently.
+reports it and trains anyway, instead of dying silently. A worker that fails
+for any other reason now exits with a non-zero code, and the supervisor checks
+that the policy the job was supposed to train is on disk before it calls the
+job a success.
 
 **Still open:** the report's larger point, that `run_pipeline.py` and
 `run_experiments.py` are two parallel execution strategies. They are, and
@@ -211,15 +218,15 @@ The list does not hold up. Every import named is used:
 
 | Import | Used at |
 | :--- | :--- |
-| `time` in `agent/train_rl.py` | the heartbeat timestamp |
-| `configure` in `agent/train_rl.py` | the CSV logger for the training curve |
-| `stats` in `agent/evaluate.py` | `stats.t.ppf` and `stats.norm.ppf` in `compute_statistics` |
-| `Any` in `env/milling_env.py` | the type hints of `_apply_scenario` and `reset` |
-| `ABLATION_WEIGHTS` in `sim/machining_sim.py` | snapping the requested energy weight to a trained one |
-| `env` in `viz/plot_baselines_comparison.py` | the registration side effect |
+| `time` in `experiments/train_rl.py` | the heartbeat timestamp |
+| `configure` in `experiments/train_rl.py` | the CSV logger for the training curve |
+| `stats` in `experiments/evaluate.py` | `stats.t.ppf` and `stats.norm.ppf` in `compute_statistics` |
+| `Any` in `MillingDT/env/milling_env.py` | the type hints of `_apply_scenario` and `reset` |
+| `ABLATION_WEIGHTS` in `MillingDT/sim/machining_sim.py` | snapping the requested energy weight to a trained one |
+| `MillingDT.env` in `viz/plot_baselines_comparison.py` | the registration side effect |
 
-**Fixed:** `typing.Tuple` in `env/milling_env.py` was genuinely unused and is
-gone. An AST scan over the project now reports no unused imports.
+**Fixed:** `typing.Tuple` in `MillingDT/env/milling_env.py` was genuinely
+unused and is gone.
 
 ---
 
@@ -232,7 +239,7 @@ gone. An AST scan over the project now reports no unused imports.
 | Test | What it covers |
 | :--- | :--- |
 | `test_training_to_evaluation_roundtrip` | Train, save the policy and its normalization statistics, load them again, roll out over randomized scenarios and check the metrics are sane |
-| `test_conditioned_environment_observation_carries_the_context` | The conditioned registration exposes the weight and the material context, normalized |
+| `test_registered_environment_observation_carries_the_context` | The single registration exposes the weight and the material context, normalized |
 | `test_baseline_comparison_writes_its_artifact` | The baseline script produces a row per policy and restores the committed artifact afterwards |
 
 **Still open:** the ablation study has no end-to-end test. Running one weight
@@ -275,7 +282,7 @@ at calls inside the cached helper.
 
 ### 5.2 Hardcoded Model Path — **FIXED**
 
-**Fixed:** the default model directory is `config.paths.PRIMARY_MODEL_DIR`,
+**Fixed:** the default model directory is `MillingDT.config.PRIMARY_MODEL_DIR`,
 and the parameter was already there for the callers that need a different
 one.
 
@@ -321,8 +328,8 @@ to 65.8 kJ, a fall of 9.5%. The trade-off is symmetric now, which is what a
 real Pareto frontier looks like. The document carries the new numbers.
 
 **Status:** no change needed. `results/RESULTS.md` is regenerated from the
-committed CSVs by `python agent/summarize_results.py`, and the documentation
-quotes those tables.
+committed CSVs by `python -m experiments.summarize_results`, and the
+documentation quotes those tables.
 
 ---
 
@@ -395,12 +402,20 @@ No code paths allow bypassing these constraints.
 1. **The one open item:** the two parallel execution strategies. Either merge
    them or document why both exist, in the same way the heartbeat callback
    now documents why it exists.
-2. **The learned policy still does not beat the classical controller.** On
-   the same 50 episodes the policy scores 204.1 and the controller 203.5, and
-   the controller is ahead on the removal rate and the cycle time. The next
-   experiment is to start the policy from the controller and fine-tune from
-   there. This is a finding about the work, not about the code, and it is
-   recorded in `README.md` and `PROJECT.md`.
+2. **The learned policy still does not beat the classical controller.** The
+   question that was open at the last revision, whether starting the policy
+   from the controller and fine-tuning from there would beat the expert, has
+   been measured and the answer is no. On the same 100 randomized scenarios at
+   the same energy weight, the controller scores 187.96 with a reward spread
+   of 65.92, the policy trained from scratch scores 198.57 with a spread of
+   30.03, and the policy initialized from the controller scores 199.35 with a
+   spread of 3.35. The initialization makes the policy an order of magnitude
+   more consistent and removes the tool breakage, but it gives up 6.6% of the
+   removal rate and pays 12.9% more energy for it, and the 0.8 gap in mean
+   reward over the from-scratch policy is inside the noise. The controller
+   still removes 38% more material per minute. This is a finding about the
+   work, not about the code, and it is recorded in `README.md`,
+   `PROJECT.md` and `results/RESULTS.md`.
 
 ---
 
@@ -411,7 +426,7 @@ here so that anyone can repeat them.
 
 ```python
 # 2.1, is E_ref computed from the scenario?
-from env.milling_env import MillingDTEnv
+from MillingDT.env.milling_env import MillingDTEnv
 print(MillingDTEnv().E_ref)              # 8.890 kJ, nominal
 print(MillingDTEnv(D=100.0).E_ref)        # 14.781 kJ, the scenario's diameter
 print(MillingDTEnv(k_c=5.0).E_ref)        # 14.781 kJ, the scenario's coefficient
@@ -420,9 +435,10 @@ print(MillingDTEnv(k_c=5.0).E_ref)        # 14.781 kJ, the scenario's coefficien
 import numpy as np, gymnasium as gym
 from stable_baselines3 import PPO
 from stable_baselines3.common.vec_env import DummyVecEnv, VecNormalize
-from config.scenarios import sample_scenario, generate_random_configs
+from MillingDT.config.scenarios import sample_scenario, generate_random_configs
+from MillingDT.config import run_models, PRIMARY_RUN
 
-model_dir = PROJECT_ROOT / "models" / "PPO_seed42"
+model_dir = run_models(PRIMARY_RUN)
 model = PPO.load(str(model_dir / "final_model.zip"), device="cpu")
 
 def observations_for(scenarios, seed_base):
@@ -449,8 +465,8 @@ sweep = observations_for(list(generate_random_configs(60, seed=42).values()), 42
 print(np.abs(train.mean(0) - sweep.mean(0)).mean())   # 0.070
 ```
 
-The script needs `import env` before `gym.make`, so that the registration
-has happened.
+The script needs `import MillingDT.env` before `gym.make`, so that the
+registration has happened.
 
 ---
 
@@ -461,10 +477,13 @@ has happened.
 python -m pytest tests/ -v
 
 # the artifacts the documentation quotes
-python agent/summarize_results.py
+python -m experiments.summarize_results
 
 # the sweep, which is deterministic and returns the same numbers every time
-python agent/evaluate.py
+python -m experiments.evaluate
+
+# the controller initialization experiment
+python -m experiments.controller_experiment 1000000 2000
 ```
 
 ---

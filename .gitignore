@@ -60,6 +60,11 @@ venv/
 env.bak/
 venv.bak/
 
+# The trained policies. The weights are binaries and stay out of the
+# repository; every table and every figure of a run is committed.
+results/run_*/models/
+results/workers/
+
 # Jupyter Notebook
 .ipynb_checkpoints
 
@@ -74,8 +79,8 @@ desktop.ini
 .claude/
 logs/*/
 /docs/ppts/
-models/*/
-results/workers/
-results/transfer/*.pkl
 *.mp4
+desktop.ini
+.agents/
+.claude/
 events.out*

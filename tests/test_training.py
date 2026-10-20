@@ -10,11 +10,11 @@ from stable_baselines3.common.env_util import make_vec_env
 from stable_baselines3.common.vec_env import VecNormalize
 
 # Add project root to path
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(PROJECT_ROOT))
 
-import env
-from utils.seeding import set_seed
+import MillingDT.env
+from MillingDT.utils.seeding import set_seed
 
 @pytest.fixture
 def clean_test_dir(tmp_path):

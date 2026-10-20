@@ -16,7 +16,7 @@ root, and nothing in it is written twice.
 
 The entry point for the project is `README.md`. The measured results are in
 `results/RESULTS.md`, which is generated from the artifacts by
-`python agent/summarize_results.py`.
+`python -m experiments.summarize_results`.
 
 ## Contents
 
@@ -35,7 +35,7 @@ The entry point for the project is `README.md`. The measured results are in
 
 ---
 
-**Subject:** `env/milling_env.py`, the one registered environment
+**Subject:** `MillingDT/env/milling_env.py`, the one registered environment
 **Status:** matches the implementation as of the last commit
 **Related:** `README.md` (overview), [Part 5, Physics References](#part-5-physics-references) (where the physics comes from),
 [Part 3, Literature Comparison](#part-3-literature-comparison) (position against the published work)
@@ -51,9 +51,10 @@ reward description no longer matched the code.
 | :--- | :--- | :--- |
 | `MillingDTEnv-v1` | 11 features | The one environment. The energy weight and the material context are in the observation, so a single policy covers the whole weight range and the whole material distribution. A task with a pinned weight is the same environment with a constant in the context. |
 
-The identifier is `env.ENV_ID`, and every consumer takes it from there:
-`agent/train_rl.py`, `agent/evaluate.py`, `agent/transfer_experiment.py` and
-`baselines/run_baselines.py` all build their environments from it.
+The identifier is `MillingDT.ENV_ID`, and every consumer takes it from there:
+`experiments/train_rl.py`, `experiments/evaluate.py`,
+`experiments/transfer_experiment.py` and `experiments/run_baselines.py` all
+build their environments from it.
 
 It accepts the same physical overrides per scenario.
 `MillingDTEnv(randomize=True)` draws a new machining scenario for every part
@@ -203,9 +204,9 @@ replayed with the same seed breaks in the same place.
 
 ### 7. Constants
 
-All of them live in `config/physics_constants.py`, and the environment, the
-baselines and the ablation study read them from there, so no consumer can
-drift from another.
+All of them live in `MillingDT/config/physics_constants.yaml`, and the
+environment, the baselines and the ablation study read them from there, so no
+consumer can drift from another.
 
 | Group | Values |
 | :--- | :--- |
@@ -245,7 +246,7 @@ built with `randomize=True`, and it recomputes `MRR_max`, `E_ref` and
 | Rule based | Feed held at maximum, speed dropped as the tool wears |
 | NSGA-II static | One parameter set for the whole part, solved with pymoo |
 | Receding horizon | Re-solves the next pass at every step, with the remaining stock and the current wear as the state |
-| PPO | The learned policy, the production one at `models/PPO_seed42` |
+| PPO | The learned policy, the production one at `results/run_PPO_seed42` |
 
 The receding-horizon controller is the only classical policy that stays inside
 the roughness safety limit, and it reaches a total reward of +203.45 against
@@ -270,7 +271,7 @@ The learned policy and the controller are level on the reward, 204.09 against
 203.45, and the controller is ahead on the material removal rate (981.7 against
 894.3) and the cycle time (4.80 s against 5.56 s). So no reinforcement
 learning advantage is demonstrated yet. The classical rows are in
-`results/baseline_results_v5.csv`; the learned row is the production policy
+`results/evaluation/baselines.csv`; the learned row is the production policy
 over the same 50 episodes of the nominal condition.
 
 ---
@@ -281,14 +282,15 @@ over the same 50 episodes of the nominal condition.
 | :--- | :--- | :--- |
 | Passes `gymnasium.check_env()` with no warnings | Met | `tests/test_env.py::test_gymnasium_env_checker_passes` |
 | Two runs with the same seed produce identical results | Met | `tests/test_training.py::test_evaluation_reproducibility`; the Monte Carlo sweep acts deterministically and returns the same numbers on every run |
-| Convergence without divergence or NaN | Met | Training curves in `results/curves/*/progress.csv`, plotted by `viz/plot_results.py` |
-| The Monte Carlo sweep reports 95% confidence intervals for every metric | Met | `results/monte_carlo/eval_PPO_MC_v5.csv`, five metrics with intervals |
-| The environment and the baselines use identical constants | Met | `tests/test_env.py::test_physics_constants_sync`; both import `config/physics_constants.py` |
-| The environment and the baselines use identical equations | Met | `tests/test_env.py::test_environment_uses_the_shared_physics`; the equations live in `config/physics.py` and every consumer imports them |
+| Convergence without divergence or NaN | Met | Training curves in `results/run_<config>/log/progress.csv`, plotted by `viz/plot_results.py` |
+| The Monte Carlo sweep reports 95% confidence intervals for every metric | Met | `results/run_PPO_seed42/metrics/monte_carlo.csv`, five metrics with intervals |
+| The environment and the baselines use identical constants | Met | `tests/test_env.py::test_physics_constants_sync`; both import `MillingDT/config/physics_constants.yaml` |
+| The environment and the baselines use identical equations | Met | `tests/test_env.py::test_environment_uses_the_shared_physics`; the equations live in `MillingDT/config/physics.py` and every consumer imports them |
 | No duplicated plotting code | Met | `viz/plotting_utils.py` is the single source |
 | The ablation demonstrates the energy objective | Met | Across the non-dominated weights the removal rate falls 8.4% and the energy of the part falls 9.5%, and the spindle speed falls with the energy weight, which is the mechanism the model predicts. [Part 3, Literature Comparison](#part-3-literature-comparison) states the mechanism. |
-| One policy covers the whole energy weight range | Met | `results/weight_sweep/weight_sweep.csv` and `results/weight_sweep/weight_sweep_vs_ablation.csv`; the single policy removes 14% to 28% more material for 3% to 16% less energy over the weights 0.0 to 0.6 than the 21 policies trained per weight |
-| The transfer experiment measures the adaptation against a from-scratch policy | Met | `results/transfer/transfer_results.csv`; four arms on a harder material, and the production policy reaches 200.3 with no adaptation and the finished surface in spec in every scenario |
+| One policy covers the whole energy weight range | Met | `results/run_PPO_seed42/metrics/weight_sweep.csv` and `results/evaluation/weight_sweep_vs_ablation.csv`; the single policy removes 14% to 28% more material for 3% to 16% less energy over the weights 0.0 to 0.6 than the 21 policies trained per weight |
+| The transfer experiment measures the adaptation against a from-scratch policy | Met | `results/evaluation/transfer_results.csv`; four arms on a harder material, and the production policy reaches 200.3 with no adaptation and the finished surface in spec in every scenario |
+| The controller initialization is measured against the controller it starts from | Met | `results/evaluation/controller_init_results.csv`; three arms on the same 100 randomized scenarios, and the initialized policy does not beat the controller on the removal rate or the cycle time |
 
 ---
 
@@ -358,7 +360,7 @@ Part 3, and the measured frontier in `results/RESULTS.md`.
 | Multi-objective / conditioned RL (MORL style) | **Adopt** | Replaces the 21-run weight sweep with one policy that is conditioned on the energy weight, and gives the whole frontier from a single training run. |
 | Domain randomization in the environment | **Adopt** | The policy trained on one operating point and was measured on many. Training across the same distribution it is measured on is the cheapest possible fix for the robustness claim. |
 | Transfer learning | **Adopt** | Maps to a real deliverable (a new material or a different spindle limit), and is cheap because the observation space is fixed. |
-| Receding-horizon controller as a teacher, behavioural cloning as warm start | **Adopt the controller, measure the cloning** | A receding-horizon solver is a genuinely strong expert, and it gives the classical comparison a fair baseline. Cloning it into the policy was measured and dropped: it was a head start, not a different policy. |
+| Receding-horizon controller as a teacher, behavioural cloning as warm start | **Adopt the controller, measure the cloning** | A receding-horizon solver is a genuinely strong expert, and it gives the classical comparison a fair baseline. Cloning it into the policy was measured on three arms over the same 100 randomized scenarios: it does not produce a policy that beats the controller, it produces a more consistent one. |
 | Continual learning in the classic sense | **Defer** | There is no task sequence yet. It becomes the right frame only if the target becomes non-stationarity, and then the conditioned policy with replay covers it. |
 | Representation learning | **Reject for now** | The state is 8 physics-derived features plus 3 conditioning features, so there is nothing to learn a representation of. It becomes relevant only if raw sensor data (acoustic emission) enters the design, which is a different project. |
 | Offline RL | **Reject** | No fixed dataset to be offline about. |
@@ -381,8 +383,8 @@ opt-in randomized mode:
   (`VB_0`). The wear exponents are not randomized.
 - The sampling bands are the same bands the Monte Carlo sweep uses, so the
   policy is trained on the distribution it is measured on. The bands live in
-  `config/physics_constants.py` so the environment and the sweep cannot drift
-  apart.
+  `MillingDT/config/physics_constants.yaml` so the environment and the sweep
+  cannot drift apart.
 - The derived scales (`MRR_max`, `E_ref`, `T_ref`) depend on the scenario, so
   they are recomputed whenever the scenario changes. The code as it stood
   computed them once in `__init__`; that moved into an `_apply_scenario()`
@@ -396,11 +398,11 @@ the first time during evaluation.
 
 #### Files
 
-- `config/physics_constants.py`: add `SCENARIO_RANGES`, `SCENARIO_BANDS` and
-  `SCENARIO_INITIAL_WEAR`.
-- `config/scenarios.py`: the sampling itself, shared with the Monte Carlo sweep.
-- `env/milling_env.py`: `_apply_scenario()`, randomized `reset()`, `randomize` flag.
-- `agent/train_rl.py`: the `--randomize` flag.
+- `MillingDT/config/physics_constants.yaml`: the scenario ranges, the bands
+  and the initial wear, next to the calibrated constants.
+- `MillingDT/config/scenarios.py`: the sampling itself, shared with the Monte Carlo sweep.
+- `MillingDT/env/milling_env.py`: `_apply_scenario()`, randomized `reset()`, `randomize` flag.
+- `experiments/train_rl.py`: the `--randomize` flag.
 - `tests/test_env.py`: a test that two resets of a randomized environment draw
   different scenarios, and that a fixed environment does not.
 
@@ -421,7 +423,7 @@ answers, at runtime, "give me the most energy-efficient cut that still meets
 the roughness limit for this material".
 
 The plan as written called for a second registration with this observation and
-kept the 8-dimensional one for the policies already in `models/`. As built,
+kept the 8-dimensional one for the policies already in `results/`. As built,
 there is one registration, `MillingDTEnv-v1`, with the 11-dimensional
 observation, and a task with a pinned weight is the same environment with a
 constant in the context. The two registrations would have shared every
@@ -432,17 +434,17 @@ production policy, the 21 ablation policies and the dashboard all use.
 
 The conditioned policy is the claim "one policy covers the frontier". The test
 is whether its frontier reproduces the 21-policy frontier measured in
-`results/ablation/ablation_summary.csv`. The two are compared in
-`results/weight_sweep/weight_sweep_vs_ablation.csv`, which
-`python agent/evaluate.py --sweep-weight --compare` writes.
+`results/evaluation/ablation_summary.csv`. The two are compared in
+`results/evaluation/weight_sweep_vs_ablation.csv`, which
+`python -m experiments.evaluate --compare-only` writes.
 
 #### Files
 
-- `env/milling_env.py`: observation composition, the context features.
-- `env/__init__.py`: the one registration.
-- `agent/train_rl.py`: the `--randomize-weight` flag for the production
+- `MillingDT/env/milling_env.py`: observation composition, the context features.
+- `MillingDT/env/__init__.py`: the one registration.
+- `experiments/train_rl.py`: the `--randomize-weight` flag for the production
   policy, and `--w2` for a pinned weight.
-- `agent/evaluate.py`: the `--sweep-weight` and `--compare` flags.
+- `experiments/evaluate.py`: the `--sweep-weight` and `--compare-only` flags.
 - `tests/test_env.py`: observation dimension and content.
 
 ---
@@ -473,40 +475,75 @@ observation needs no adaptation step at all.
 
 #### Files
 
-- `agent/transfer_experiment.py`: the experiment, writing
-  `results/transfer/transfer_results.csv` and an adaptation curve.
-- `agent/summarize_results.py`: add the transfer table.
+- `experiments/transfer_experiment.py`: the experiment, writing
+  `results/evaluation/transfer_results.csv` and an adaptation curve.
+- `experiments/summarize_results.py`: add the transfer table.
 
 ---
 
-### 6. Phase 4: A receding-horizon controller, and cloning it
+### 6. Phase 4: A receding-horizon controller, and the policy initialized from it
 
-The controller was kept and the cloning was removed after measurement. Both
-are recorded here, because the measurement is the reason.
+The controller was kept. The initialization was measured, and the measurement
+is recorded here, because it is the reason for the answer.
 
 #### Design
 
-**The expert.** The existing `baselines/run_baselines.py` solves a static
+**The expert.** The existing `experiments/run_baselines.py` solves a static
 multi-objective problem once for the whole part. A receding-horizon version
 re-solves it at every pass with the current state (remaining stock, current
 flank wear, current scenario) and takes the knee point of the resulting
 Pareto set. This is a legitimate controller, and a much stronger classical
 baseline than the static one.
 
-**Cloning it.** The plan was to record the expert's trajectories as
-`(observation, action)` pairs, fit a supervised model with the same shape as
-the PPO actor, copy the fitted weights into the policy, and let reinforcement
-learning take it further. The measurements did not support keeping this: the
-cloned policy was ahead of one trained from scratch between 25,000 and 75,000
-steps and level by 100,000, so the initialization was a head start rather
-than a different policy, and the machinery was removed. The controller itself
-was kept, because it is the strongest baseline in the repository. The numbers
-are in the history of this repository.
+**Initializing the policy from it.** The controller's behaviour is recorded on
+2000 randomized episodes, as (observation, action) pairs. A supervised actor
+with the same shape as the PPO actor (two hidden layers of 256 with Tanh) is
+fitted on those trajectories, and the fitted weights are copied into a fresh
+PPO policy before the reinforcement learning starts. The intent is that the
+learning starts from a feasible behaviour instead of from noise. The machinery
+is in `MillingDT/agent/controller_init.py`, and the experiment is
+`experiments/controller_experiment.py`.
+
+#### The question and the answer
+
+The question is not whether the initialization helps the learning, it is
+whether the learned policy ends up better than the expert it started from.
+Three arms, all on the same 100 randomized scenarios at the same energy weight
+$w_2 = 0.4$:
+
+| Arm | Mean episode reward | Reward std | MRR (mm3/min) | Energy per part (kJ) | Cycle time (s) | Ra violation, finished surface | Tool breakage | Parts completed |
+| :--- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| Receding-horizon controller | 187.96 | 65.92 | 1560.6 | 68.01 | 13.54 | 0.0% | 5% | 95% |
+| PPO from scratch | 198.57 | 30.03 | 1205.1 | 68.35 | 20.25 | 0.0% | 1% | 99% |
+| PPO initialized from the controller | 199.35 | 3.35 | 1126.1 | 77.17 | 32.35 | 0.0% | 0% | 100% |
+
+The answer is that the initialization does not produce a policy that beats the
+controller. The controller still removes 38% more material per minute (1560.6
+against 1126.1) and finishes in 13.5 s against 32.3 s. It does produce a much
+more consistent policy: the spread of the episode reward across the 100
+scenarios falls from 30.0 to 3.4, an order of magnitude, and the tool breakage
+falls to zero. It pays for that consistency with throughput and energy: 6.6%
+less material removal rate and 12.9% more energy per part than the from-scratch
+policy. The mean reward difference over the from-scratch policy (199.35
+against 198.57) is inside the noise: the standard error of the mean over 100
+scenarios is 30.0/sqrt(100) = 3.0 for the from-scratch arm, so a gap of 0.8 is
+not a result. The controller itself is the least reliable of the three arms
+(reward std 65.9, 5% breakage, 95% of the parts completed).
+
+An earlier, shorter measurement had found the cloned policy ahead of one
+trained from scratch between 25,000 and 75,000 steps and level by 100,000,
+which read as a head start rather than a different policy. The three-arm
+measurement above settles it: the initialization buys consistency, not
+performance.
 
 #### Files
 
-- `baselines/receding_horizon.py`: the controller.
-- `baselines/run_baselines.py`: adds it to the baseline comparison.
+- `MillingDT/baselines/receding_horizon.py`: the controller.
+- `MillingDT/agent/controller_init.py`: the dataset, the cloned actor and the
+  copy into the policy.
+- `experiments/run_baselines.py`: adds it to the baseline comparison.
+- `experiments/controller_experiment.py`: the three-arm experiment, writing
+  `results/evaluation/controller_init_results.csv`.
 - `tests/`: the controller produces feasible actions on the nominal scenario.
 
 ---
@@ -554,13 +591,14 @@ that the documentation quotes.
 
 | Phase | Built in | Artifact | Outcome |
 | :--- | :--- | :--- | :--- |
-| 1. Domain randomization | `config/scenarios.py`, `env/milling_env.py` | `results/monte_carlo/eval_PPO_MC_v5.csv` | The finished surface stays inside the roughness limit in 100% of the 100 scenarios, the part completion rate is 99.0%, the flank wear limit is never exceeded. |
-| 2. Conditioned policy | `env/milling_env.py`, `env/__init__.py`, `agent/train_rl.py`, `agent/evaluate.py` | `results/weight_sweep/weight_sweep.csv`, `results/weight_sweep/weight_sweep_vs_ablation.csv` | One run of 1,000,000 steps beats the 21 weight-specific policies of 150,000 steps each, which is 3,150,000 steps in total: 14% to 28% more removal rate for 3% to 16% less energy over the weights 0.0 to 0.6, and 16% and 15% more removal rate for 0.5% and 2.1% more energy at 0.8 and 1.0. |
-| 3. Transfer experiment | `agent/transfer_experiment.py` | `results/transfer/transfer_results.csv` | Four arms. Fine tuning the source policy for 50,000 steps adapts it (182.5 to 196.6, with the roughness violations gone), and a policy trained on the target from scratch for the same budget lands in the same place (196.6). The production policy needs no adaptation at all and scores 200.3, with the finished surface in spec in every scenario. |
-| 4. Controller teacher | `baselines/receding_horizon.py` | `results/baseline_results_v5.csv` | The receding-horizon controller scores +203.45 against -46 for the three fast static baselines and -139.25 for constant safe, and is the only classical policy that stays inside the roughness safety limit. The cloning arm of this phase was measured and removed. |
-| 5. Speed dependent cutting energy | `config/physics.py`, `config/physics_constants.py` | `results/ablation/ablation_summary.csv` | The part energy now has an interior minimum in the spindle speed, and the ablation measures a real trade-off: across the non-dominated weights the removal rate falls 8.4% and the energy of the part falls 9.5%. |
+| 1. Domain randomization | `MillingDT/config/scenarios.py`, `MillingDT/env/milling_env.py` | `results/run_PPO_seed42/metrics/monte_carlo.csv` | The finished surface stays inside the roughness limit in 100% of the 100 scenarios, the part completion rate is 99.0%, the flank wear limit is never exceeded. |
+| 2. Conditioned policy | `MillingDT/env/milling_env.py`, `MillingDT/env/__init__.py`, `experiments/train_rl.py`, `experiments/evaluate.py` | `results/run_PPO_seed42/metrics/weight_sweep.csv`, `results/evaluation/weight_sweep_vs_ablation.csv` | One run of 1,000,000 steps beats the 21 weight-specific policies of 150,000 steps each, which is 3,150,000 steps in total: 14% to 28% more removal rate for 3% to 16% less energy over the weights 0.0 to 0.6, and 16% and 15% more removal rate for 0.5% and 2.1% more energy at 0.8 and 1.0. |
+| 3. Transfer experiment | `experiments/transfer_experiment.py` | `results/evaluation/transfer_results.csv` | Four arms. Fine tuning the source policy for 50,000 steps adapts it (182.5 to 196.6, with the roughness violations gone), and a policy trained on the target from scratch for the same budget lands in the same place (196.6). The production policy needs no adaptation at all and scores 200.3, with the finished surface in spec in every scenario. |
+| 4. Controller teacher | `MillingDT/baselines/receding_horizon.py` | `results/evaluation/baselines.csv` | The receding-horizon controller scores +203.45 against -46 for the three fast static baselines and -139.25 for constant safe, and is the only classical policy that stays inside the roughness safety limit. |
+| 5. Speed dependent cutting energy | `MillingDT/config/physics.py`, `MillingDT/config/physics_constants.yaml` | `results/evaluation/ablation_summary.csv` | The part energy now has an interior minimum in the spindle speed, and the ablation measures a real trade-off: across the non-dominated weights the removal rate falls 8.4% and the energy of the part falls 9.5%. |
+| 6. Controller initialization | `MillingDT/agent/controller_init.py`, `experiments/controller_experiment.py` | `results/evaluation/controller_init_results.csv` | Three arms on the same 100 randomized scenarios at $w_2 = 0.4$. The policy initialized from the controller does not beat the controller: the controller removes 38% more material per minute (1560.6 against 1126.1) and finishes in 13.5 s against 32.3 s. What the initialization buys is consistency: the reward spread falls from 30.0 to 3.4 and the tool breakage falls to zero, paid for with 6.6% less removal rate and 12.9% more energy per part. |
 
-Two results contradict what the plan expected, and they are reported as they
+Three results contradict what the plan expected, and they are reported as they
 came out.
 
 **Fine tuning does adapt, and it is still not the best way to change
@@ -585,6 +623,16 @@ same way. That was a property of the energy model, not of the method, and
 phase 5 changed the model to $k_c(v_c) V + P_{\text{idle}} T_{\text{part}}$
 so that the trade-off exists to be found. It is now measured rather than
 assumed.
+
+The third is the controller initialization. The plan expected that starting
+the policy from the controller would give a policy that beats the expert it
+started from. Measured over three arms on the same 100 randomized scenarios,
+it does not: the controller still removes 38% more material per minute and
+finishes in less than half the cycle time. What the initialization buys is a
+much more consistent policy, with the reward spread over the 100 scenarios
+falling from 30.0 to 3.4 and the tool breakage falling to zero, and it pays
+for that consistency in throughput and energy. The mean reward difference
+against the from-scratch policy is inside the noise.
 
 ---
 
@@ -641,7 +689,7 @@ continuous cutting parameters are outside its scope.
 ### 3. Published operating envelopes
 
 Quoted from Mo et al. (2025), Table 5 and Section 3.4. The third column is
-this repository, from `config/physics_constants.py`.
+this repository, from `MillingDT/config/physics_constants.yaml`.
 
 | Quantity | Mo et al. (2025) | This work |
 | :--- | :--- | :--- |
@@ -664,8 +712,8 @@ this repository, from `config/physics_constants.py`.
    cutting energy growing with the cutting speed, and the energy weight `w2`
    is a first-class parameter of the environment rather than a by-product.
 2. No sensor machine learning pipeline. Tool wear and surface roughness are
-   propagated from the constants in `config/physics_constants.py`, so a run is
-   reproducible from its seed and carries no training-data dependency.
+   propagated from the constants in `MillingDT/config/physics_constants.yaml`, so
+   a run is reproducible from its seed and carries no training-data dependency.
 3. Statistical robustness reporting. Every metric in the Monte Carlo sweep
    comes with a t-distribution 95% confidence interval over 100 randomized
    scenarios, covering workpiece geometry, material and tool coefficients, and
@@ -687,6 +735,12 @@ this repository, from `config/physics_constants.py`.
    trained on the new material from scratch for the same budget. The
    production policy, which has the material in its observation, is measured
    on the same target, and it needs no adaptation at all.
+8. A controller initialization experiment. The receding-horizon controller is
+   recorded on 2000 randomized episodes, a supervised actor with the shape of
+   the PPO actor is fitted on those trajectories, and the fitted weights are
+   copied into a fresh policy before the reinforcement learning starts. The
+   resulting policy is measured against the controller and against a policy
+   trained from scratch, on the same 100 randomized scenarios.
 
 **Does not add**
 
@@ -753,16 +807,16 @@ the material removed. Section 5.2 has the grid.
 ### 5. Measured results from this repository
 
 Every table below is generated from the artifacts by
-`python agent/summarize_results.py`, which writes the same content to
+`python -m experiments.summarize_results`, which writes the same content to
 `results/RESULTS.md`. The two exceptions are marked where they occur: the
 learned row of the baseline table, and the confidence intervals of the rate
 rows, which are given as fractions here.
 
 #### 5.1 Production policy, Monte Carlo sweep over 100 scenarios
 
-Artifact: `results/monte_carlo/eval_PPO_MC_v5.csv`
+Artifact: `results/run_PPO_seed42/metrics/monte_carlo.csv`
 
-The policy is `models/PPO_seed42`, the production policy, trained for
+The policy is `results/run_PPO_seed42`, the production policy, trained for
 1,000,000 steps with the scenario and the energy weight drawn per episode.
 It is queried here at $w_2 = 0.4$.
 
@@ -799,9 +853,9 @@ of the part, and the finished surface is inside the limit in every one of the
 
 #### 5.2 Energy weight ablation, 7 weights and 3 seeds
 
-Artifact: `results/ablation/ablation_summary.csv`
+Artifact: `results/evaluation/ablation_summary.csv`
 
-The 21 policies live in `models/ablation_w2_{w2}_seed{seed}`. Each one has
+The 21 policies live in `results/run_ablation_w2_{w2}_seed{seed}`. Each one has
 its weight pinned, and each is measured at the weight it was trained for, on
 the same 50 scenarios.
 
@@ -825,9 +879,9 @@ dominated: they spend more energy without removing more material.
 
 #### 5.3 One policy against 21 weight-specific policies
 
-Artifacts: `results/weight_sweep/weight_sweep.csv` (the production policy,
-1,000,000 steps, asked for every weight at runtime) and
-`results/weight_sweep/weight_sweep_vs_ablation.csv` (the comparison against
+Artifacts: `results/run_PPO_seed42/metrics/weight_sweep.csv` (the production
+policy, 1,000,000 steps, asked for every weight at runtime) and
+`results/evaluation/weight_sweep_vs_ablation.csv` (the comparison against
 the 21 per-weight policies).
 
 | w2 | MRR, one policy | MRR, per-weight | MRR gap | Energy, one policy | Energy, per-weight | Energy gap |
@@ -855,7 +909,7 @@ retrain.
 
 #### 5.4 Classical baselines
 
-Artifact: `results/baseline_results_v5.csv`
+Artifact: `results/evaluation/baselines.csv`
 
 The same 50 episodes of the nominal condition, at $w_2 = 0.4$, for all six
 policies.
@@ -879,7 +933,7 @@ the removal rate (981.7 against 894.3) and the cycle time (4.80 s against
 
 #### 5.5 Transfer to a harder material
 
-Artifact: `results/transfer/transfer_results.csv`
+Artifact: `results/evaluation/transfer_results.csv`
 
 The target material is harder: $k_1 \times 1.25$, $k_2 \times 1.30$ and
 $C_{\text{wear}} \times 2.0$, on the same machine. The source policy was
@@ -905,6 +959,36 @@ reward of the four arms, 200.3, with the finished surface in spec in every
 scenario. Its 60% worst-pass violations sit on the roughing passes, which the
 reward does not constrain.
 
+#### 5.6 Starting the policy from the controller
+
+Artifact: `results/evaluation/controller_init_results.csv`
+
+Three arms, all on the same 100 randomized scenarios at the same energy weight
+$w_2 = 0.4$: the receding-horizon controller itself, the production policy
+trained from scratch with PPO, and a policy whose actor was initialized from
+the controller and then trained with PPO for 1,000,000 steps.
+
+| Arm | Mean episode reward | Reward std | MRR (mm3/min) | Energy per part (kJ) | Cycle time (s) | Ra violation, finished surface | Tool breakage | Parts completed |
+| :--- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| Receding-horizon controller | 187.96 | 65.92 | 1560.6 | 68.01 | 13.54 | 0.0% | 5% | 95% |
+| PPO from scratch | 198.57 | 30.03 | 1205.1 | 68.35 | 20.25 | 0.0% | 1% | 99% |
+| PPO initialized from the controller | 199.35 | 3.35 | 1126.1 | 77.17 | 32.35 | 0.0% | 0% | 100% |
+
+The initialization does not produce a policy that beats the controller. The
+controller still removes 38% more material per minute (1560.6 against 1126.1)
+and finishes in 13.5 s against 32.3 s. What it does produce is a much more
+consistent policy: the spread of the episode reward across the 100 scenarios
+falls from 30.0 to 3.4, an order of magnitude, and the tool breakage falls to
+zero. It pays for that consistency with throughput and energy: 6.6% less
+material removal rate and 12.9% more energy per part than the from-scratch
+policy.
+
+The mean reward difference over the from-scratch policy, 199.35 against
+198.57, is inside the noise. The standard error of the mean over 100
+scenarios is 30.0/sqrt(100) = 3.0 for the from-scratch arm, so a gap of 0.8
+is not a result. The controller itself is the least reliable of the three
+arms, with a reward standard deviation of 65.9, 5% tool breakage and 95% of
+the parts completed.
 
 ---
 
@@ -912,29 +996,34 @@ reward does not constrain.
 
 ```bash
 # The whole pipeline, in order
-python agent/run_pipeline.py
+python -m experiments.run_pipeline
 
 # The production policy: the scenario and the energy weight are drawn per episode
-python agent/train_rl.py --algo PPO --steps 1000000 --seed 42 --randomize --randomize-weight
+python -m experiments.train_rl --algo PPO --steps 1000000 --seed 42 --randomize --randomize-weight
 
 # Monte Carlo sweep with confidence intervals
-python agent/evaluate.py
+python -m experiments.evaluate
 
-# The same policy asked for every point of the trade-off, and the comparison
-# against the per-weight policies
-python agent/evaluate.py --sweep-weight --compare
+# The same policy asked for every point of the trade-off
+python -m experiments.evaluate --sweep-weight
+
+# The comparison against the per-weight policies
+python -m experiments.evaluate --compare-only
 
 # Energy weight ablation, 7 weights x 3 seeds
-python agent/train_rl_ablation.py --steps 150000 --scenarios 50 --slots 7
+python -m experiments.train_rl_ablation --steps 150000 --scenarios 50 --slots 7
 
 # Classical baselines
-python baselines/run_baselines.py
+python -m experiments.run_baselines
 
 # Transfer to a harder material
-python agent/transfer_experiment.py 300000 50000
+python -m experiments.transfer_experiment 300000 50000
+
+# Start the policy from the controller, against the controller and from scratch
+python -m experiments.controller_experiment 1000000 2000
 
 # Rebuild the result tables
-python agent/summarize_results.py
+python -m experiments.summarize_results
 ```
 
 ---
@@ -958,7 +1047,7 @@ python agent/summarize_results.py
 
 **Project:** Energy-Aware Deep Reinforcement Learning for Dynamic CNC Milling Optimization  
 **Course:** ME6324 - AI in Manufacturing (IIT Madras)  
-**Deliverable:** Autonomous Digital Twin Simulator (`app.py`, `sim/machining_sim.py`)  
+**Deliverable:** Autonomous Digital Twin Simulator (`app.py`, `MillingDT/sim/machining_sim.py`)  
 **Design Standard:** Anti-Slop Industrial Instrument Guidelines (`.agents/skills/antislop/`, `antislop-ui`, `frontend-ui-engineering`)  
 
 ---
@@ -1024,9 +1113,10 @@ This Digital Twin simulator is designed as an **authentic CNC Machine Tool Telem
 ```
 G:/My Drive/IITM/AI in Mfg/
 
- sim/
-    __init__.py
-    machining_sim.py          # Trajectory simulation, surface profile and G-code synthesis
+ MillingDT/
+     sim/
+         __init__.py
+         machining_sim.py      # Trajectory simulation, surface profile and G-code synthesis
 
  app.py                         # Streamlit interactive application
 ```
@@ -1035,7 +1125,7 @@ This plan was consolidated into this file, and the document it names no longer
 exists separately. It is kept as the design record.
 
 #### Module Specifications:
-1. `sim/machining_sim.py`:
+1. `MillingDT/sim/machining_sim.py`:
    - `load_ppo_policy(model_dir)`: Loads the production policy with its `VecNormalize` statistics.
    - `run_single_simulation(policy_type, kappa_total, VB_0, D, L_cut, w2, ppo_model_tuple)`: Executes multi-pass machining and records state vectors $(VB, \kappa, n, f_r, a_p, MRR, Ra, E, P_c)$. The energy weight is a query of the policy, so the same production policy serves every weight.
    - `generate_surface_micro_profile(final_ra, feed_rate, tool_radius)`: Generates feed-mark surface profile coordinates.
@@ -1140,9 +1230,9 @@ Because the Digital Twin is fully parameterized in Python (`MillingDTEnv`), we c
 ---
 
 > This part is the plan as it was written on October 8, 2026, kept as the design
-> record. Its code snippets, its file names and its SAC claims are the ones the
-> plan proposed. The paths in the snippets are the planned paths; the artifacts
-> themselves now live under `results/`, under the names listed in
+> record. Its code snippets and its SAC claims are the ones the plan proposed.
+> The paths in the snippets are the current ones; the artifacts themselves live
+> under `results/`, under the names listed in
 > [Part 7, Audit of the Original Plan](#part-7-audit-of-the-original-plan) and
 > in `results/RESULTS.md`. The SAC claims in
 > [Part 3, Literature Comparison](#part-3-literature-comparison) were withdrawn
@@ -1154,16 +1244,16 @@ Because the Digital Twin is fully parameterized in Python (`MillingDTEnv`), we c
 ### Executive Summary
 
 This plan details improvements across three critical dimensions:
-1. **Environment Physics & Gymnasium API Compliance** (`env/milling_env.py`)
-2. **Training, Experiment Tracking & Reproducibility** (`agent/`)
-3. **Baselines, Evaluation Metrics & Statistical Rigor** (`baselines/`, `viz/`)
+1. **Environment Physics & Gymnasium API Compliance** (`MillingDT/env/milling_env.py`)
+2. **Training, Experiment Tracking & Reproducibility** (`experiments/`)
+3. **Baselines, Evaluation Metrics & Statistical Rigor** (`MillingDT/baselines/`, `experiments/`, `viz/`)
 4. **Literature Positioning & Novelty Benchmarking**
 
 Each improvement includes **reasoning**, **implementation details**, **code examples**, and **estimated effort**.
 
 ---
 
-### Part 1: Environment Module (`env/milling_env.py`)
+### Part 1: Environment Module (`MillingDT/env/milling_env.py`)
 
 #### Issue 1.1: Missing `truncated` Flag in Gymnasium API
 
@@ -1355,7 +1445,7 @@ def step(self, action):
 
 ---
 
-### Part 2: Training & Experiment Management (`agent/`)
+### Part 2: Training & Experiment Management (`experiments/`)
 
 #### Issue 2.1: File-Based Progress Polling is Fragile
 
@@ -1401,7 +1491,7 @@ def train_worker(worker_id, config, progress_queue):
         except:
             pass  # Queue full; skip this update
     
-    model.save(f"models/ppo_worker_{worker_id}.zip")
+    model.save(f"results/run_worker_{worker_id}/models/final_model.zip")
     return model
 
 def monitor_experiments(num_workers, config):
@@ -1457,21 +1547,21 @@ def monitor_experiments(num_workers, config):
 - No central source of truth for environment parameters.
 
 **Reasoning:**
-- Environment registration should happen once, in a central location (`env/__init__.py`).
+- Environment registration should happen once, in a central location (`MillingDT/env/__init__.py`).
 - Avoids version drift between training and evaluation environments.
 - Aligns with best practices used in modern RL frameworks (OpenAI Gym, Atari-py, etc.).
 
 **Implementation:**
 
 ```python
-# env/__init__.py (NEW FILE)
+# MillingDT/env/__init__.py (NEW FILE)
 import gymnasium as gym
 from gymnasium.envs.registration import register
 
 # Register once
 register(
     id="MillingDTEnv-v1",
-    entry_point="env.milling_env:MillingDTEnv",
+    entry_point="MillingDT.env.milling_env:MillingDTEnv",
     max_episode_steps=200,
     kwargs={
         "batch_size": 50,
@@ -1494,7 +1584,7 @@ __all__ = ["MillingDTEnv"]
 # train_rl.py (UPDATED)
 # Remove: gymnasium.register(...)
 # Add at top:
-import env  # Triggers registration in env/__init__.py
+import MillingDT.env  # Triggers registration in MillingDT/env/__init__.py
 
 def make_vec_env(env_id, n_envs=4, seed=None):
     return stable_baselines3.common.vec_env.make_vec_env(
@@ -1504,7 +1594,7 @@ def make_vec_env(env_id, n_envs=4, seed=None):
 
 ```python
 # evaluate.py (UPDATED)
-import env  # Triggers registration
+import MillingDT.env  # Triggers registration
 
 eval_env = gym.make("MillingDTEnv-v1")
 # ... evaluation logic ...
@@ -1532,7 +1622,7 @@ eval_env = gym.make("MillingDTEnv-v1")
 **Implementation:**
 
 ```python
-# utils/seeding.py (NEW)
+# MillingDT/utils/seeding.py (NEW)
 import os
 import numpy as np
 import torch
@@ -1557,8 +1647,8 @@ def set_seed(seed):
     
     return seed
 
-# agent/train_rl.py (UPDATED)
-from utils.seeding import set_seed
+# experiments/train_rl.py (UPDATED)
+from MillingDT.utils.seeding import set_seed
 
 def train(algo="PPO", seed=42):
     seed = set_seed(seed)  # Centralized seeding
@@ -1569,7 +1659,7 @@ def train(algo="PPO", seed=42):
     
     return model, seed
 
-# agent/evaluate.py (UPDATED)
+# experiments/evaluate.py (UPDATED)
 def evaluate(model_path, num_episodes=100, seed=42):
     seed = set_seed(seed)
     eval_env = gym.make("MillingDTEnv-v1")
@@ -1585,7 +1675,7 @@ def evaluate(model_path, num_episodes=100, seed=42):
 
 ---
 
-### Part 3: Baselines & Visualization (`baselines/`, `viz/`)
+### Part 3: Baselines & Visualization (`MillingDT/baselines/`, `viz/`)
 
 #### Issue 3.1: Missing Confidence Intervals in Monte Carlo Evaluation
 
@@ -1601,7 +1691,7 @@ def evaluate(model_path, num_episodes=100, seed=42):
 **Implementation:**
 
 ```python
-# agent/evaluate.py (UPDATED)
+# experiments/evaluate.py (UPDATED)
 import pandas as pd
 from scipy import stats
 
@@ -1776,17 +1866,17 @@ def plot_comparison_bar_chart(df_comparison, metrics, algorithms, filename=None)
 from plotting_utils import plot_kde_distribution, plot_failure_landscape
 
 def main():
-    df = pd.read_csv('logs/monte_carlo/eval_results.csv')
+    df = pd.read_csv('results/run_PPO_seed42/metrics/monte_carlo.csv')
     
     # Use centralized plotting functions
     plot_kde_distribution(df['Energy_total'], 
                          "Energy Consumption Distribution",
                          "Energy (kJ)", "Density",
-                         filename="plots/energy_kde.png")
+                         filename="results/plots/energy_kde.png")
     
     plot_failure_landscape(df, 'MRR', 'Ra_max',
                           "Failure Landscape: MRR vs Ra",
-                          filename="plots/failure_landscape.png")
+                          filename="results/plots/failure_landscape.png")
 ```
 
 **Why This Matters:**
@@ -1801,8 +1891,8 @@ def main():
 #### Issue 3.3: Physics Coefficients Drift Between Environment & Baselines
 
 **Problem:**
-- `env/milling_env.py` defines tool wear constants (`C_wear`, `alpha`, `beta`, `gamma_wear`).
-- `baselines/run_baselines.py` defines separate constants that may diverge.
+- `MillingDT/env/milling_env.py` defines tool wear constants (`C_wear`, `alpha`, `beta`, `gamma_wear`).
+- `experiments/run_baselines.py` defines separate constants that may diverge.
 - If constants are updated in one place but not the other, baseline vs. DRL comparisons become invalid.
 
 **Reasoning:**
@@ -1812,7 +1902,7 @@ def main():
 **Implementation:**
 
 ```python
-# config/physics_constants.py (NEW)
+# MillingDT/config/physics_constants.yaml (NEW, the plan proposed a Python module)
 """
 Centralized physics and engineering constants.
 Based on literature calibration:
@@ -1888,8 +1978,8 @@ ALL_CONSTANTS = {
 ```
 
 ```python
-# env/milling_env.py (UPDATED)
-from config.physics_constants import TOOL_WEAR_CONSTANTS, SURFACE_ROUGHNESS_CONSTANTS, ...
+# MillingDT/env/milling_env.py (UPDATED)
+from MillingDT.config import TOOL_WEAR_CONSTANTS, SURFACE_ROUGHNESS_CONSTANTS, ...
 
 class MillingDTEnv(gym.Env):
     def __init__(self, ...):
@@ -1904,8 +1994,8 @@ class MillingDTEnv(gym.Env):
 ```
 
 ```python
-# baselines/run_baselines.py (UPDATED)
-from config.physics_constants import TOOL_WEAR_CONSTANTS, SURFACE_ROUGHNESS_CONSTANTS, ...
+# experiments/run_baselines.py (UPDATED)
+from MillingDT.config import TOOL_WEAR_CONSTANTS, SURFACE_ROUGHNESS_CONSTANTS, ...
 
 def evaluate_nsga2_baseline(...):
     # Use same constants as environment
@@ -1938,13 +2028,13 @@ def evaluate_nsga2_baseline(...):
 **Implementation:**
 
 ```python
-# agent/train_rl_ablation.py (NEW)
+# experiments/train_rl_ablation.py (NEW)
 """
 Ablation study: Train PPO and SAC with w2 (energy weight)  {0, 0.2, 0.4, 0.6, 0.8, 1.0}
 """
 
 import os
-from config.physics_constants import REWARD_WEIGHTS
+from MillingDT.config import REWARD_WEIGHTS
 
 def train_with_energy_weights(energy_weights, num_seeds=3):
     """
@@ -1967,7 +2057,7 @@ def train_with_energy_weights(energy_weights, num_seeds=3):
                 seed=seed,
                 w2=w2,
             )
-            model_ppo.save(f"models/PPO_w2_{w2}_seed_{seed}.zip")
+            model_ppo.save(f"results/run_ablation_w2_{w2}_seed{seed}/models/final_model.zip")
             
             # Train SAC
             model_sac = train_sac(
@@ -1975,7 +2065,7 @@ def train_with_energy_weights(energy_weights, num_seeds=3):
                 seed=seed,
                 w2=w2,
             )
-            model_sac.save(f"models/SAC_w2_{w2}_seed_{seed}.zip")
+            model_sac.save(f"results/run_ablation_w2_{w2}_seed{seed}/models/final_model_sac.zip")
             
             # Evaluate both
             ppo_results = evaluate(model_ppo, num_episodes=100, seed=seed)
@@ -1995,7 +2085,7 @@ def train_with_energy_weights(energy_weights, num_seeds=3):
         for row in results.keys()
     ])
     
-    df_ablation.to_csv('logs/ablation_energy_weights.csv', index=False)
+    df_ablation.to_csv('results/evaluation/ablation_energy_weights.csv', index=False)
     return df_ablation
 
 # Plotting ablation results
@@ -2026,7 +2116,7 @@ def plot_ablation_pareto(df_ablation):
     ax.legend()
     ax.grid(True, alpha=0.3)
     
-    plt.savefig('plots/ablation_pareto_frontier.png', dpi=300)
+    plt.savefig('results/plots/ablation_pareto_frontier.png', dpi=300)
     plt.show()
 ```
 
@@ -2092,21 +2182,21 @@ def plot_ablation_pareto(df_ablation):
 #### Phase 1: Critical Fixes (Week 1)
 | Task | Files | Effort | Priority |
 |:---|:---|:---|:---|
-| Add `truncated` flag | `env/milling_env.py` | 30 min | HIGH |
-| Add action clipping | `env/milling_env.py` | 20 min | MEDIUM |
-| Centralize environment registration | `env/__init__.py`, `agent/*.py` | 45 min | HIGH |
-| Replace file-polling with Queue | `agent/run_experiments.py` | 1.5 hrs | MEDIUM-HIGH |
-| Add global seeding utility | `utils/seeding.py` | 1 hr | HIGH |
+| Add `truncated` flag | `MillingDT/env/milling_env.py` | 30 min | HIGH |
+| Add action clipping | `MillingDT/env/milling_env.py` | 20 min | MEDIUM |
+| Centralize environment registration | `MillingDT/env/__init__.py`, `experiments/*.py` | 45 min | HIGH |
+| Replace file-polling with Queue | `experiments/run_experiments.py` | 1.5 hrs | MEDIUM-HIGH |
+| Add global seeding utility | `MillingDT/utils/seeding.py` | 1 hr | HIGH |
 | **Phase 1 Total** | - | **4.5 hours** | - |
 
 #### Phase 2: Enhancement & Rigor (Week 2)
 | Task | Files | Effort | Priority |
 |:---|:---|:---|:---|
-| Soft normalization for observations | `env/milling_env.py` | 45 min | MEDIUM-HIGH |
-| Intermediate feedback (kappa progress) | `env/milling_env.py` | 1 hr | HIGH |
-| Monte Carlo with 95% CI | `agent/evaluate.py`, `viz/` | 1.5 hrs | HIGH |
-| Centralize physics constants | `config/physics_constants.py` | 1 hr | HIGH |
-| Energy ablation study | `agent/train_rl_ablation.py` | 2 hrs | HIGH |
+| Soft normalization for observations | `MillingDT/env/milling_env.py` | 45 min | MEDIUM-HIGH |
+| Intermediate feedback (kappa progress) | `MillingDT/env/milling_env.py` | 1 hr | HIGH |
+| Monte Carlo with 95% CI | `experiments/evaluate.py`, `viz/` | 1.5 hrs | HIGH |
+| Centralize physics constants | `MillingDT/config/physics_constants.yaml` | 1 hr | HIGH |
+| Energy ablation study | `experiments/train_rl_ablation.py` | 2 hrs | HIGH |
 | **Phase 2 Total** | - | **6 hours** | - |
 
 #### Phase 3: Code Quality & Documentation (Week 3)
@@ -2126,7 +2216,7 @@ def plot_ablation_pareto(df_ablation):
 ```python
 # tests/test_env.py
 import pytest
-from env import MillingDTEnv
+from MillingDT.env import MillingDTEnv
 
 def test_action_clipping():
     """Verify actions are clipped to [-1, 1] before physics."""
@@ -2170,8 +2260,8 @@ def test_soft_normalization_gradient():
 
 def test_physics_constants_sync():
     """Verify environment and baselines use same physics constants."""
-    from config.physics_constants import TOOL_WEAR_CONSTANTS
-    from baselines.nsga2_baseline import TOOL_WEAR_CONSTANTS as BL_CONSTANTS
+    from MillingDT.config import TOOL_WEAR_CONSTANTS
+    from experiments.run_baselines import TOOL_WEAR_CONSTANTS as BL_CONSTANTS
     
     assert TOOL_WEAR_CONSTANTS == BL_CONSTANTS, "Physics constants must match"
 ```
@@ -2181,9 +2271,9 @@ def test_physics_constants_sync():
 # tests/test_training.py
 def test_training_convergence():
     """Verify PPO/SAC converge on training."""
-    from agent.train_rl import train_ppo
+    from experiments.train_rl import train
     
-    model, _ = train_ppo(total_timesteps=10_000, seed=42)
+    model, _ = train(total_timesteps=10_000, seed=42)
     assert model is not None
     assert model.num_timesteps == 10_000
 
@@ -2191,7 +2281,7 @@ def test_evaluate_reproducibility():
     """Verify evaluation is reproducible with fixed seed."""
     from agent.evaluate import evaluate
     
-    model = PPO.load("models/ppo_test.zip")
+    model = PPO.load("results/run_PPO_seed42/models/final_model.zip")
     env = gym.make("MillingDTEnv-v1")
     
     results1 = evaluate(model, env, num_episodes=10, seed=42)
@@ -2220,14 +2310,14 @@ After implementing all improvements:
 
 | File | Action | Purpose |
 |:---|:---|:---|
-| `env/milling_env.py` | Modify | Add truncated flag, soft normalization, intermediate rewards, action clipping |
-| `env/__init__.py` | Create | Centralize environment registration |
-| `config/physics_constants.py` | Create | Single source of truth for all physics parameters |
-| `utils/seeding.py` | Create | Centralized reproducible seeding utility |
-| `agent/train_rl_ablation.py` | Create | Energy weight ablation study |
-| `agent/evaluate.py` | Modify | Add 95% CI computation |
-| `agent/run_experiments.py` | Modify | Replace file polling with multiprocessing Queue |
-| `baselines/run_baselines.py` | Modify | Import constants from centralized config |
+| `MillingDT/env/milling_env.py` | Modify | Add truncated flag, soft normalization, intermediate rewards, action clipping |
+| `MillingDT/env/__init__.py` | Create | Centralize environment registration |
+| `MillingDT/config/physics_constants.yaml` | Create | Single source of truth for all physics parameters |
+| `MillingDT/utils/seeding.py` | Create | Centralized reproducible seeding utility |
+| `experiments/train_rl_ablation.py` | Create | Energy weight ablation study |
+| `experiments/evaluate.py` | Modify | Add 95% CI computation |
+| `experiments/run_experiments.py` | Modify | Replace file polling with multiprocessing Queue |
+| `experiments/run_baselines.py` | Modify | Import constants from centralized config |
 | `viz/plotting_utils.py` | Create | Refactored plotting functions (DRY principle) |
 | `viz/plot_eval.py`, `viz/plot_results.py` | Modify | Use centralized plotting_utils |
 | `tests/test_env.py` | Create | Unit tests for environment fixes |
@@ -2276,7 +2366,8 @@ The findings below are the audit as it was written on October 20, 2026, against
 the commit named above. The measurements it quotes that have since been redone
 are marked where they appear, and the state of the project now is in
 [Part 1, Environment Specification](#part-1-environment-specification) and in
-`results/RESULTS.md`.
+`results/RESULTS.md`. The file paths are the current ones, the files having
+moved since the audit; the line numbers are the ones the audit cited.
 
 ---
 
@@ -2308,7 +2399,7 @@ Every source file listed in the plan was read in full. The following checks were
 | Config override handling | `gym.make("MillingDTEnv-v1", C_wear=0.05, k1=14.0, ...)` | All three overrides silently ignored |
 | Env info payload | Inspection of the `info` dict returned by `step()` | No `T_total` key |
 | Ablation policy divergence | Deterministic rollout of all 8 ablation models | 3 models identical, 5 models distinct |
-| Version control coverage | `git ls-files`, `git check-ignore -v`, `git show HEAD:<path>` | `env/` absent from HEAD |
+| Version control coverage | `git ls-files`, `git check-ignore -v`, `git show HEAD:<path>` | `MillingDT/env/` absent from HEAD |
 | SAC presence | `grep -r "SAC" --include=*.py` | 0 matches |
 
 All numbers quoted below come from these runs or from committed CSV artifacts.
@@ -2322,16 +2413,16 @@ Where a defect has since been fixed, the disposition says so.
 
 | # | Plan item | Status | Location |
 |---|---|---|---|
-| 1.1 | `truncated` flag | Implemented | `env/milling_env.py:148`, `:324` |
-| 1.2 | Action clipping | Implemented | `env/milling_env.py:275` |
-| 1.3 | Soft tanh normalization | Implemented | `env/milling_env.py:226-231`, used at `:257-263` |
-| 1.4 | Intermediate rewards | Partial | `env/milling_env.py:339-365`. Kappa progress bonus, terminal bonus, and penalties are present. The per-pass "stay in spec" bonus from the plan was replaced by a penalty design, which is a reasonable deviation. |
+| 1.1 | `truncated` flag | Implemented | `MillingDT/env/milling_env.py:148`, `:324` |
+| 1.2 | Action clipping | Implemented | `MillingDT/env/milling_env.py:275` |
+| 1.3 | Soft tanh normalization | Implemented | `MillingDT/env/milling_env.py:226-231`, used at `:257-263` |
+| 1.4 | Intermediate rewards | Partial | `MillingDT/env/milling_env.py:339-365`. Kappa progress bonus, terminal bonus, and penalties are present. The per-pass "stay in spec" bonus from the plan was replaced by a penalty design, which is a reasonable deviation. |
 | 2.1 | Queue-based progress polling | **Non-functional**, fixed since | Section 4.1 |
-| 2.2 | Central environment registration | Implemented | `env/__init__.py`; `agent/train_rl.py:45` and `agent/evaluate.py:33` both `import env`. No duplicate `register()` calls remain. |
-| 2.3 | Global seeding | Implemented | `utils/seeding.py`; used at `agent/train_rl.py:48`, `agent/evaluate.py:36` |
-| 3.1 | Monte Carlo 95 percent CI | Partial, both defects fixed since | CI math is correct at `agent/evaluate.py:117-158`. Two defects degraded the output (Sections 4.2 and 4.3). |
+| 2.2 | Central environment registration | Implemented | `MillingDT/env/__init__.py`; `experiments/train_rl.py:45` and `experiments/evaluate.py:33` both `import MillingDT.env`. No duplicate `register()` calls remain. |
+| 2.3 | Global seeding | Implemented | `MillingDT/utils/seeding.py`; used at `experiments/train_rl.py:48`, `experiments/evaluate.py:36` |
+| 3.1 | Monte Carlo 95 percent CI | Partial, both defects fixed since | CI math is correct at `experiments/evaluate.py:117-158`. Two defects degraded the output (Sections 4.2 and 4.3). |
 | 3.2 | Visualization DRY refactor | Implemented | `viz/plotting_utils.py`; consumed by `viz/plot_eval.py:11`, `viz/plot_results.py:12`, `viz/plot_baselines_comparison.py:20` |
-| 3.3 | Centralized physics constants | Implemented | `config/physics_constants.py`; imported by `env/milling_env.py:24` and `baselines/run_baselines.py:30`. Wear, roughness, and energy formulas verified identical between the two consumers. |
+| 3.3 | Centralized physics constants | Implemented | `MillingDT/config/physics_constants.yaml`; imported by `MillingDT/env/milling_env.py:24` and `experiments/run_baselines.py:30`. Wear, roughness, and energy formulas verified identical between the two consumers. |
 | 4.1 | Energy weight ablation | **Degenerate output**, redone since | Section 4.4 |
 | 4.2 | Literature comparison | Implemented, unsupported claims removed | Section 5 |
 | Part 6 | Unit and integration tests | Implemented | `tests/test_env.py` (24 tests), `tests/test_integration.py` (5), `tests/test_progress_callback.py` (3), `tests/test_training.py` (2), 34 in all |
@@ -2343,11 +2434,11 @@ Where a defect has since been fixed, the disposition says so.
 
 #### 4.1 The queue heartbeat never fires, and it kills parallel training runs (P0)
 
-**Files:** `agent/train_rl.py:37`, `agent/train_rl.py:122`, `agent/run_experiments.py:98`
+**Files:** `experiments/train_rl.py:37`, `experiments/train_rl.py:122`, `experiments/run_experiments.py:98`
 
-`import numpy as np` sits inside the `if __name__ == "__main__":` block at `agent/train_rl.py:121-122`. When `agent.run_experiments` imports the module to spawn a worker, that import never executes, so `np` does not exist in the module namespace.
+`import numpy as np` sits inside the `if __name__ == "__main__":` block at `experiments/train_rl.py:121-122`. When `experiments.run_experiments` imports the module to spawn a worker, that import never executes, so `np` does not exist in the module namespace.
 
-The progress callback at `agent/train_rl.py:37` evaluates `np.mean(...)` while building the queue payload. The `NameError` is raised inside a `try` block whose `except` clause is a bare `except: pass`, so it is swallowed and the payload is never sent.
+The progress callback at `experiments/train_rl.py:37` evaluates `np.mean(...)` while building the queue payload. The `NameError` is raised inside a `try` block whose `except` clause is a bare `except: pass`, so it is swallowed and the payload is never sent.
 
 Probe result with a realistic `locals` payload:
 
@@ -2355,20 +2446,20 @@ Probe result with a realistic `locals` payload:
 msg after real-path locals: []
 ```
 
-Consequence: `agent/run_experiments.py:98` never receives a heartbeat, so `last_update[slot_id]` is never refreshed. After 300 seconds the stall detector terminates the worker. Every training run longer than 5 minutes is killed, and the default configuration in `agent/run_experiments.py:129` requests 200,000 steps.
+Consequence: `experiments/run_experiments.py:98` never receives a heartbeat, so `last_update[slot_id]` is never refreshed. After 300 seconds the stall detector terminates the worker. Every training run longer than 5 minutes is killed, and the default configuration in `experiments/run_experiments.py:129` requests 200,000 steps.
 
-The `models/ablation_w2_0_2`, `w2_0_4`, `w2_0_6`, and `w2_0_8` checkpoints on disk were therefore produced by some other route, not by the script in its current state.
+The `results/run_ablation_w2_0_2`, `w2_0_4`, `w2_0_6`, and `w2_0_8` checkpoints on disk were therefore produced by some other route, not by the script in its current state.
 
-**Fix:** move `import numpy as np` to module scope in `agent/train_rl.py`, and replace the bare `except: pass` with one that logs the exception.
+**Fix:** move `import numpy as np` to module scope in `experiments/train_rl.py`, and replace the bare `except: pass` with one that logs the exception.
 
 **Fixed since the audit.** `import numpy as np` is at module scope in
-`agent/train_rl.py`, and the callback logs a dropped heartbeat through
+`experiments/train_rl.py`, and the callback logs a dropped heartbeat through
 `self._log(...)` instead of swallowing it, so the stall detector sees the
 worker it is watching.
 
 #### 4.2 The Monte Carlo sweep does not randomize the physics it claims to (P1)
 
-**Files:** `agent/evaluate.py:29-35`, `env/milling_env.py:26-63`
+**Files:** `experiments/evaluate.py:29-35`, `MillingDT/env/milling_env.py:26-63`
 
 `generate_random_configs` draws random values for `C_wear`, `k1`, and `k2` and passes them as environment kwargs. `MillingDTEnv.__init__` accepts only `n_min`, `n_max`, `f_min`, `f_max`, `ap_min`, `ap_max`, `VB_max`, `Ra_max`, `kappa_total`, `D`, `L_cut`, `VB_0`, `w1`, and `w2`. The three physics kwargs are discarded without warning.
 
@@ -2386,19 +2477,19 @@ Only workpiece geometry varies across the 100 scenarios. `README.md:146` claims 
 
 **Fixed since the audit.** The environment accepts those overrides now and
 works on per-instance copies of the coefficient tables, and the scenarios
-themselves are sampled in `config/scenarios.py`, so the sweep and the training
+themselves are sampled in `MillingDT/config/scenarios.py`, so the sweep and the training
 draw from the same tables. The 100 scenarios of the sweep now vary the
 material and the tool as well as the geometry.
 
 #### 4.3 `T_total` is never exported, so the cycle-time metric is dead (P1)
 
-**Files:** `env/milling_env.py:218-230`, `agent/evaluate.py:153`
+**Files:** `MillingDT/env/milling_env.py:218-230`, `experiments/evaluate.py:153`
 
 The `info` dict returned by `step()` contains `pass`, `kappa_rem`, `a_p`, `f_r`, `n`, `Ra`, `MRR`, `VB`, `Energy`, `broken`, and `is_finishing`. There is no `T_total` key, although the environment maintains `self.T_total` internally.
 
-`agent/evaluate.py:153` reads `info.get('T_total', 0)`, which therefore returns 0 on every step. `compute_statistics` at `agent/evaluate.py:43` includes `T_total` in its metric list and reports a confidence interval around it.
+`experiments/evaluate.py:153` reads `info.get('T_total', 0)`, which therefore returns 0 on every step. `compute_statistics` at `experiments/evaluate.py:43` includes `T_total` in its metric list and reports a confidence interval around it.
 
-Verified against the committed artifact `results/monte_carlo/eval_PPO_MC_v4.csv`:
+Verified against the committed artifact `results/run_PPO_seed42/metrics/monte_carlo.csv`:
 
 ```
 rows: 100
@@ -2408,12 +2499,12 @@ T_total unique: [0] all zero: True
 **Fix:** add `"T_total": self.T_total` to the `info` dict and re-run the sweep.
 
 The fix was applied and the sweep was re-run. The artifact is now
-`results/monte_carlo/eval_PPO_MC_v5.csv`, and the cycle time is reported with
+`results/run_PPO_seed42/metrics/monte_carlo.csv`, and the cycle time is reported with
 its confidence interval (20.25 s, 16.86 to 23.63).
 
 #### 4.4 The committed ablation artifact is degenerate (P1)
 
-**Files:** `agent/train_rl_ablation.py`, `results/ablation/ablation_results.csv`
+**Files:** `experiments/train_rl_ablation.py`, `results/evaluation/ablation_results.csv`
 
 The script trains one PPO policy per energy weight and evaluates each over 50 episodes. The committed results table holds three rows with byte-identical metrics and zero variance:
 
@@ -2443,7 +2534,7 @@ w2_0_8: n=6031.1  f_r=0.2435
 
 Two further deviations from the plan:
 
-- The plan specifies a Pareto frontier plot of MRR against Energy. `agent/train_rl_ablation.py:139-173` now draws two line plots of Energy and Time against the weight. The committed `results/plots/ablation_pareto_frontier.png` is an orphan from an earlier implementation and is no longer regenerated by any script.
+- The plan specifies a Pareto frontier plot of MRR against Energy. `experiments/train_rl_ablation.py:139-173` now draws two line plots of Energy and Time against the weight. The committed `results/plots/ablation_pareto_frontier.png` is an orphan from an earlier implementation and is no longer regenerated by any script.
 - The plan specifies three seeds and both PPO and SAC. The implementation uses one seed and PPO only.
 
 **Fix:** re-run the ablation across the full weight grid, write the MRR against Energy Pareto frontier, and delete the orphaned PNG.
@@ -2464,25 +2555,26 @@ withdrawn.
 
 **Files:** `.gitignore:58`, `.gitignore:77`
 
-The ignore file contains `ENV/` at line 58, intended for virtual environments, and `agent/` at line 77. On a case-insensitive filesystem `ENV/` also matches `env/`.
+The ignore file contains `ENV/` at line 58, intended for virtual environments, and a rule for the experiment scripts at line 77. On a case-insensitive filesystem `ENV/` also matches `env/`.
 
 ```
-$ git check-ignore -v env/milling_env.py env/__init__.py agent/train_rl_ablation.py agent/run_pipeline.py
-.gitignore:58:ENV/	env/milling_env.py
-.gitignore:58:ENV/	env/__init__.py
-.gitignore:77:agent/	agent/train_rl_ablation.py
-.gitignore:77:agent/	agent/run_pipeline.py
+$ git check-ignore -v MillingDT/env/milling_env.py MillingDT/env/__init__.py experiments/train_rl_ablation.py experiments/run_pipeline.py
+.gitignore:58:ENV/	MillingDT/env/milling_env.py
+.gitignore:58:ENV/	MillingDT/env/__init__.py
+.gitignore:77:experiments/	experiments/train_rl_ablation.py
+.gitignore:77:experiments/	experiments/run_pipeline.py
 ```
 
-`git ls-files` lists no path under `env/`, and `git show HEAD:env/milling_env.py` reports the path as existing on disk but not in HEAD. The file that contains every Part 1 fix from the plan has never been committed. The same applies to the ablation script and the pipeline orchestrator.
+`git ls-files` lists no path under `MillingDT/env/`, and `git show HEAD:MillingDT/env/milling_env.py` reports the path as existing on disk but not in HEAD. The file that contains every Part 1 fix from the plan has never been committed. The same applies to the ablation script and the pipeline orchestrator.
 
 A fresh clone of this repository cannot construct the environment.
 
-**Fix:** replace `ENV/` with `env/`, `venv/`, and `.venv/`, remove the `agent/` rule, then commit `env/`, `agent/train_rl_ablation.py`, and `agent/run_pipeline.py`.
+**Fix:** replace `ENV/` with `env/`, `venv/`, and `.venv/`, remove the rule for the experiment scripts, then commit `MillingDT/env/`, `experiments/train_rl_ablation.py`, and `experiments/run_pipeline.py`.
 
 **Fixed since the audit.** The ignore rules that caused this are gone, and
-`env/`, `agent/`, `utils/` and `config/` are committed now, so a fresh clone
-constructs the environment and trains a policy.
+`MillingDT/env/`, `experiments/`, `MillingDT/utils/` and `MillingDT/config/`
+are committed now, so a fresh clone constructs the environment and trains a
+policy.
 
 ---
 
@@ -2494,7 +2586,7 @@ constructs the environment and trains a policy.
 
 The document states at line 30: "We implemented and benchmarked both PPO and SAC", and line 22 refers to a `MillingDTEnv-v2` that was never created. The benchmarking table at line 36 carries a full column headed "Our SAC (Eco-Zone)" with four quantitative values, including a 16.4 percent energy reduction and a zero percent failure rate.
 
-A search for SAC across every Python file in the repository returns 0 matches. There is no SAC implementation. `agent/train_rl.py:124` restricts the algorithm choice to PPO, `agent/evaluate.py:89` evaluates PPO only, and `agent/run_experiments.py:131` schedules PPO only. The SAC column is not a result that is hard to reproduce, it is a result that does not exist.
+A search for SAC across every Python file in the repository returns 0 matches. There is no SAC implementation. `experiments/train_rl.py:124` restricts the algorithm choice to PPO, `experiments/evaluate.py:89` evaluates PPO only, and `experiments/run_experiments.py:131` schedules PPO only. The SAC column is not a result that is hard to reproduce, it is a result that does not exist.
 
 This violates the plan's own success criterion 7 and the "Evidence Over Claims" principle.
 
@@ -2506,10 +2598,10 @@ This violates the plan's own success criterion 7 and the "Evidence Over Claims" 
 
 | Claim | Actual |
 |---|---|
-| Line 7: spindle speed 800 to 3200 RPM | `config/physics_constants.py:31-32`: 2000 to 8000 RPM |
-| Line 8: feed 0.05 to 0.25 mm/tooth | `config/physics_constants.py:33-34`: 0.05 to 0.35 mm/r |
-| Line 50: two hidden layers of 64 units | `agent/train_rl.py:70`: `net_arch=[256, 256]` |
-| Lines 75-76: `baselines/genetic_algorithm.py`, `baselines/rule_based.py` | Both are implemented inside `baselines/run_baselines.py` |
+| Line 7: spindle speed 800 to 3200 RPM | `MillingDT/config/physics_constants.yaml:31-32`: 2000 to 8000 RPM |
+| Line 8: feed 0.05 to 0.25 mm/tooth | `MillingDT/config/physics_constants.yaml:33-34`: 0.05 to 0.35 mm/r |
+| Line 50: two hidden layers of 64 units | `experiments/train_rl.py:70`: `net_arch=[256, 256]` |
+| Lines 75-76: the genetic algorithm and the rule based baseline | Both are implemented inside `experiments/run_baselines.py` |
 
 The reported experimental findings at `README.md:146-148` do hold against the committed Monte Carlo artifact:
 
@@ -2540,9 +2632,9 @@ re-measured since, and the note says which.
 |---|---|---|---|
 | 1 | Passes `gymnasium.check_env()` with no warnings | Met | Verified against `MillingDTEnv` |
 | 2 | Two runs with the same seed produce identical results | Met | `tests/test_training.py:57` passes. Bit-level identity of full PPO runs is not separately proven. |
-| 3 | Convergence curve monotonic, no divergence or NaN | Met | The TensorBoard runs the audit saw are gone: the training curves are written by the CSV logger of Stable-Baselines3 into `results/curves/*/progress.csv`, one per policy, and plotted by `viz/plot_results.py` |
+| 3 | Convergence curve monotonic, no divergence or NaN | Met | The TensorBoard runs the audit saw are gone: the training curves are written by the CSV logger of Stable-Baselines3 into `results/run_<config>/log/progress.csv`, one per policy, and plotted by `viz/plot_results.py` |
 | 4 | Monte Carlo sweep reports 95 percent CI for all metrics | Met now | `T_total` was identically zero (Section 4.3); it is exported in the info payload now, and the sweep reports all five metrics with intervals |
-| 5 | Baselines and environment use identical constants | Met | Verified by reading both consumers of `config/physics_constants.py` |
+| 5 | Baselines and environment use identical constants | Met | Verified by reading both consumers of `MillingDT/config/physics_constants.yaml` |
 | 6 | No duplicate plotting code | Met | `viz/plotting_utils.py` is the single source |
 | 7 | Ablation study demonstrating the energy objective | Met now, with one exception | The output is no longer degenerate (Section 4.4): 7 weights over 3 seeds with a measured frontier. The SAC comparison is still absent (Section 5.1) |
 
@@ -2552,8 +2644,8 @@ re-measured since, and the note says which.
 
 | Order | Action | Effort | Unblocks |
 |---|---|---|---|
-| 1 | Fix `.gitignore` and commit `env/`, `agent/train_rl_ablation.py`, `agent/run_pipeline.py` | 10 min | Everything else. A reviewer cannot currently read the environment. |
-| 2 | Move `import numpy as np` to module scope in `agent/train_rl.py` | 5 min | Parallel multi-seed training (Section 4.1) |
+| 1 | Fix `.gitignore` and commit `MillingDT/env/`, `experiments/train_rl_ablation.py`, `experiments/run_pipeline.py` | 10 min | Everything else. A reviewer cannot currently read the environment. |
+| 2 | Move `import numpy as np` to module scope in `experiments/train_rl.py` | 5 min | Parallel multi-seed training (Section 4.1) |
 | 3 | Add physics kwargs to `MillingDTEnv.__init__` and export `T_total` in `info` | 30 min | Meaningful Monte Carlo sweep (Sections 4.2, 4.3) |
 | 4 | Re-run the ablation across the full weight grid, produce the MRR against Energy Pareto frontier, remove the orphaned PNG | 2 hrs (compute) | Plan items 4.1 and 7 |
 | 5 | Remove the SAC claims from [Part 3, Literature Comparison](#part-3-literature-comparison), or implement SAC | 1 hr, or a full training budget | Honesty of the literature positioning |
@@ -2576,41 +2668,41 @@ claims were removed, and step 6 is with the README.
 python -m pytest tests/ -v
 
 # Environment checker
-python -c "import sys; sys.path.insert(0,'.'); import gymnasium as gym, env; \
+python -c "import sys; sys.path.insert(0,'.'); import gymnasium as gym, MillingDT.env; \
 from gymnasium.utils.env_checker import check_env; check_env(gym.make('MillingDTEnv-v1').unwrapped)"
 
 # Section 4.1, queue heartbeat
-python -c "import sys; sys.path.insert(0,'.'); import agent.train_rl as t; \
+python -c "import sys; sys.path.insert(0,'.'); import experiments.train_rl as t; \
 q=[]; F=type('F',(),{'put_nowait':lambda s,x: q.append(x)}); \
 cb=t.ProgressQueueCallback(F()); cb.init_callback(None); \
 cb.locals={'infos':[{'reward':1.0}]}; cb._on_step(); print(q)"
 
 # Section 4.2, ignored physics kwargs
-python -c "import sys; sys.path.insert(0,'.'); import gymnasium as gym, env; \
+python -c "import sys; sys.path.insert(0,'.'); import gymnasium as gym, MillingDT.env; \
 u=gym.make('MillingDTEnv-v1', C_wear=0.05, k1=14.0).unwrapped; \
 print(u.tool_wear_cfg['C_wear'], u.roughness_cfg['k1'])"
 
 # Section 4.5, version control coverage
-git check-ignore -v env/milling_env.py agent/train_rl_ablation.py
-git ls-files | Select-String 'env/'
+git check-ignore -v MillingDT/env/milling_env.py experiments/train_rl_ablation.py
+git ls-files | Select-String 'MillingDT/env/'
 ```
 
 ### Appendix B. Artifacts on disk at audit time
 
 This table is the state of the repository on October 20, 2026. The
 measurements in it have since been redone: the ablation is 21 policies at
-`models/ablation_w2_{w2}_seed{seed}`, the Monte Carlo sweep is
-`results/monte_carlo/eval_PPO_MC_v5.csv`, and the TensorBoard runs are gone,
-replaced by the CSV training curves under `results/curves/`.
+`results/run_ablation_w2_{w2}_seed{seed}`, the Monte Carlo sweep is
+`results/run_PPO_seed42/metrics/monte_carlo.csv`, and the TensorBoard runs are gone,
+replaced by the CSV training curves under `results/run_<config>/log/`.
 
 | Path | Contents |
 |---|---|
-| `models/PPO_seed42/` | Primary policy plus `vecnormalize.pkl` |
-| `models/ablation_w2_0_0/` through `w2_1_0/` | 8 ablation policies (weights 0.0, 0.2, 0.4, 0.5, 0.6, 0.8, 1.0) |
-| `results/monte_carlo/eval_PPO_MC_v4.csv` | 100 scenario rows. Success 1.0, violations 0.0, `T_total` all zero |
-| `results/ablation/ablation_results.csv` | 3 rows, degenerate (Section 4.4) |
+| `results/run_PPO_seed42/` | Primary policy plus `vecnormalize.pkl` |
+| `results/run_ablation_w2_0_0/` through `w2_1_0/` | 8 ablation policies (weights 0.0, 0.2, 0.4, 0.5, 0.6, 0.8, 1.0) |
+| `results/run_PPO_seed42/metrics/monte_carlo.csv` | 100 scenario rows. Success 1.0, violations 0.0, `T_total` all zero |
+| `results/evaluation/ablation_results.csv` | 3 rows, degenerate (Section 4.4) |
 | `results/plots/ablation_pareto_frontier.png` | Orphan, not regenerated by any current script |
-| `results/tensorboard/PPO_v4_seed42_1` to `_16` | 16 training runs |
+| `results/tensorboard/PPO_v4_seed42_1` to `_16` | 16 training runs, since replaced by the CSV training curves |
 ---
 
 ## Document map
