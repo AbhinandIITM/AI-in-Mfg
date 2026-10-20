@@ -7,7 +7,7 @@ root, and nothing in it is written twice.
 | Part | What it holds |
 | :--- | :--- |
 | 1 | The environment contract: state, actions, physics, reward, episode logic, constants, and the acceptance criteria with their measured status |
-| 2 | The method upgrade: domain randomization, the conditioned policy, the transfer experiment, and the receding-horizon controller, with the measured outcome of each |
+| 2 | The method upgrade: domain randomization, the policy conditioned on the energy weight, the transfer experiment, and the receding-horizon controller, with the measured outcome of each |
 | 3 | The position against the three papers in `docs/papers/`, with every number either quoted from a paper or measured by a script in this repository |
 | 4 | The design of the Streamlit workstation |
 | 5 | Where every physics equation comes from |
@@ -35,7 +35,7 @@ The entry point for the project is `README.md`. The measured results are in
 
 ---
 
-**Subject:** `env/milling_env.py`, the two registered environments
+**Subject:** `env/milling_env.py`, the one registered environment
 **Status:** matches the implementation as of the last commit
 **Related:** `README.md` (overview), [Part 5, Physics References](#part-5-physics-references) (where the physics comes from),
 [Part 3, Literature Comparison](#part-3-literature-comparison) (position against the published work)
@@ -45,15 +45,20 @@ reward description no longer matched the code.
 
 ---
 
-### 1. The Two Registrations
+### 1. The Registration
 
 | Registration | Observation | Purpose |
 | :--- | :--- | :--- |
-| `MillingDTEnv-v1` | 8 features | The policy for a single task. Every physical value can be overridden per scenario. |
-| `MillingDTEnv-w2-v1` | 11 features | The same environment, conditioned on the energy weight and the material context. The weight and the scenario are drawn per episode, so one policy covers the whole weight range. |
+| `MillingDTEnv-v1` | 11 features | The one environment. The energy weight and the material context are in the observation, so a single policy covers the whole weight range and the whole material distribution. A task with a pinned weight is the same environment with a constant in the context. |
 
-Both accept the same physical overrides. `MillingDTEnv(randomize=True)` draws a
-new machining scenario for every part.
+The identifier is `env.ENV_ID`, and every consumer takes it from there:
+`agent/train_rl.py`, `agent/evaluate.py`, `agent/transfer_experiment.py` and
+`baselines/run_baselines.py` all build their environments from it.
+
+It accepts the same physical overrides per scenario.
+`MillingDTEnv(randomize=True)` draws a new machining scenario for every part
+and `MillingDTEnv(randomize_weight=True)` draws a new energy weight for every
+part.
 
 ---
 
@@ -69,12 +74,15 @@ new machining scenario for every part.
 | 5 | Previous material removal rate | 0 to 1, clipped | $MRR / MRR_{\max}$ |
 | 6 | Previous surface roughness $Ra$ | 0 to $Ra_{\max}$, tanh squashed | Empirical regression |
 | 7 | Tool broken | 0 or 1 | Breakage event |
-| 8 | Energy weight $w_2$ | 0 to 1 | Only in `MillingDTEnv-w2-v1` |
-| 9 | Wear coefficient $C_{\text{wear}}$ | 0 to 1 over the scenario band | Only in `MillingDTEnv-w2-v1` |
-| 10 | Roughness coefficient $k_1$ | 0 to 1 over the scenario band | Only in `MillingDTEnv-w2-v1` |
+| 8 | Energy weight $w_2$ | 0 to 1 | The weight this part is optimized for |
+| 9 | Wear coefficient $C_{\text{wear}}$ | 0 to 1 over the band $[0.6, 1.4]$ of nominal | The material, as the policy sees it |
+| 10 | Roughness coefficient $k_1$ | 0 to 1 over the band $[0.8, 1.2]$ of nominal | The material, as the policy sees it |
 
 The first eight are normalized with the tanh squashing of the plan, which keeps
-the gradient magnitude when a constraint is violated.
+the gradient magnitude when a constraint is violated. The last three are the
+conditioning context, and they are always present: a policy trained with a
+pinned weight sees a constant in the first of them, and every policy in the
+repository works on the same 11-dimensional observation.
 
 ---
 
@@ -138,7 +146,7 @@ is the coefficient that applies at the reference condition.
 | :--- | :--- | :--- |
 | Throughput | $+5 \, w_1 \, MRR / MRR_{\max}$ | The objective |
 | Energy | $-5 \, w_2 \, E / E_{\text{ref}}$ | The objective |
-| Progress | $+2 \, \Delta(\text{stock removed})$ | Anti-stall shaping |
+| Progress | $+2$ per unit of the allowance removed | Anti-stall shaping |
 | Flank wear | $-50$ per pass above $VB_{\text{safe}}$ | Guard rail |
 | Breakage | $-100$ | Guard rail |
 | Roughness | $-50$ if the finishing pass ends above $Ra_{\text{safe}}$ | Guard rail |
@@ -146,14 +154,38 @@ is the coefficient that applies at the reference condition.
 | Completion | $+200$ when the stock is removed in spec | Discourage stalling |
 | Pareto margin | up to $+5$ for the margin below the roughness limit and the reference cycle time | Tie breaker |
 
+The objective term is scaled by 5, the progress term is 2 per unit of the
+allowance removed, measured as a fraction of the total allowance, and the
+three constraint penalties are flat: 50 for a pass
+that ends above the wear safety limit, 100 for a broken tool, and 50 at the
+finishing pass when the roughness is above the safety limit. The step penalty
+is 0.05, the completion bonus is 200, and the Pareto margin bonus is at most
+5, the product of the two margins scaled by 5, so it cannot outvote the
+throughput and energy objectives.
+
 $E_{\text{ref}}$ is the energy of a pass cut under the reference condition
 (5000 RPM, 0.2 mm/r, 2.5 mm), so a pass under that condition normalizes to 1
-and the energy term has the same sensitivity as the throughput term. The
+and the energy term has the same sensitivity as the throughput term. It is
+recomputed for every scenario, from that scenario's diameter, cutting length
+and energy coefficient table, so the scale follows the part being cut. The
 objective terms are multiplied by 5 so that they can compete with the shaping
 terms; without that scale the shaping decides the policy and the energy weight
 has no effect at all.
 
-$w_1 + w_2 = 1$ in every run.
+$w_1 + w_2 = 1$ in every run, and the weight belongs to the environment: the
+environment reads it from its own reward configuration, so the policy and the
+reward can never disagree about which end of the trade-off they are on.
+
+Tool breakage is stochastic. Above a flank wear of 0.15 mm the probability of
+breaking on a pass is
+
+$$
+p_{\text{break}} = 0.3 \cdot \frac{VB - 0.15}{VB_{\max} - 0.15} \cdot \left(\frac{MRR}{MRR_{\max}}\right)^2
+$$
+
+the wear factor times the square of the load factor. The draw comes from the
+environment's own generator, which `reset(seed=...)` seeds, so a scenario
+replayed with the same seed breaks in the same place.
 
 ---
 
@@ -184,6 +216,24 @@ drift from another.
 | Engineering | $VB_{\max} = 0.3$ mm, $Ra_{\max} = 1.6$ $\mu$m, safety factor 0.85 |
 | Workpiece | $D = 50$ mm, $L_{\text{cut}} = 100$ mm, $\kappa = 5$ mm |
 
+The scenarios are drawn from the same file, and the environment and the Monte
+Carlo sweep read the same tables, so the policy is trained on the distribution
+it is measured on.
+
+| Quantity | Range |
+| :--- | :--- |
+| Stock allowance $\kappa_{\text{total}}$ | 2 to 15 mm |
+| Tool/workpiece diameter $D$ | 40 to 150 mm |
+| Cutting length $L_{\text{cut}}$ | 50 to 200 mm |
+| Wear coefficient $C_{\text{wear}}$ | $[0.6, 1.4] \times$ nominal |
+| Roughness coefficients $k_1$, $k_2$, $k_3$ | $[0.8, 1.2] \times$ nominal |
+| Initial flank wear $VB_0$ | $\mathcal{U}[0, 0.8]$ of $VB_{\max}$ |
+
+The wear exponents $\alpha$, $\beta$ and $\gamma_{\text{wear}}$ are not
+randomized. The environment draws a scenario at every `reset()` when it is
+built with `randomize=True`, and it recomputes `MRR_max`, `E_ref` and
+`T_ref` for every scenario it draws.
+
 ---
 
 ### 8. Baselines
@@ -195,14 +245,33 @@ drift from another.
 | Rule based | Feed held at maximum, speed dropped as the tool wears |
 | NSGA-II static | One parameter set for the whole part, solved with pymoo |
 | Receding horizon | Re-solves the next pass at every step, with the remaining stock and the current wear as the state |
-| PPO | The learned policy, and the energy weight ablation across seven weights |
+| PPO | The learned policy, the production one at `models/PPO_seed42` |
 
 The receding-horizon controller is the only classical policy that stays inside
-the roughness safety limit, and it reaches a total reward of +203.5 against
--46 for the four static ones. The learned policy and the controller are level
-on the reward (204.1 against 203.5), and the controller is ahead on the
-material removal rate and the cycle time. The comparison in
-`results/baseline_results_v5.csv` is the one to read.
+the roughness safety limit, and it reaches a total reward of +203.45 against
+-46 for the three fast static ones, which all finish outside the limit and
+take the -50 finishing penalty. Constant high takes the same penalty at the
+highest removal rate and a cycle time of 4.3 s, and constant safe stays inside
+the limit but needs 3000 s for a part.
+
+All six are measured on the same 50 episodes of the nominal condition, at the
+default energy weight $w_2 = 0.4$.
+
+| Policy | Reward | MRR (mm3/min) | Energy per part (kJ) | Cycle time (s) |
+| :--- | ---: | ---: | ---: | ---: |
+| PPO (ours) | 204.09 | 894.3 | 18.40 | 5.56 |
+| Receding horizon | 203.45 | 981.7 | 18.02 | 4.80 |
+| NSGA-II static | -46.39 | 732.9 | 18.8 | 6.4 |
+| Rule based | -46.48 | 719.8 | 18.7 | 6.6 |
+| Constant high | -46.10 | 1099.6 | 17.8 | 4.3 |
+| Constant safe | -139.25 | 1.6 | 1506.8 | 3000.0 |
+
+The learned policy and the controller are level on the reward, 204.09 against
+203.45, and the controller is ahead on the material removal rate (981.7 against
+894.3) and the cycle time (4.80 s against 5.56 s). So no reinforcement
+learning advantage is demonstrated yet. The classical rows are in
+`results/baseline_results_v5.csv`; the learned row is the production policy
+over the same 50 episodes of the nominal condition.
 
 ---
 
@@ -217,7 +286,9 @@ material removal rate and the cycle time. The comparison in
 | The environment and the baselines use identical constants | Met | `tests/test_env.py::test_physics_constants_sync`; both import `config/physics_constants.py` |
 | The environment and the baselines use identical equations | Met | `tests/test_env.py::test_environment_uses_the_shared_physics`; the equations live in `config/physics.py` and every consumer imports them |
 | No duplicated plotting code | Met | `viz/plotting_utils.py` is the single source |
-| The ablation demonstrates the energy objective | Met | Across the non-dominated weights the removal rate falls 18% and the energy of the part falls 8.5%, and the spindle speed falls with the energy weight, which is the mechanism the model predicts. [Part 3, Literature Comparison](#part-3-literature-comparison) states the mechanism. |
+| The ablation demonstrates the energy objective | Met | Across the non-dominated weights the removal rate falls 8.4% and the energy of the part falls 9.5%, and the spindle speed falls with the energy weight, which is the mechanism the model predicts. [Part 3, Literature Comparison](#part-3-literature-comparison) states the mechanism. |
+| One policy covers the whole energy weight range | Met | `results/weight_sweep/weight_sweep.csv` and `results/weight_sweep/weight_sweep_vs_ablation.csv`; the single policy removes 14% to 28% more material for 3% to 16% less energy over the weights 0.0 to 0.6 than the 21 policies trained per weight |
+| The transfer experiment measures the adaptation against a from-scratch policy | Met | `results/transfer/transfer_results.csv`; four arms on a harder material, and the production policy reaches 200.3 with no adaptation and the finished surface in spec in every scenario |
 
 ---
 
@@ -240,8 +311,10 @@ baseline, from `results/RESULTS.md`:
 
 - The Monte Carlo sweep runs 100 randomized scenarios (geometry, material and tool
   coefficients, initial flank wear) and reports 95% confidence intervals.
-- The energy weight ablation trains 7 weights over 3 seeds and shows a clear,
-  monotone effect of the energy weight on the operating point.
+- The energy weight ablation trains 7 weights over 3 seeds and shows a clear
+  effect of the energy weight on the operating point: across the frontier the
+  spindle speed falls from 7256 RPM at $w_2 = 0.4$ to 6490 RPM at $w_2 = 1.0$,
+  and the two lowest weights are dominated.
 - The literature comparison quotes only numbers that exist in `docs/papers/` or
   in the artifacts of this repository.
 
@@ -283,11 +356,11 @@ Part 3, and the measured frontier in `results/RESULTS.md`.
 | Method | Verdict | Reason |
 | :--- | :--- | :--- |
 | Multi-objective / conditioned RL (MORL style) | **Adopt** | Replaces the 21-run weight sweep with one policy that is conditioned on the energy weight, and gives the whole frontier from a single training run. |
-| Domain randomization in the environment | **Adopt** | The policy currently trains on one operating point and is measured on many. Training across the same distribution it is measured on is the cheapest possible fix for the robustness claim. |
+| Domain randomization in the environment | **Adopt** | The policy trained on one operating point and was measured on many. Training across the same distribution it is measured on is the cheapest possible fix for the robustness claim. |
 | Transfer learning | **Adopt** | Maps to a real deliverable (a new material or a different spindle limit), and is cheap because the observation space is fixed. |
 | Receding-horizon controller as a teacher, behavioural cloning as warm start | **Adopt the controller, measure the cloning** | A receding-horizon solver is a genuinely strong expert, and it gives the classical comparison a fair baseline. Cloning it into the policy was measured and dropped: it was a head start, not a different policy. |
 | Continual learning in the classic sense | **Defer** | There is no task sequence yet. It becomes the right frame only if the target becomes non-stationarity, and then the conditioned policy with replay covers it. |
-| Representation learning | **Reject for now** | The state is 8 physics-derived features, so there is nothing to learn a representation of. It becomes relevant only if raw sensor data (acoustic emission) enters the design, which is a different project. |
+| Representation learning | **Reject for now** | The state is 8 physics-derived features plus 3 conditioning features, so there is nothing to learn a representation of. It becomes relevant only if raw sensor data (acoustic emission) enters the design, which is a different project. |
 | Offline RL | **Reject** | No fixed dataset to be offline about. |
 | Pure imitation learning | **Reject as the primary method** | Imitation is for when demonstrations are cheap and reinforcement learning is expensive. Here the simulator is the cheap data source and the reward is available, so imitation throws away information. It is used here as a warm start, not as a method. |
 | Curiosity / intrinsic motivation | **Defer** | Exploration is not the bottleneck after the reward rebalance. Worth revisiting only if a task proves hard to learn. |
@@ -304,16 +377,16 @@ opt-in randomized mode:
 
 - `MillingDTEnv(randomize=True)` samples the scenario at every `reset()`:
   workpiece geometry (`kappa_total`, `D`, `L_cut`), the material and tool
-  coefficients (`C_wear`, `k1`, `k2`, `k3`, `alpha`, `beta`, `gamma_wear`),
-  and the initial flank wear (`VB_0`).
+  coefficients (`C_wear`, `k1`, `k2`, `k3`), and the initial flank wear
+  (`VB_0`). The wear exponents are not randomized.
 - The sampling bands are the same bands the Monte Carlo sweep uses, so the
   policy is trained on the distribution it is measured on. The bands live in
   `config/physics_constants.py` so the environment and the sweep cannot drift
   apart.
 - The derived scales (`MRR_max`, `E_ref`, `T_ref`) depend on the scenario, so
-  they are recomputed whenever the scenario changes. The current code
-  computes them once in `__init__`; that moves into a `_configure()` method
-  called from `__init__` and from `reset()`.
+  they are recomputed whenever the scenario changes. The code as it stood
+  computed them once in `__init__`; that moved into an `_apply_scenario()`
+  method called from `__init__` and from `reset()`.
 
 #### Expected outcome (hypothesis, to be measured)
 
@@ -323,10 +396,11 @@ the first time during evaluation.
 
 #### Files
 
-- `config/physics_constants.py`: add `SCENARIO_BANDS`.
-- `env/milling_env.py`: `_configure()`, randomized `reset()`, `randomize` flag.
-- `agent/train_rl.py`: `env_kwargs` already reaches the environment, so the
-  training script needs no change beyond passing `randomize=True`.
+- `config/physics_constants.py`: add `SCENARIO_RANGES`, `SCENARIO_BANDS` and
+  `SCENARIO_INITIAL_WEAR`.
+- `config/scenarios.py`: the sampling itself, shared with the Monte Carlo sweep.
+- `env/milling_env.py`: `_apply_scenario()`, randomized `reset()`, `randomize` flag.
+- `agent/train_rl.py`: the `--randomize` flag.
 - `tests/test_env.py`: a test that two resets of a randomized environment draw
   different scenarios, and that a fixed environment does not.
 
@@ -336,9 +410,8 @@ the first time during evaluation.
 
 #### Design
 
-The environment gains a second registration, `MillingDTEnv-w2-v1`, whose
-observation carries the energy weight and the scenario context alongside the
-eight physics features:
+The observation carries the energy weight and the scenario context alongside
+the eight physics features:
 
 $$s_t = [VB, \kappa, n_{\text{prev}}, f_{\text{prev}}, a_{p,\text{prev}}, MRR_{\text{prev}}, Ra_{\text{prev}}, \text{broken}, w_2, \widetilde{C_{\text{wear}}}, \widetilde{k_1}]$$
 
@@ -347,25 +420,30 @@ trained over a sampled weight space and a sampled scenario distribution
 answers, at runtime, "give me the most energy-efficient cut that still meets
 the roughness limit for this material".
 
-`MillingDTEnv-v1` keeps its 8-dimensional observation so the policies already
-trained in `models/` stay loadable and the artifacts already committed stay
-valid.
+The plan as written called for a second registration with this observation and
+kept the 8-dimensional one for the policies already in `models/`. As built,
+there is one registration, `MillingDTEnv-v1`, with the 11-dimensional
+observation, and a task with a pinned weight is the same environment with a
+constant in the context. The two registrations would have shared every
+equation anyway, and one environment with one observation is what the
+production policy, the 21 ablation policies and the dashboard all use.
 
 #### Validation
 
 The conditioned policy is the claim "one policy covers the frontier". The test
 is whether its frontier reproduces the 21-policy frontier measured in
 `results/ablation/ablation_summary.csv`. The two are compared in
-`results/conditioned_vs_sweep.csv`.
+`results/weight_sweep/weight_sweep_vs_ablation.csv`, which
+`python agent/evaluate.py --sweep-weight --compare` writes.
 
 #### Files
 
-- `env/milling_env.py`: observation composition, `condition_w2` flag.
-- `env/__init__.py`: register `MillingDTEnv-w2-v1`.
-- `agent/train_rl_conditioned.py`: training script for the conditioned policy.
-- `agent/evaluate_conditioned.py`: sweeps the weight at runtime and writes the
-  frontier.
-- `tests/test_env.py`: observation dimension and content per registration.
+- `env/milling_env.py`: observation composition, the context features.
+- `env/__init__.py`: the one registration.
+- `agent/train_rl.py`: the `--randomize-weight` flag for the production
+  policy, and `--w2` for a pinned weight.
+- `agent/evaluate.py`: the `--sweep-weight` and `--compare` flags.
+- `tests/test_env.py`: observation dimension and content.
 
 ---
 
@@ -376,16 +454,22 @@ is whether its frontier reproduces the 21-policy frontier measured in
 A self-contained experiment, not a new training mode:
 
 1. Train a source policy on the nominal material (source distribution).
-2. Build a target task: a different material (shifted `k1`, `k2`, `C_wear`)
-   and a different machine (a lower spindle ceiling, a different feed limit).
-3. Measure three numbers on the target task:
+2. Build a target task: a different material (shifted `k1`, `k2`, `C_wear`).
+   The plan also called for a different machine (a lower spindle ceiling, a
+   different feed limit); as built the target shifts the material only, on the
+   same machine.
+3. Measure four numbers on the target task:
    - the source policy zero-shot,
    - the source policy after fine-tuning for N episodes,
-   - a policy trained on the target from scratch for the same episode budget.
+   - a policy trained on the target from scratch for the same episode budget,
+   - the production policy zero-shot, which was trained across a distribution
+     of materials and therefore has the material in its observation.
 4. Report the adaptation curve: target performance against episodes spent.
 
 The comparison of 2 against 3 is the result that matters: it says how much of
-the new task is covered by what the policy already learned.
+the new task is covered by what the policy already learned. The fourth arm is
+the answer the plan expected to find: a policy that has the material in its
+observation needs no adaptation step at all.
 
 #### Files
 
@@ -435,7 +519,9 @@ are in the history of this repository.
   the analysis.
 - Any change to the physical models. The energy model stays as it is, and the
   limitation it imposes on the energy objective stays documented in
-  [Part 3, Literature Comparison](#part-3-literature-comparison).
+  [Part 3, Literature Comparison](#part-3-literature-comparison). That was the
+  position when the plan was written. Phase 5 changed the energy model anyway,
+  and the change and its measurement are in section 10.
 
 ---
 
@@ -469,19 +555,28 @@ that the documentation quotes.
 | Phase | Built in | Artifact | Outcome |
 | :--- | :--- | :--- | :--- |
 | 1. Domain randomization | `config/scenarios.py`, `env/milling_env.py` | `results/monte_carlo/eval_PPO_MC_v5.csv` | The finished surface stays inside the roughness limit in 100% of the 100 scenarios, the part completion rate is 99.0%, the flank wear limit is never exceeded. |
-| 2. Conditioned policy | `env/__init__.py`, `agent/train_rl_conditioned.py`, `agent/evaluate_conditioned.py` | `results/conditioned/` | One run of 1,000,000 steps beats the 21 weight-specific policies of 150,000 steps each, which is 3,150,000 steps in total: 13% to 27% more removal rate at the same or lower energy. |
-| 3. Transfer experiment | `agent/transfer_experiment.py` | `results/transfer/` | Fine tuning the source policy for 50,000 steps removes no roughness violation (183.0 to 182.9), while a policy trained on the target from scratch for the same budget removes all of them (196.7). |
-| 4. Controller teacher | `baselines/receding_horizon.py` | `results/baseline_results_v5.csv` | The receding-horizon controller scores +203.5 against -46 for every static baseline, and is the only classical policy that stays inside the roughness safety limit. The cloning arm of this phase was measured and removed. |
-| 5. Speed dependent cutting energy | `config/physics.py`, `config/physics_constants.py` | `results/ablation/ablation_summary.csv` | The part energy now has an interior minimum in the spindle speed, and the ablation measures a real trade-off: across the non-dominated weights the removal rate falls 18% and the energy of the part falls 8.5%. |
+| 2. Conditioned policy | `env/milling_env.py`, `env/__init__.py`, `agent/train_rl.py`, `agent/evaluate.py` | `results/weight_sweep/weight_sweep.csv`, `results/weight_sweep/weight_sweep_vs_ablation.csv` | One run of 1,000,000 steps beats the 21 weight-specific policies of 150,000 steps each, which is 3,150,000 steps in total: 14% to 28% more removal rate for 3% to 16% less energy over the weights 0.0 to 0.6, and 16% and 15% more removal rate for 0.5% and 2.1% more energy at 0.8 and 1.0. |
+| 3. Transfer experiment | `agent/transfer_experiment.py` | `results/transfer/transfer_results.csv` | Four arms. Fine tuning the source policy for 50,000 steps adapts it (182.5 to 196.6, with the roughness violations gone), and a policy trained on the target from scratch for the same budget lands in the same place (196.6). The production policy needs no adaptation at all and scores 200.3, with the finished surface in spec in every scenario. |
+| 4. Controller teacher | `baselines/receding_horizon.py` | `results/baseline_results_v5.csv` | The receding-horizon controller scores +203.45 against -46 for the three fast static baselines and -139.25 for constant safe, and is the only classical policy that stays inside the roughness safety limit. The cloning arm of this phase was measured and removed. |
+| 5. Speed dependent cutting energy | `config/physics.py`, `config/physics_constants.py` | `results/ablation/ablation_summary.csv` | The part energy now has an interior minimum in the spindle speed, and the ablation measures a real trade-off: across the non-dominated weights the removal rate falls 8.4% and the energy of the part falls 9.5%. |
 
-One result contradicts what the plan expected, and it is reported as it came
-out.
+Two results contradict what the plan expected, and they are reported as they
+came out.
 
-**Fine tuning is the wrong tool for a material change.** The plan assumed
-that a pre-trained policy would adapt to a new material faster than one
-trained from scratch. At a 50,000-step budget the opposite is true. The
-reason the plan's own recommendation still holds is phase 1: a policy trained
-across a distribution of materials needs no adaptation step at all.
+**Fine tuning does adapt, and it is still not the best way to change
+material.** The plan assumed that a pre-trained policy would adapt to a new
+material faster than one trained from scratch, and an earlier measurement said
+the opposite: fine tuning the source policy for 50,000 steps left it where it
+was, at 182.9 against 183.0, with the roughness violations untouched. That
+measurement was taken with the 8-dimensional observation, where the policy
+could not see the material at all, so there was nothing for it to adapt with.
+The measurement has been redone on the 11-dimensional observation, and the
+opposite holds: fine tuning now reaches 196.6 with no roughness violations,
+level with a policy trained on the target from scratch for the same 50,000
+steps. The reason the plan's own recommendation still holds is phase 1: a
+policy trained across a distribution of materials needs no adaptation step at
+all, and the production policy scores 200.3 on the target material without
+one.
 
 The other surprise was the opposite one. The plan expected the energy
 objective to be a trade-off against throughput and found that it was not: the
@@ -580,14 +675,18 @@ this repository, from `config/physics_constants.py`.
    throughput-energy frontier in `results/plots/ablation_pareto_frontier.png`.
 5. A conditioned policy. The observation carries the energy weight and the
    material context, and both are drawn per episode, so one policy covers the
-   whole weight range instead of one policy per weight.
+   whole weight range instead of one policy per weight. The condition lives in
+   the one registration, so there is no second environment to keep in step.
 6. A receding-horizon controller as a classical baseline. The static NSGA-II
-   baseline cannot react to the tool state, and all four static baselines end
-   outside the roughness safety limit. The receding-horizon one re-solves at
-   every pass and is the only classical policy that stays inside it.
+   baseline cannot react to the tool state, and three of the four static
+   baselines end outside the roughness safety limit. The receding-horizon one
+   re-solves at every pass and is the only classical policy that stays inside
+   it.
 7. A transfer experiment. A policy trained on one material is evaluated on a
    harder one, zero shot, then fine tuned, and compared against a policy
-   trained on the new material from scratch for the same budget.
+   trained on the new material from scratch for the same budget. The
+   production policy, which has the material in its observation, is measured
+   on the same target, and it needs no adaptation at all.
 
 **Does not add**
 
@@ -639,6 +738,15 @@ energy of a part. A part cut in many shallow passes draws less power per pass
 but spends more time on the idle machine, so the two quantities can move in
 opposite directions. The ablation reports both.
 
+The trade-off is measured, not assumed. Across the non-dominated weights of
+the ablation the removal rate falls 8.4% (1038.0 to 951.3 mm3/min) and the
+energy of the part falls 9.5% (72.7 to 65.8 kJ), and the spindle speed falls
+with them, from 7256 RPM to 6490 RPM. The two movements are close to
+symmetric, and the direction of the spindle speed is the mechanism the model
+predicts: a higher energy weight holds the spindle back, the specific cutting
+energy stops growing with the speed, and the part gets cheaper at the cost of
+the material removed. Section 5.2 has the grid.
+
 
 ---
 
@@ -646,96 +754,156 @@ opposite directions. The ablation reports both.
 
 Every table below is generated from the artifacts by
 `python agent/summarize_results.py`, which writes the same content to
-`results/RESULTS.md`.
+`results/RESULTS.md`. The two exceptions are marked where they occur: the
+learned row of the baseline table, and the confidence intervals of the rate
+rows, which are given as fractions here.
 
-#### 5.1 Primary policy, Monte Carlo sweep over 100 scenarios
+#### 5.1 Production policy, Monte Carlo sweep over 100 scenarios
 
 Artifact: `results/monte_carlo/eval_PPO_MC_v5.csv`
 
+The policy is `models/PPO_seed42`, the production policy, trained for
+1,000,000 steps with the scenario and the energy weight drawn per episode.
+It is queried here at $w_2 = 0.4$.
+
 | Metric | Mean | 95% CI |
 | :--- | ---: | :--- |
-| Material removal rate (mm3/min) | 1239.3 | 1116.0 to 1362.5 |
-| Energy per part (kJ) | 68.2 | 58.5 to 77.9 |
-| Cycle time per part (s) | 19.4 | 16.6 to 22.2 |
-| Max flank wear (mm) | 0.124 | 0.111 to 0.138 |
+| Material removal rate (mm3/min) | 1205.15 | 1088.94 to 1321.35 |
+| Energy per part (kJ) | 68.35 | 58.77 to 77.92 |
+| Cycle time per part (s) | 20.25 | 16.86 to 23.63 |
+| Max surface roughness (um) | 1.379 | 1.309 to 1.448 |
+| Max flank wear (mm) | 0.1244 | 0.1109 to 0.1378 |
 | Parts completed within spec | 99.0% | |
-| Roughness violations, finished surface | 0.0% | 0.0% to 0.0% |
-| Flank wear violations | 0.0% | 0.0% to 0.0% |
-| Tool breakage | 1.0% | 0.0% to 3.0% |
+| Roughness violations, worst pass | 38.0% | [0.285, 0.475] |
+| Roughness violations, finished surface | 0.0% | [0.000, 0.000] |
+| Roughness above the safety limit, worst pass | 56.0% | [0.463, 0.657] |
+| Roughness above the safety limit, finished surface | 0.0% | [0.000, 0.000] |
+| Flank wear violations | 0.0% | [0.000, 0.000] |
+| Tool breakage | 1.0% | [0.000, 0.030] |
+
+The confidence intervals of the rate rows are given as fractions of the
+scenarios, the metric rows in their own units.
 
 The scenarios randomize the stock allowance, the tool diameter, the cutting
 length, the wear and roughness coefficients, and the initial flank wear of the
 tool. The policy is trained on scenarios drawn from the same tables, so it is
-measured on the distribution it was trained on. The worst pass of an episode
-exceeds the roughness limit in 39% of the scenarios, which is the roughing
-pass; the reward constrains the finishing pass, which is the pass that sets
-the surface of the part.
+measured on the distribution it was trained on. The mean operating point over
+the 100 scenarios is 7199 RPM, 0.247 mm/r, 2.11 mm of depth of cut and 4.0
+passes per part.
+
+The worst pass of an episode exceeds the roughness limit in 38% of the
+scenarios and the safety limit in 56%, and those are the roughing passes. The
+reward constrains the finishing pass, which is the pass that sets the surface
+of the part, and the finished surface is inside the limit in every one of the
+100 scenarios.
 
 #### 5.2 Energy weight ablation, 7 weights and 3 seeds
 
 Artifact: `results/ablation/ablation_summary.csv`
 
+The 21 policies live in `models/ablation_w2_{w2}_seed{seed}`. Each one has
+its weight pinned, and each is measured at the weight it was trained for, on
+the same 50 scenarios.
+
 | w2 | MRR (mm3/min) | Energy per part (kJ) | Cycle time (s) | Spindle (RPM) | On the frontier |
 | ---: | ---: | ---: | ---: | ---: | :--- |
-| 0.0 | 1000 +/- 31 | 82.8 +/- 0.7 | 45.8 +/- 2.0 | 6974 | dominated |
-| 0.4 | 1069 +/- 40 | 71.5 +/- 0.4 | 22.9 +/- 1.0 | 7205 | yes |
-| 0.6 | 1008 +/- 23 | 68.3 +/- 0.8 | 21.6 +/- 1.1 | 6775 | yes |
-| 0.8 | 888 +/- 58 | 65.8 +/- 1.4 | 23.1 +/- 0.9 | 6307 | yes |
-| 1.0 | 877 +/- 43 | 65.4 +/- 1.7 | 22.5 +/- 1.2 | 6321 | yes |
+| 0.0 | 946.3 +/- 63.4 | 82.9 +/- 1.4 | 44.8 +/- 2.4 | 7094 | dominated |
+| 0.2 | 1007.8 +/- 22.7 | 77.1 +/- 1.1 | 31.3 +/- 1.3 | 7471 | dominated |
+| 0.4 | 1038.0 +/- 67.6 | 72.7 +/- 0.5 | 24.8 +/- 1.8 | 7256 | yes |
+| 0.5 | 1035.8 +/- 43.8 | 70.3 +/- 1.2 | 22.0 +/- 0.5 | 7080 | yes |
+| 0.6 | 1023.9 +/- 27.4 | 70.8 +/- 0.6 | 22.1 +/- 0.5 | 7148 | dominated |
+| 0.8 | 971.1 +/- 43.2 | 66.8 +/- 1.2 | 21.9 +/- 0.7 | 6538 | yes |
+| 1.0 | 951.3 +/- 54.7 | 65.8 +/- 0.6 | 20.9 +/- 0.6 | 6490 | yes |
 
-This is the measurement the energy model was changed for. Across the frontier
-the removal rate falls 18% and the energy of the part falls 8.5%, and the
-spindle speed falls with it, which is the mechanism the model predicts: the
-specific cutting energy grows with the speed, so the energy weight holds the
-spindle back and pays for it in removal rate. The two lowest weights are
-dominated, they spend more energy without removing more material.
+This is the measurement the energy model was changed for. Across the frontier,
+from $w_2 = 0.4$ to $w_2 = 1.0$, the removal rate falls 8.4% and the energy of
+the part falls 9.5%, and the spindle speed falls with them, from 7256 RPM to
+6490 RPM. That is the mechanism the model predicts: the specific cutting
+energy grows with the speed, so the energy weight holds the spindle back and
+pays for it in removal rate. The two lowest weights and the weight 0.6 are
+dominated: they spend more energy without removing more material.
 
-#### 5.3 One conditioned policy against 21 weight-specific policies
+#### 5.3 One policy against 21 weight-specific policies
 
-Artifacts: `results/conditioned/conditioned_frontier.csv` (1,000,000 steps) and
-`results/conditioned/conditioned_frontier_150k.csv` (150,000 steps, the same
-budget as the sweep).
+Artifacts: `results/weight_sweep/weight_sweep.csv` (the production policy,
+1,000,000 steps, asked for every weight at runtime) and
+`results/weight_sweep/weight_sweep_vs_ablation.csv` (the comparison against
+the 21 per-weight policies).
 
-| w2 | MRR, conditioned 1M | MRR, per-weight 150k | Energy, conditioned 1M | Energy, per-weight 150k |
-| ---: | ---: | ---: | ---: | ---: |
-| 0.0 | 1213.6 | 1000.0 | 69.6 | 82.8 |
-| 0.5 | 1191.0 | 1026.2 | 68.0 | 71.0 |
-| 1.0 | 1096.0 | 876.6 | 67.1 | 65.4 |
+| w2 | MRR, one policy | MRR, per-weight | MRR gap | Energy, one policy | Energy, per-weight | Energy gap |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 0.0 | 1213.6 | 946.3 | +28.2% | 69.6 | 82.9 | -16.0% |
+| 0.2 | 1215.3 | 1007.8 | +20.6% | 69.0 | 77.1 | -10.5% |
+| 0.4 | 1205.1 | 1038.0 | +16.1% | 68.3 | 72.7 | -6.0% |
+| 0.5 | 1191.0 | 1035.8 | +15.0% | 68.0 | 70.3 | -3.3% |
+| 0.6 | 1169.3 | 1023.9 | +14.2% | 67.6 | 70.8 | -4.5% |
+| 0.8 | 1130.8 | 971.1 | +16.4% | 67.1 | 66.8 | +0.5% |
+| 1.0 | 1096.0 | 951.3 | +15.2% | 67.1 | 65.8 | +2.1% |
 
+The weight is a runtime query, not a retrain: it travels in the observation.
 One training run of 1,000,000 steps covers the whole weight range and beats
 the 21 weight-specific policies of 150,000 steps each, which is 3,150,000
-steps in total, by 13% to 27% of removal rate for at most 3% more energy. At
-a matched budget of 150,000 steps the two frontiers cross: the per-weight
-policies reach the throughput-heavy corner and the conditioned policy the
-energy-heavy one.
+steps in total. Over the weights 0.0 to 0.6 the single policy removes 14% to
+28% more material for 3% to 16% less energy; at 0.8 and 1.0 it still removes
+16% and 15% more, for 0.5% and 2.1% more energy.
+
+Swept on its own, the same policy gives 1213.6 mm3/min at $w_2 = 0.0$ and
+1096.0 at $w_2 = 1.0$, with the energy of the part falling from 69.6 kJ to
+67.1 kJ and the spindle from 7513 RPM to 6475 RPM. The weight moves the
+operating point in the direction the model predicts, and it does so without a
+retrain.
 
 #### 5.4 Classical baselines
 
 Artifact: `results/baseline_results_v5.csv`
 
+The same 50 episodes of the nominal condition, at $w_2 = 0.4$, for all six
+policies.
+
 | Policy | MRR (mm3/min) | Energy per part (kJ) | Cycle time (s) | Mean reward |
 | :--- | ---: | ---: | ---: | ---: |
-| Constant high | 1099.6 | 17.8 | 4.3 | -46.1 |
-| Constant safe | 1.6 | 1506.8 | 3000.0 | -139.3 |
-| NSGA-II static | 732.9 | 18.8 | 6.4 | -46.4 |
-| Rule based | 719.8 | 18.7 | 6.6 | -46.5 |
-| Receding horizon | 981.7 | 18.0 | 4.8 | +203.5 |
+| PPO (ours) | 894.3 | 18.40 | 5.56 | 204.09 |
+| Receding horizon | 981.7 | 18.02 | 4.80 | 203.45 |
+| NSGA-II static | 732.9 | 18.8 | 6.4 | -46.39 |
+| Rule based | 719.8 | 18.7 | 6.6 | -46.48 |
+| Constant high | 1099.6 | 17.8 | 4.3 | -46.10 |
+| Constant safe | 1.6 | 1506.8 | 3000.0 | -139.25 |
 
-The four static policies end outside the roughness safety limit, which the
-reward penalizes with -50. The receding-horizon controller is the only
-classical policy that stays inside it. On the same 50 episodes the learned
-policy scores 204.1 against the controller's 203.5, so the two are level on the
-reward while the controller is ahead on the removal rate and the cycle time.
+The three fast static policies end outside the roughness safety limit, which
+the reward penalizes with -50. The receding-horizon controller is the only
+classical policy that stays inside it, and so is the learned policy. On the
+same 50 episodes the learned policy scores 204.09 against the controller's
+203.45, so the two are level on the reward while the controller is ahead on
+the removal rate (981.7 against 894.3) and the cycle time (4.80 s against
+5.56 s). No reinforcement learning advantage is demonstrated yet.
 
 #### 5.5 Transfer to a harder material
 
 Artifact: `results/transfer/transfer_results.csv`
 
-| Arm | Mean episode reward | Roughness violations | Parts completed |
-| :--- | ---: | ---: | ---: |
-| Source policy, zero shot | 183.0 | 100.0% | 93.3% |
-| Source policy, fine tuned 50,000 steps | 182.9 | 100.0% | 93.3% |
-| Trained on the target from scratch, 50,000 steps | 196.7 | 0.0% | 100.0% |
+The target material is harder: $k_1 \times 1.25$, $k_2 \times 1.30$ and
+$C_{\text{wear}} \times 2.0$, on the same machine. The source policy was
+trained for 300,000 steps on the nominal material, and the adaptation budget
+on the target is 50,000 steps.
+
+| Arm | Mean episode reward | Roughness violations, worst pass | Roughness violations, finished surface | Parts completed |
+| :--- | ---: | ---: | ---: | ---: |
+| Source policy, zero shot | 182.5 | 100.0% | 3.3% | 93.3% |
+| Source policy, fine tuned, 50,000 steps | 196.6 | 0.0% | 0.0% | 100.0% |
+| Trained on the target from scratch, 50,000 steps | 196.6 | 0.0% | 0.0% | 100.0% |
+| Production policy, zero shot | 200.3 | 60.0% | 0.0% | 100.0% |
+
+The nominal-trained source policy violates the roughness limit on the worst
+pass in every scenario. Fine tuning it for 50,000 steps, or training on the
+target from scratch for the same budget, both land at 196.6 with no
+violations: the adaptation budget is enough either way.
+
+The production policy needs no adaptation at all. It was trained across a
+distribution of materials with the material context in its observation, so the
+harder material is inside its training distribution, and it scores the highest
+reward of the four arms, 200.3, with the finished surface in spec in every
+scenario. Its 60% worst-pass violations sit on the roughing passes, which the
+reward does not constrain.
 
 
 ---
@@ -743,14 +911,18 @@ Artifact: `results/transfer/transfer_results.csv`
 ### 6. Reproducing the numbers above
 
 ```bash
-# Primary policy, trained on randomized scenarios
-python agent/train_rl.py --algo PPO --steps 1000000 --seed 42 --randomize
+# The whole pipeline, in order
+python agent/run_pipeline.py
 
-# Conditioned policy, one run for the whole weight range
-python agent/train_rl_conditioned.py --steps 1000000 --seed 42
+# The production policy: the scenario and the energy weight are drawn per episode
+python agent/train_rl.py --algo PPO --steps 1000000 --seed 42 --randomize --randomize-weight
 
 # Monte Carlo sweep with confidence intervals
 python agent/evaluate.py
+
+# The same policy asked for every point of the trade-off, and the comparison
+# against the per-weight policies
+python agent/evaluate.py --sweep-weight --compare
 
 # Energy weight ablation, 7 weights x 3 seeds
 python agent/train_rl_ablation.py --steps 150000 --scenarios 50 --slots 7
@@ -857,17 +1029,17 @@ G:/My Drive/IITM/AI in Mfg/
     machining_sim.py          # Trajectory simulation, surface profile and G-code synthesis
 
  app.py                         # Streamlit interactive application
-
- docs/
-    INTERACTIVE_SIMULATOR_PLAN.md   # This design document
 ```
+
+This plan was consolidated into this file, and the document it names no longer
+exists separately. It is kept as the design record.
 
 #### Module Specifications:
 1. `sim/machining_sim.py`:
-   - `simulate_pass_sequence(model, env_kwargs, policy_type)`: Executes multi-pass machining and records state vectors $(VB, \kappa, n, f_r, a_p, MRR, Ra, E, P_c)$.
-   - `generate_gcode(trajectory_df, workpiece_cfg)`: Converts parameter trajectory into executable CNC G-code.
-   - `compute_workpiece_geometry(allowance_total, passes_ap)`: Calculates remaining stock boundary coordinates for 2D cross-sectional rendering.
-   - `generate_surface_profile(passes_data)`: Generates feed-mark surface profile coordinates.
+   - `load_ppo_policy(model_dir)`: Loads the production policy with its `VecNormalize` statistics.
+   - `run_single_simulation(policy_type, kappa_total, VB_0, D, L_cut, w2, ppo_model_tuple)`: Executes multi-pass machining and records state vectors $(VB, \kappa, n, f_r, a_p, MRR, Ra, E, P_c)$. The energy weight is a query of the policy, so the same production policy serves every weight.
+   - `generate_surface_micro_profile(final_ra, feed_rate, tool_radius)`: Generates feed-mark surface profile coordinates.
+   - `generate_cnc_gcode(trajectory_df, part_id, program_num, tool_diameter)`: Converts the parameter trajectory into executable CNC G-code, with the diameter the trajectory was cut with written into the tool change line.
 
 2. `app.py`:
    - Interactive input controls (workpiece diameter, cut length, total allowance, initial flank wear, green slider $w_2$).
@@ -905,6 +1077,15 @@ The core physics equations driving our Digital Twin environment (`MillingDTEnv-v
 
 #### Standard Manufacturing Engineering (Our Novelty)
 * **Energy Consumption ($E$):** $E = (P_{idle} + k_c(v_c) \times MRR) \times t_{cut}$, with the specific cutting energy growing with the cutting speed, $k_c(v_c) = k_{c0} (v_c / v_{ref})^m$. This is not explicitly in "DRL-based optimization for machining process: Cutting parameters dynamic optimization considering tool condition degradation". We added the specific cutting energy formulation to introduce the "Green Manufacturing" objective into the reward function, and the speed dependence to make it an objective in its own right: without it the energy of a part is fixed by the volume, and the energy term is a duplicate of the throughput term.
+
+The energy model with the speed dependent cutting energy is this project's own
+modelling choice. It is taken from neither of the two reference papers: neither
+of them models the energy of a cut, so the equations, the calibrated
+coefficient $k_{c0} = 2.5$ W$\cdot$min/mm$^3$ and the speed exponent $m = 0.6$
+are ours, and they are stated here so that a reader can judge them against
+the measurements in
+[Part 3, Literature Comparison](#part-3-literature-comparison) rather than
+against a citation.
 
 ---
 
@@ -955,6 +1136,18 @@ Because the Digital Twin is fully parameterized in Python (`MillingDTEnv`), we c
 **Project:** Energy-Aware Deep Reinforcement Learning for Dynamic Cutting Parameter Optimization  
 **Date:** October 8, 2026  
 **Based on:** Code Audit (3 specialized agents), Literature Review, Online Paper Search (`paper-search` CLI)
+
+---
+
+> This part is the plan as it was written on October 8, 2026, kept as the design
+> record. Its code snippets, its file names and its SAC claims are the ones the
+> plan proposed. The paths in the snippets are the planned paths; the artifacts
+> themselves now live under `results/`, under the names listed in
+> [Part 7, Audit of the Original Plan](#part-7-audit-of-the-original-plan) and
+> in `results/RESULTS.md`. The SAC claims in
+> [Part 3, Literature Comparison](#part-3-literature-comparison) were withdrawn
+> after the audit found that no script in this repository had ever produced
+> them.
 
 ---
 
@@ -2079,6 +2272,12 @@ Implementation of these changes will strengthen the project for peer review, con
 **Repository commit:** `9a8bf6e` ("feat: Implement CNC milling simulation engine and material removal calculator")
 **Stack under audit:** Python 3.12.13, gymnasium 1.3.0, stable-baselines3 2.9.0
 
+The findings below are the audit as it was written on October 20, 2026, against
+the commit named above. The measurements it quotes that have since been redone
+are marked where they appear, and the state of the project now is in
+[Part 1, Environment Specification](#part-1-environment-specification) and in
+`results/RESULTS.md`.
+
 ---
 
 ### 1. Verdict
@@ -2090,7 +2289,7 @@ Roughly 90 percent of the plan's code changes exist on disk. Three of them do no
 | Plan items with code present | 9 of 9 |
 | Plan items that function as specified | 6 of 9 |
 | Plan success criteria met | 5 of 7 |
-| Test suite | 6 passed, 0 warnings (`pytest tests/ -v`) |
+| Test suite | 6 passed, 0 warnings (`pytest tests/ -v`) at the time of the audit; the suite has since grown to 34 tests, all green |
 | `gymnasium` environment checker | Passes clean |
 
 The three non-functional items are not cosmetic. They are the queue heartbeat that terminates parallel training runs (Section 4.1), the Monte Carlo sweep that does not randomize what it claims to randomize (Section 4.2), and the energy ablation whose committed results show no trade-off at all (Section 4.4). A fourth issue sits outside the plan entirely but blocks reproducibility: the core environment file has never been committed to git (Section 4.5).
@@ -2118,22 +2317,25 @@ All numbers quoted below come from these runs or from committed CSV artifacts.
 
 ### 3. Item-by-item scorecard
 
+The line numbers are the ones the audit cited, against the audited revision.
+Where a defect has since been fixed, the disposition says so.
+
 | # | Plan item | Status | Location |
 |---|---|---|---|
-| 1.1 | `truncated` flag | Implemented | `env/milling_env.py:77`, `:172` |
-| 1.2 | Action clipping | Implemented | `env/milling_env.py:125` |
-| 1.3 | Soft tanh normalization | Implemented | `env/milling_env.py:103-108`, used at `:112-118` |
-| 1.4 | Intermediate rewards | Partial | `env/milling_env.py:185-209`. Kappa progress bonus, terminal bonus, and penalties are present. The per-pass "stay in spec" bonus from the plan was replaced by a penalty design, which is a reasonable deviation. |
-| 2.1 | Queue-based progress polling | **Non-functional** | Section 4.1 |
-| 2.2 | Central environment registration | Implemented | `env/__init__.py`; `agent/train_rl.py:24` and `agent/evaluate.py:17` both `import env`. No duplicate `register()` calls remain. |
-| 2.3 | Global seeding | Implemented | `utils/seeding.py`; used at `agent/train_rl.py:45`, `agent/evaluate.py:81`, `tests/test_training.py:29,58` |
-| 3.1 | Monte Carlo 95 percent CI | Partial | CI math is correct at `agent/evaluate.py:38-78`. Two defects degrade the output (Sections 4.2 and 4.3). |
+| 1.1 | `truncated` flag | Implemented | `env/milling_env.py:148`, `:324` |
+| 1.2 | Action clipping | Implemented | `env/milling_env.py:275` |
+| 1.3 | Soft tanh normalization | Implemented | `env/milling_env.py:226-231`, used at `:257-263` |
+| 1.4 | Intermediate rewards | Partial | `env/milling_env.py:339-365`. Kappa progress bonus, terminal bonus, and penalties are present. The per-pass "stay in spec" bonus from the plan was replaced by a penalty design, which is a reasonable deviation. |
+| 2.1 | Queue-based progress polling | **Non-functional**, fixed since | Section 4.1 |
+| 2.2 | Central environment registration | Implemented | `env/__init__.py`; `agent/train_rl.py:45` and `agent/evaluate.py:33` both `import env`. No duplicate `register()` calls remain. |
+| 2.3 | Global seeding | Implemented | `utils/seeding.py`; used at `agent/train_rl.py:48`, `agent/evaluate.py:36` |
+| 3.1 | Monte Carlo 95 percent CI | Partial, both defects fixed since | CI math is correct at `agent/evaluate.py:117-158`. Two defects degraded the output (Sections 4.2 and 4.3). |
 | 3.2 | Visualization DRY refactor | Implemented | `viz/plotting_utils.py`; consumed by `viz/plot_eval.py:11`, `viz/plot_results.py:12`, `viz/plot_baselines_comparison.py:20` |
-| 3.3 | Centralized physics constants | Implemented | `config/physics_constants.py`; imported by `env/milling_env.py:21` and `baselines/run_baselines.py:28`. Wear, roughness, and energy formulas verified identical between the two consumers. |
-| 4.1 | Energy weight ablation | **Degenerate output** | Section 4.4 |
-| 4.2 | Literature comparison | Implemented, unsupported claims | Section 5 |
-| Part 6 | Unit and integration tests | Implemented | `tests/test_env.py` (4 tests), `tests/test_training.py` (2 tests) |
-| Part 7 | Success criteria | 5 of 7 met | Section 6 |
+| 3.3 | Centralized physics constants | Implemented | `config/physics_constants.py`; imported by `env/milling_env.py:24` and `baselines/run_baselines.py:30`. Wear, roughness, and energy formulas verified identical between the two consumers. |
+| 4.1 | Energy weight ablation | **Degenerate output**, redone since | Section 4.4 |
+| 4.2 | Literature comparison | Implemented, unsupported claims removed | Section 5 |
+| Part 6 | Unit and integration tests | Implemented | `tests/test_env.py` (24 tests), `tests/test_integration.py` (5), `tests/test_progress_callback.py` (3), `tests/test_training.py` (2), 34 in all |
+| Part 7 | Success criteria | 5 of 7 met at the time of the audit | Section 6 |
 
 ---
 
@@ -2159,6 +2361,11 @@ The `models/ablation_w2_0_2`, `w2_0_4`, `w2_0_6`, and `w2_0_8` checkpoints on di
 
 **Fix:** move `import numpy as np` to module scope in `agent/train_rl.py`, and replace the bare `except: pass` with one that logs the exception.
 
+**Fixed since the audit.** `import numpy as np` is at module scope in
+`agent/train_rl.py`, and the callback logs a dropped heartbeat through
+`self._log(...)` instead of swallowing it, so the stall detector sees the
+worker it is watching.
+
 #### 4.2 The Monte Carlo sweep does not randomize the physics it claims to (P1)
 
 **Files:** `agent/evaluate.py:29-35`, `env/milling_env.py:26-63`
@@ -2177,6 +2384,12 @@ Only workpiece geometry varies across the 100 scenarios. `README.md:146` claims 
 
 **Fix:** add `C_wear`, `k1`, `k2` (and `k3`, `alpha`, `beta`, `gamma_wear`) as overridable kwargs in `MillingDTEnv.__init__`, and have the environment use per-instance copies of the constant dicts rather than the shared module-level objects.
 
+**Fixed since the audit.** The environment accepts those overrides now and
+works on per-instance copies of the coefficient tables, and the scenarios
+themselves are sampled in `config/scenarios.py`, so the sweep and the training
+draw from the same tables. The 100 scenarios of the sweep now vary the
+material and the tool as well as the geometry.
+
 #### 4.3 `T_total` is never exported, so the cycle-time metric is dead (P1)
 
 **Files:** `env/milling_env.py:218-230`, `agent/evaluate.py:153`
@@ -2193,6 +2406,10 @@ T_total unique: [0] all zero: True
 ```
 
 **Fix:** add `"T_total": self.T_total` to the `info` dict and re-run the sweep.
+
+The fix was applied and the sweep was re-run. The artifact is now
+`results/monte_carlo/eval_PPO_MC_v5.csv`, and the cycle time is reported with
+its confidence interval (20.25 s, 16.86 to 23.63).
 
 #### 4.4 The committed ablation artifact is degenerate (P1)
 
@@ -2231,6 +2448,18 @@ Two further deviations from the plan:
 
 **Fix:** re-run the ablation across the full weight grid, write the MRR against Energy Pareto frontier, and delete the orphaned PNG.
 
+**Redone since the audit.** The ablation artifact has been regenerated. It
+holds 21 rows now, 7 weights over 3 seeds, each policy pinned to its weight and
+measured at that weight, and the frontier it produces is the one in section 5.2
+of [Part 3, Literature Comparison](#part-3-literature-comparison). The
+degenerate table and the three identical checkpoints described above are the
+state of the artifact at the time of the audit, not the state of the project
+now. The two deviations have partly closed: the ablation uses three seeds
+across the full grid and writes the MRR against Energy frontier, and the
+orphaned PNG is regenerated. The SAC arm is still absent, and the SAC claims
+in [Part 3, Literature Comparison](#part-3-literature-comparison) have been
+withdrawn.
+
 #### 4.5 Version control excludes the core environment (P0, outside the plan)
 
 **Files:** `.gitignore:58`, `.gitignore:77`
@@ -2250,6 +2479,10 @@ $ git check-ignore -v env/milling_env.py env/__init__.py agent/train_rl_ablation
 A fresh clone of this repository cannot construct the environment.
 
 **Fix:** replace `ENV/` with `env/`, `venv/`, and `.venv/`, remove the `agent/` rule, then commit `env/`, `agent/train_rl_ablation.py`, and `agent/run_pipeline.py`.
+
+**Fixed since the audit.** The ignore rules that caused this are gone, and
+`env/`, `agent/`, `utils/` and `config/` are committed now, so a fresh clone
+constructs the environment and trains a policy.
 
 ---
 
@@ -2289,19 +2522,29 @@ Broken mean: 0.0
 
 Subject to the caveat in Section 4.2 that the sweep varies geometry only.
 
+**Corrected since the audit.** The README states 2000 to 8000 RPM and 0.05 to
+0.35 mm/r now, and the baselines it names are the ones that exist. The caveat
+above has fallen with it: the sweep varies the material and the tool as well
+as the geometry (Section 4.2), and the numbers it produces are the ones in
+section 5.1 of
+[Part 3, Literature Comparison](#part-3-literature-comparison).
+
 ---
 
 ### 6. Success criteria status
+
+The statuses below are the ones the audit recorded. Three of them have been
+re-measured since, and the note says which.
 
 | # | Criterion | Status | Note |
 |---|---|---|---|
 | 1 | Passes `gymnasium.check_env()` with no warnings | Met | Verified against `MillingDTEnv` |
 | 2 | Two runs with the same seed produce identical results | Met | `tests/test_training.py:57` passes. Bit-level identity of full PPO runs is not separately proven. |
-| 3 | Convergence curve monotonic, no divergence or NaN | Met | 16 TensorBoard runs exist under `results/tensorboard/PPO_v4_seed42_1` through `_16` |
-| 4 | Monte Carlo sweep reports 95 percent CI for all metrics | Not met | `T_total` is identically zero (Section 4.3), so 1 of the 5 reported metrics is empty |
+| 3 | Convergence curve monotonic, no divergence or NaN | Met | The TensorBoard runs the audit saw are gone: the training curves are written by the CSV logger of Stable-Baselines3 into `results/curves/*/progress.csv`, one per policy, and plotted by `viz/plot_results.py` |
+| 4 | Monte Carlo sweep reports 95 percent CI for all metrics | Met now | `T_total` was identically zero (Section 4.3); it is exported in the info payload now, and the sweep reports all five metrics with intervals |
 | 5 | Baselines and environment use identical constants | Met | Verified by reading both consumers of `config/physics_constants.py` |
 | 6 | No duplicate plotting code | Met | `viz/plotting_utils.py` is the single source |
-| 7 | Ablation study demonstrating the energy objective | Not met | Output is degenerate (Section 4.4); SAC comparison absent (Section 5.1) |
+| 7 | Ablation study demonstrating the energy objective | Met now, with one exception | The output is no longer degenerate (Section 4.4): 7 weights over 3 seeds with a measured frontier. The SAC comparison is still absent (Section 5.1) |
 
 ---
 
@@ -2317,6 +2560,12 @@ Subject to the caveat in Section 4.2 that the sweep varies geometry only.
 | 6 | Correct the README parameter and structure drift | 20 min | Reader accuracy |
 
 Steps 1 and 2 are small and gate everything downstream. Step 3 is required before the Monte Carlo numbers can support the robustness claim they are currently attached to.
+
+Steps 1 to 4 have been carried out: the environment and the agent scripts are
+committed, the heartbeat reaches the queue, the physics overrides and
+`T_total` are honoured, and the ablation has been re-run across the full grid
+with the Pareto frontier. Step 5 was taken as the second option, the SAC
+claims were removed, and step 6 is with the README.
 
 ---
 
@@ -2347,6 +2596,12 @@ git ls-files | Select-String 'env/'
 ```
 
 ### Appendix B. Artifacts on disk at audit time
+
+This table is the state of the repository on October 20, 2026. The
+measurements in it have since been redone: the ablation is 21 policies at
+`models/ablation_w2_{w2}_seed{seed}`, the Monte Carlo sweep is
+`results/monte_carlo/eval_PPO_MC_v5.csv`, and the TensorBoard runs are gone,
+replaced by the CSV training curves under `results/curves/`.
 
 | Path | Contents |
 |---|---|

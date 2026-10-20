@@ -52,7 +52,7 @@ TARGET_SCENARIO = {
 def evaluate_on_target(model, vec_norm_path, scenarios, env_kwargs=None, seed=42):
     """Mean episode reward and constraint behaviour on the target task."""
     env_kwargs = dict(env_kwargs or {})
-    rewards, violations, successes = [], [], []
+    rewards, violations, final_violations, successes = [], [], [], []
 
     for idx, (name, scenario) in enumerate(scenarios.items()):
         # The target material overrides the scenario, it does not duplicate it.
@@ -68,6 +68,7 @@ def evaluate_on_target(model, vec_norm_path, scenarios, env_kwargs=None, seed=42
         done = False
         total_reward = 0.0
         max_ra = 0.0
+        final_ra = 0.0
 
         while not done:
             action, _ = model.predict(obs, deterministic=True)
@@ -75,16 +76,19 @@ def evaluate_on_target(model, vec_norm_path, scenarios, env_kwargs=None, seed=42
             info = info[0]
             total_reward += float(reward[0])
             max_ra = max(max_ra, info['Ra'])
+            final_ra = info['Ra']
             done = bool(done[0])
 
         rewards.append(total_reward)
         violations.append(max_ra > ALL_CONSTANTS['engineering']['Ra_max'])
+        final_violations.append(final_ra > ALL_CONSTANTS['engineering']['Ra_max'])
         successes.append(bool(info.get('is_finishing', False)) and not info.get('broken', False))
 
     return {
         'mean_reward': float(np.mean(rewards)),
         'std_reward': float(np.std(rewards)),
         'ra_violation_rate': float(np.mean(violations)),
+        'ra_final_violation_rate': float(np.mean(final_violations)),
         'success_rate': float(np.mean(successes)),
         'episodes': len(rewards),
     }
@@ -199,6 +203,9 @@ def main():
         'zero_shot_ra_violation': zero_shot['ra_violation_rate'],
         'finetuned_ra_violation': final_finetuned['ra_violation_rate'],
         'from_scratch_ra_violation': scratch['ra_violation_rate'],
+        'zero_shot_ra_final_violation': zero_shot['ra_final_violation_rate'],
+        'finetuned_ra_final_violation': final_finetuned['ra_final_violation_rate'],
+        'from_scratch_ra_final_violation': scratch['ra_final_violation_rate'],
         'zero_shot_success': zero_shot['success_rate'],
         'finetuned_success': final_finetuned['success_rate'],
         'from_scratch_success': scratch['success_rate'],
@@ -206,6 +213,7 @@ def main():
     if production is not None:
         summary['production_reward'] = production['mean_reward']
         summary['production_ra_violation'] = production['ra_violation_rate']
+        summary['production_ra_final_violation'] = production['ra_final_violation_rate']
         summary['production_success'] = production['success_rate']
     summary = pd.DataFrame([summary])
     summary.to_csv(out_dir / "transfer_results.csv", index=False)

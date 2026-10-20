@@ -124,16 +124,19 @@ statistics applied to both sets:
 
 | Feature | train mean | train std | sweep mean | sweep std |
 | ---: | ---: | ---: | ---: | ---: |
-| 0 (flank wear) | 0.076 | 0.969 | 0.015 | 0.917 |
-| 1 (stock left) | -0.491 | 1.216 | -0.534 | 1.229 |
-| 2 (previous speed) | 0.463 | 1.044 | 0.526 | 1.023 |
-| 3 (previous feed) | 0.278 | 0.890 | 0.314 | 0.889 |
-| 4 (previous depth) | 0.487 | 0.909 | 0.512 | 0.895 |
-| 5 (previous removal rate) | 0.346 | 0.942 | 0.406 | 0.940 |
-| 6 (previous roughness) | 0.201 | 0.914 | 0.239 | 0.915 |
+| 0 (flank wear) | 0.057 | 0.970 | 0.009 | 0.915 |
+| 1 (stock left) | -0.465 | 1.202 | -0.514 | 1.212 |
+| 2 (previous speed) | 0.413 | 1.065 | 0.583 | 1.023 |
+| 3 (previous feed) | 0.225 | 0.817 | 0.249 | 0.802 |
+| 4 (previous depth) | 0.479 | 0.917 | 0.514 | 0.898 |
+| 5 (previous removal rate) | 0.324 | 0.930 | 0.419 | 0.896 |
+| 6 (previous roughness) | 0.098 | 0.786 | 0.124 | 0.777 |
 
-Mean absolute difference of the means: **0.041**, against a standard
-deviation of 1. The two sets are the same distribution.
+Mean absolute difference of the means: **0.070**, against a standard
+deviation of 1. The two sets are the same distribution. The three context
+features are excluded from the table: the energy weight is a task parameter
+rather than a scenario, so it is constant in both sets, and the two material
+features are the context the policy is conditioned on.
 
 The behaviour confirms it: over the 100 scenarios the policy completes 99.0%
 of the parts, keeps the finished surface inside the roughness limit in every
@@ -143,7 +146,9 @@ off-distribution observations does not do that.
 The three suggested fixes would each make the evaluation worse, and none was
 applied.
 
-**Status:** no change needed.
+**Status:** no change needed. The measurement was redone after the
+consolidation onto the single 11-dimensional registration, and the conclusion
+is unchanged.
 
 ---
 
@@ -172,12 +177,13 @@ the same function was imported twice in one file.
 
 ### 3.2 Hardcoded Paths & Magic Strings — **FIXED**
 
-**Fixed:** the environment identifiers are now `env.ENV_ID` and
-`env.CONDITIONED_ENV_ID`, exported from `env/__init__.py` and used by the
-registration itself. The model and result directories are in the new
-`config/paths.py` (`MODELS_DIR`, `RESULTS_DIR`, `PLOTS_DIR`, `CURVES_DIR`,
-`WORKERS_DIR`, `PRIMARY_MODEL_DIR`, `CONDITIONED_MODEL_DIR`), and the eight
-files that repeated the literals now import them.
+**Fixed:** there is now one environment identifier, `env.ENV_ID`, exported from
+`env/__init__.py` and used by the registration itself. The model and result
+directories are in `config/paths.py` (`MODELS_DIR`, `RESULTS_DIR`, `PLOTS_DIR`,
+`CURVES_DIR`, `WORKERS_DIR`, `PRIMARY_MODEL_DIR`, `WEIGHT_SWEEP_DIR`,
+`ABLATION_DIR`), and the files that repeated the literals now import them. The
+consolidation that followed removed the second registration, so the two
+identifier constants this finding asked for are now one.
 
 ### 3.3 Training Callback Redundancy — **NO CHANGE, AGREED**
 
@@ -292,7 +298,7 @@ reads `T01 M06 (D63 CORNER RADIUS END MILL)` for a 63 mm cutter.
 
 | README Claim | Reality | Action |
 | :--- | :--- | :--- |
-| "Observation space: 8-dimensional" | 8 for `MillingDTEnv-v1`, 11 for `MillingDTEnv-w2-v1` | The README now points at the conditioned registration and its extra features |
+| "Observation space: 8-dimensional" | 11, the context is always present | The README now describes the 11-dimensional observation of the single registration |
 | "Action space: continuous 3D" | Normalized `[-1, 1]`, the policy output is unbounded and clipped | The README now says so |
 
 ### 6.2 PROJECT.md Status Claims — **DISMISSED**
@@ -303,11 +309,16 @@ at 15% MRR reduction" and checks it against "w2=0: 82.8 kJ, w2=1: 62.5 kJ" and
 
 Neither the quote nor the numbers are in the repository. The text does not
 appear in `PROJECT.md`, 62.5 kJ is not in any artifact, and 590.1 matches
-nothing. The current claim in `PROJECT.md` part 1, section 9, and in part 3,
-section 5.2, is "across the frontier the removal rate falls 18% and the
-energy of the part falls 8.5%", and it matches
-`results/RESULTS.md` exactly: 1069 to 877 mm3/min is a fall of 18.0%, and
-71.5 to 65.4 kJ is a fall of 8.5%.
+nothing.
+
+The claim that was in `PROJECT.md` at the time of the audit, "across the
+frontier the removal rate falls 18% and the energy of the part falls 8.5%",
+did match `results/RESULTS.md` exactly: 1069 to 877 mm3/min is a fall of
+18.0%, and 71.5 to 65.4 kJ is a fall of 8.5%. Both numbers were measured
+again after the consolidation onto the single registration, and they moved:
+the frontier now runs from 1038 to 951 mm3/min, a fall of 8.4%, against 72.7
+to 65.8 kJ, a fall of 9.5%. The trade-off is symmetric now, which is what a
+real Pareto frontier looks like. The document carries the new numbers.
 
 **Status:** no change needed. `results/RESULTS.md` is regenerated from the
 committed CSVs by `python agent/summarize_results.py`, and the documentation
@@ -371,8 +382,9 @@ No code paths allow bypassing these constraints.
 
 1. **Physics correctness validated by tests** — `test_cutting_energy_grows_with_the_cutting_speed` and `test_part_energy_has_an_interior_minimum_in_speed` catch the key physics property that enables the energy/throughput trade-off, and `test_reward_matches_an_independent_calculation` now pins the reward itself.
 2. **Domain randomization properly implemented** — `randomize=True` draws a new scenario per episode; the scales are recomputed in `_apply_scenario`; the same scenario tables are used for training and for the Monte Carlo sweep.
-3. **Conditioned policy design is sound** — the energy weight and the material context are in the observation; a single policy covers the full range; the transfer experiment measures the adaptation.
+3. **One policy covers the full range** — the energy weight and the material context are in the observation of the single registration; one policy answers every weight at runtime, and it beats the 21 policies of the ablation study by 14% to 28% of removal rate.
 4. **Receding-horizon baseline is a strong benchmark** — it re-solves at every pass with the current state, it uses the same physics, and the vectorized grid search is appropriate for a three dimensional action space.
+5. **The transfer experiment measures the adaptation that matters** — a policy trained across a distribution of materials reaches the harder alloy with no adaptation at all, which is the argument for the context being in the observation.
 5. **Comprehensive result artifacts** — CSVs for every experiment, plots generated from them, `RESULTS.md` rebuilt from the artifacts.
 6. **Clean Git history** — conventional commits, descriptive messages, no merge commits in recent history.
 
@@ -434,8 +446,11 @@ def observations_for(scenarios, seed_base):
 rng = np.random.default_rng(123)
 train = observations_for([sample_scenario(rng) for _ in range(60)], 1000)
 sweep = observations_for(list(generate_random_configs(60, seed=42).values()), 42)
-print(np.abs(train.mean(0) - sweep.mean(0)).mean())   # 0.041
+print(np.abs(train.mean(0) - sweep.mean(0)).mean())   # 0.070
 ```
+
+The script needs `import env` before `gym.make`, so that the registration
+has happened.
 
 ---
 

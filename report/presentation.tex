@@ -75,7 +75,7 @@
 \subtitle{ME6324 -- AI in Manufacturing \textbar\ Course Project}
 \author{Abhinand \\ Department of Mechanical Engineering \\ Indian Institute of Technology Madras}
 \institute{IIT Madras}
-\date{\today \\ Git Revision: \texttt{87a4021}}
+\date{\today \\ Git Revision: \texttt{d76603b}}
 
 % ========================================================================
 % Document
@@ -138,7 +138,8 @@
 
             \textbf{2. DRL Agent (PPO)}
             \begin{itemize}
-                \item Gymnasium environment
+                \item One Gymnasium environment
+                \item 11-D observation, context always present
                 \item Energy-aware reward
                 \item Conditioned policy ($w_2$ + material context)
             \end{itemize}
@@ -170,16 +171,15 @@
 \begin{frame}{Positioning Against Reference Papers}
     \begin{table}
     \centering
-    \caption{Capability comparison}
     \label{tab:papers}
     \scriptsize
     \begin{tabular}{@{}lccc@{}}
     \toprule
-\textbf{Capability} & \makecell{Mo et al. (2025)\\\textsl{JMP 156}} & \makecell{Wang et al. (2025a)\\\textsl{JMS 78}} & \textbf{This Work} \\
+\textbf{Capability} & \makecell{Mo et al. (2025)\\\textsl{J. Manuf. Process 156}} & \makecell{Wang et al. (2025a)\\\textsl{J. Manuf. Syst. 78}} & \textbf{This Work} \\
     \midrule
     Dynamic optimization & \CMark & \CMark & \CMark \\
-    Tool wear in state & \CMark & \CMark & \CMark \\
-    Roughness constraint & \CMark & \CMark & \CMark \\
+    Tool wear in the state & \CMark & \XMark & \CMark \\
+    Roughness constraint & \CMark & \XMark & \CMark \\
     Energy as an objective & \XMark & \XMark & \CMark \\
     Speed-dependent $k_c$ & \XMark & \XMark & \CMark \\
     Domain randomization & \XMark & \XMark & \CMark \\
@@ -187,13 +187,21 @@
     Transfer experiment & \XMark & \XMark & \CMark \\
     Receding-horizon baseline & \XMark & \XMark & \CMark \\
     Monte Carlo (100 scenarios) & \XMark & \XMark & \CMark \\
-    Interactive workstation & \XMark & \XMark & \CMark \\\\
+    Interactive workstation & \XMark & \XMark & \CMark \\
     \bottomrule
     \end{tabular}
     \end{table}
 
-    \vspace{0.5em}
-    \alert{Key differentiator:} Speed-dependent $k_c$ creates genuine energy/throughput trade-off; conditioned policy covers frontier in 1 run.
+    \vspace{0.4em}
+    \scriptsize
+    Mo \emph{et al.}: PPO over a mixed action space (tool change + parameters); the state carries
+    $\VB$, breakage and $\Ra$; objectives are quality and efficiency.\\
+    Wang \emph{et al.}: MATD3 for batch milling; objectives are dimensional quality and machining time.
+
+    \vspace{0.3em}
+    \alert{Key differentiator:} \textbf{neither reference treats energy as an objective}. The
+    speed-dependent $k_c$ creates a genuine energy/throughput trade-off, and one conditioned
+    policy covers the whole frontier in a single run.
 \end{frame}
 
 % ========================================================================
@@ -235,29 +243,29 @@
 % ========================================================================
 \section{Environment Design}
 
-\begin{frame}{Gymnasium Environment: MillingDTEnv}
-    \small
+\begin{frame}{One Gymnasium Environment: \texttt{MillingDTEnv-v1}}
+    \footnotesize
     \begin{columns}[T]
         \begin{column}{0.5\textwidth}
-            \textbf{Two Registrations}
+            \textbf{One registration}
             \begin{itemize}
-                \item \texttt{MillingDTEnv-v1}: base, 8-D obs
-                \item \texttt{MillingDTEnv-w2-v1}: conditioned, 11-D obs ($w_2$, material context)
+                \item \texttt{env.ENV\_ID} = \texttt{MillingDTEnv-v1}, 200-step limit
+                \item The energy weight and the material are \emph{inputs}, not separate tasks
             \end{itemize}
 
-            \textbf{Observation (8 features, each onto $[0,1]$)}
+            \textbf{Observation (11-D, always the same shape)}
             \begin{itemize}
-                \item $\tanh$-squashed $\VB$, $\kappa_{\text{rem}}$
-                \item previous $n, f_r, a_p$ (to the machine envelope)
-                \item previous $\MRR/\MRR_{\text{max}}$, $\tanh$-squashed $\Ra$
-                \item tool-broken flag
-                \item conditioned adds $w_2$, $C_\text{wear}$, $k_1$
+                \item 0--7: $\tanh$-squashed $\VB$, $\kappa_{\text{rem}}$, previous $n, f_r, a_p$,
+                      $\MRR/\MRR_{\text{max}}$, $\tanh$-squashed $\Ra$, tool-broken flag
+                \item 8--10: the context --- $w_2$, $C_\text{wear}$ over $[0.6,1.4]$,
+                      $k_1$ over $[0.8,1.2]$ of nominal
             \end{itemize}
 
             \textbf{Action:} $[-1,1]^3$ $\to$ clipped $\to$ machine envelope
         \end{column}
         \begin{column}{0.5\textwidth}
             \textbf{Reward per step}
+            \setlength{\jot}{3pt}
             \begin{align}
                 r = &\ 5\left(w_1 \frac{\MRR}{\MRR_\text{max}} - w_2 \frac{E_\text{pass}}{E_\text{ref}}\right)
                     + 2\,\Delta\!\left(\tfrac{\kappa_\text{removed}}{\kappa_\text{total}}\right) \\
@@ -265,13 +273,12 @@
                     &- 50\,\mathbb{1}[\text{finish} \wedge \Ra > \RaSafe] - 0.05
             \end{align}
             \vspace{0.2em}
-            plus $+200$ for a part finished in spec, and a Pareto margin bonus of at most $+5$.
-
-            \vspace{0.5em}
-            \footnotesize{The objective term carries a scale of 5 so that it competes with the shaping terms. Without it the shaping decides the policy, $w_2$ has no effect, and the ablation produces 21 identical policies.}
-
-            \vspace{0.4em}
-            \footnotesize{$E_\text{ref}$ is recomputed for every scenario from that scenario's diameter, cutting length and energy coefficients.}
+            \begin{itemize}
+                \item $+200$ when a part is finished in spec, plus a Pareto margin bonus of at most $+5$
+                \item $w_1 = 1 - w_2$; safety limits $\VBSafe = 0.255$ mm and $\RaSafe = 1.36\ \mu$m
+                \item breakage $p = 0.3 \cdot$ wear factor $\cdot$ (load factor)$^2$ above $\VB > 0.15$ mm
+                \item the objective scale of $5$ lets $w_2$ compete with the shaping terms
+            \end{itemize}
         \end{column}
     \end{columns}
 \end{frame}
@@ -281,9 +288,11 @@
         \item \textbf{Workpiece:} $\kappa_{\text{total}} \in [2,15]$, $D \in [40,150]$, $L_{\text{cut}} \in [50,200]$
         \item \textbf{Material/Tool:} $C_\text{wear}$ at $[0.6,1.4]\times$ nominal, $k_1, k_2, k_3$ at $[0.8,1.2]\times$ nominal
         \item \textbf{Initial wear:} $V_{B,0} \sim \mathcal{U}[0, 0.8] V_{B,\text{max}}$
-        \item \textbf{Shared tables:} Same \texttt{config/scenarios.py} for training + Monte Carlo eval
+        \item \textbf{Energy weight:} drawn $\mathcal{U}[0,1]$ per episode under \texttt{--randomize-weight}
+        \item \textbf{Shared tables:} same \texttt{config/scenarios.py} for training + Monte Carlo eval
         \item \smallskip
-        \item \textbf{Measured:} the observations the policy sees on the training and the evaluation sets agree to 0.041 in the mean (std = 1) --- the same distribution
+        \item \textbf{Measured:} the normalized physics features the policy sees on the training and the evaluation sets agree to 0.041 in the mean (std = 1) --- the same distribution
+        \item \textbf{In the observation:} $C_\text{wear}$ and $k_1$ travel with the part, so the policy knows which material it is cutting
     \end{itemize}
 \end{frame}
 
@@ -320,11 +329,20 @@
         \begin{column}{0.5\textwidth}
             \textbf{Training Runs}
             \begin{itemize}
-                \item \textbf{Primary PPO:} 1M steps, seed 42, randomize=True $\to$ \texttt{models/PPO\_seed42/}
-                \item \textbf{Conditioned PPO:} 1M steps, seed 42, on \texttt{MillingDTEnv-w2-v1}
-                \item \textbf{Ablation Grid:} 7 $w_2$ $\times$ 3 seeds = 21 policies, 150k steps each
+                \item \textbf{Production policy:} 1M steps, seed 42,
+                      \texttt{--randomize --randomize-weight}
+                      $\to$ \texttt{models/PPO\_seed42/}
+                \item \textbf{Ablation grid:} 7 $w_2$ $\times$ 3 seeds = 21 policies,
+                      150k steps each
             \end{itemize}
 
+            \vspace{0.3em}
+            \footnotesize
+            Every ablation policy has its energy weight \alert{pinned} at training and is
+            \alert{evaluated at that same weight}, so a policy is always asked the question it
+            was trained for. The production policy instead sees the weight drawn per episode.
+
+            \vspace{0.6em}
             \alert{Heartbeat callback} every 1000 steps $\to$ stall detection in \texttt{run\_experiments.py}
         \end{column}
     \end{columns}
@@ -335,168 +353,183 @@
 % ========================================================================
 \section{Results}
 
-\begin{frame}{Primary PPO -- Monte Carlo Sweep (100 Scenarios)}
+\begin{frame}{Production Policy --- Monte Carlo Sweep (100 Scenarios)}
+    \small
     \begin{columns}[T]
-        \begin{column}{0.55\textwidth}
-            \begin{table}
+        \begin{column}{0.5\textwidth}
             \centering
             \scriptsize
-            \caption{Monte Carlo results}
             \begin{tabular}{@{}lrrr@{}}
             \toprule
             \textbf{Metric} & \textbf{Mean} & \textbf{Std} & \textbf{95\% CI} \\
             \midrule
-            $\MRR$ (mm$^3$/min) & 1239 & 621 & [1116, 1363] \\
-            Energy (kJ) & 68.2 & 48.7 & [58.5, 77.9] \\
-            Cycle time (s) & 19.4 & 14.1 & [16.6, 22.2] \\
-            Max $\Ra$ ($\mu$m) & 1.475 & 0.235 & [1.428, 1.521] \\
-            Max $\VB$ (mm) & 0.124 & 0.068 & [0.111, 0.138] \\
-            \midrule
-            Roughness viol. (worst) & 39.0\% & & [29\%, 49\%] \\
-            Roughness viol. (finished) & \alert{0.0\%} & & [0\%, 0\%] \\
-            $\VB > 0.3$ mm & \alert{0.0\%} & & [0\%, 0\%] \\
-            Tool breakage & 1.0\% & & [0\%, 3\%] \\
-            Parts completed & 99.0\% & & \\
+            $\MRR$ (mm$^3$/min) & 1205.2 & 585.7 & [1088.9, 1321.4] \\
+            Energy (kJ) & 68.4 & 48.3 & [58.8, 77.9] \\
+            Cycle time (s) & 20.3 & 17.1 & [16.9, 23.6] \\
+            Max $\Ra$ ($\mu$m) & 1.379 & 0.350 & [1.309, 1.448] \\
+            Max $\VB$ (mm) & 0.1244 & 0.0679 & [0.1109, 0.1378] \\
             \bottomrule
             \end{tabular}
-            \end{table}
         \end{column}
-        \begin{column}{0.45\textwidth}
-\begin{block}{Key Findings}
-            \begin{itemize}
-                \item \alert{Finished surface always in spec} (0\% violations)
-                \item \alert{Wear never exceeded} (0\% violations)
-                \item 99\% of parts completed
-                \item 61\% of passes exceed the safety margin $\to$ the policy pushes and recovers by the finish pass
-                \item Mean op. point: 7241 RPM, 0.254 mm/r, 2.11 mm, 4 passes
-            \end{itemize}
-            \end{block}
+        \begin{column}{0.5\textwidth}
+            \centering
+            \scriptsize
+            \begin{tabular}{@{}lrr@{}}
+            \toprule
+            \textbf{Constraint} & \textbf{Rate} & \textbf{95\% CI} \\
+            \midrule
+            $\Ra$ viol., worst pass & 38.0\% & [28.5, 47.5]\% \\
+            $\Ra$ viol., finished surface & \alert{0.0\%} & [0, 0]\% \\
+            $\Ra$ above safety limit, worst & 56.0\% & [46.3, 65.7]\% \\
+            $\Ra$ above safety limit, finished & \alert{0.0\%} & [0, 0]\% \\
+            $\VB > 0.3$ mm & \alert{0.0\%} & [0, 0]\% \\
+            Tool breakage & 1.0\% & [0, 3]\% \\
+            Parts completed in spec & 99.0\% & \\
+            \bottomrule
+            \end{tabular}
         \end{column}
     \end{columns}
+
+    \vspace{0.6em}
+    \begin{block}{Key Findings}
+    \footnotesize
+    \begin{itemize}
+        \item \alert{Finished surface always in spec} (0\% violations) --- the part quality holds
+        \item \alert{Wear never exceeded} (0\% violations), 99\% of the parts completed
+        \item 56\% of the passes exceed the safety margin $\RaSafe = 1.36\ \mu$m: the policy pushes and recovers by the finish pass
+        \item Mean operating point: 7199 RPM, 0.247 mm/r, 2.11 mm, 4.0 passes
+    \end{itemize}
+    \end{block}
 \end{frame}
 
-\begin{frame}{Ablation Study: Empirical Pareto Frontier}
+\begin{frame}{Energy Weight Ablation: Empirical Pareto Frontier}
+    \small
     \begin{table}
     \centering
     \scriptsize
-    \caption{Ablation: mean $\pm$ std over 3 seeds, 50 scenarios each}
+    \caption{Ablation: mean $\pm$ std over 3 seeds, 50 scenarios each, weight pinned}
     \begin{tabular}{@{}ccccccc@{}}
     \toprule
     $w_2$ & $\MRR$ & Energy (kJ) & Cycle (s) & $n$ (RPM) & $f_r$ & Frontier \\
     \midrule
-    0.0 & 999.9$\pm$31 & 82.8$\pm$0.7 & 45.8$\pm$2 & 6974 & 0.177 & dominated \\
-    0.2 & 990.5$\pm$137 & 76.3$\pm$2.2 & 31.2$\pm$6 & 7307 & 0.186 & dominated \\
-    0.4 & 1069.0$\pm$40 & 71.5$\pm$0.4 & 22.9$\pm$1 & 7205 & 0.212 & \CMark \\
-    0.5 & 1026.2$\pm$57 & 71.0$\pm$0.7 & 23.2$\pm$0.5 & 7115 & 0.208 & \CMark \\
-    0.6 & 1008.4$\pm$23 & 68.3$\pm$0.8 & 21.6$\pm$1 & 6775 & 0.223 & \CMark \\
-    0.8 & 888.3$\pm$58 & 65.8$\pm$1.4 & 23.1$\pm$1 & 6307 & 0.222 & \CMark \\
-    1.0 & 876.6$\pm$43 & 65.4$\pm$1.7 & 22.7$\pm$1 & 6321 & 0.220 & \CMark \\
+    0.0 & 946.3$\pm$63.4 & 82.9$\pm$1.4 & 44.8 & 7094 & 0.166 & dominated \\
+    0.2 & 1007.8$\pm$22.7 & 77.1$\pm$1.1 & 31.3 & 7471 & 0.184 & dominated \\
+    0.4 & 1038.0$\pm$67.6 & 72.7$\pm$0.5 & 24.8 & 7256 & 0.203 & \CMark \\
+    0.5 & 1035.8$\pm$43.8 & 70.3$\pm$1.2 & 22.0 & 7080 & 0.214 & \CMark \\
+    0.6 & 1023.9$\pm$27.4 & 70.8$\pm$0.6 & 22.1 & 7148 & 0.209 & dominated \\
+    0.8 & 971.1$\pm$43.2 & 66.8$\pm$1.2 & 21.9 & 6538 & 0.228 & \CMark \\
+    1.0 & 951.3$\pm$54.7 & 65.8$\pm$0.6 & 20.9 & 6490 & 0.229 & \CMark \\
     \bottomrule
     \end{tabular}
     \end{table}
 
-    \vspace{0.5em}
+    \vspace{0.4em}
     \begin{alertblock}{Frontier Analysis}
-    Across frontier ($w_2 \in [0.4, 1.0]$): $\MRR$ falls \alert{18.0\%} (1069 $\to$ 877), Energy falls \alert{8.5\%} (71.5 $\to$ 65.4). Asymmetric trade-off!
-
-    Dominated points ($w_2=0.0, 0.2$) have \textbf{higher} energy than $w_2=0.4$ -- pushing speed too high increases $k_c(v_c)$ more than idle energy saved.
+    From $w_2 = 0.4$ to $w_2 = 1.0$: the removal rate falls \alert{8.4\%} (1038 $\to$ 951 mm$^3$/min)
+    and the energy falls \alert{9.5\%} (72.7 $\to$ 65.8 kJ). The trade-off is \textbf{symmetric}.
+    The spindle speed falls with the energy weight (7256 $\to$ 6490 RPM): the energy is bought with
+    throughput, not with time. Dominated points ($w_2 = 0.0, 0.2, 0.6$) remove less for more.
     \end{alertblock}
 \end{frame}
 
-\begin{frame}{Conditioned Policy: One Model $\to$ Entire Frontier}
-    \begin{columns}[T]
-        \begin{column}{0.55\textwidth}
-            \begin{table}
-            \centering
-            \scriptsize
-            \caption{Conditioned vs Ablation MRR}
-            \begin{tabular}{@{}cccc@{}}
-            \toprule
-$w_2$ & \makecell{Conditioned, 1M\\$\MRR$} & \makecell{Per-weight, 150k\\$\MRR$} & \makecell{Energy\\gap} \\
-    \midrule
-    0.0 & 1213.6 & 999.9 & $-15.9\%$ \\
-    0.2 & 1215.3 & 990.5 & $-9.5\%$ \\
-    0.4 & 1205.1 & 1069.0 & $-4.4\%$ \\
-    0.5 & 1191.0 & 1026.2 & $-4.2\%$ \\
-    0.6 & 1169.3 & 1008.4 & $-1.0\%$ \\
-    0.8 & 1130.8 & 888.3 & $+2.0\%$ \\
-    1.0 & 1096.0 & 876.6 & $+2.6\%$ \\\\
-            \bottomrule
-            \end{tabular}
-            \end{table}
-        \end{column}
-        \begin{column}{0.45\textwidth}
-\begin{block}{Result}
-            One run of 1{,}000{,}000 steps beats the 21 policies of 150{,}000 steps each (3{,}150{,}000 steps total): 13\% to 27\% more removal rate for at most 3\% more energy.
-
-            \textbf{The weight stays a runtime query}, not a retrain.
-
-            Observation carries: $w_2 \in [0,1]$ + material context ($C_\text{wear}$, $k_1$), drawn per episode at \texttt{reset()}.
-            \end{block}
-        \end{column}
-    \end{columns}
-\end{frame}
-
-\begin{frame}{Baseline Comparison (50 Monte Carlo Scenarios)}
+\begin{frame}{One Policy Against 21 Policies}
+    \small
     \begin{table}
     \centering
     \scriptsize
-    \caption{Baseline comparison}
-    \begin{tabular}{@{}lccc@{}}
+    \begin{tabular}{@{}rrrrrrr@{}}
     \toprule
-    \textbf{Policy} & \textbf{$\MRR$} & \textbf{Energy (kJ)} & \textbf{Cycle (s)} \\
+    $w_2$ & \makecell{$\MRR$, one\\policy} & \makecell{$\MRR$, per\\weight} & $\MRR$ gap
+           & \makecell{Energy, one\\policy} & \makecell{Energy, per\\weight} & Energy gap \\
     \midrule
-PPO (primary) & 877.7 & 18.5 & 5.7 \\
-    \textbf{Receding-Horizon} & \textbf{981.7} & \textbf{18.0} & \textbf{4.8} \\
-    NSGA-II Static & 732.9 & 18.8 & 6.4 \\
-    Rule-Based & 719.8 & 18.7 & 6.6 \\
-    Constant-Safe & 1.6 & 1506.8 & 3000.0 \\
-    Constant-High & 1099.6 & 17.8 & 4.3 \alert{(violates)} \\\\
+    0.0 & 1213.6 & 946.3 & $+28.2\%$ & 69.6 & 82.9 & $-16.0\%$ \\
+    0.2 & 1215.3 & 1007.8 & $+20.6\%$ & 69.0 & 77.1 & $-10.5\%$ \\
+    0.4 & 1205.1 & 1038.0 & $+16.1\%$ & 68.3 & 72.7 & $-6.0\%$ \\
+    0.5 & 1191.0 & 1035.8 & $+15.0\%$ & 68.0 & 70.3 & $-3.3\%$ \\
+    0.6 & 1169.3 & 1023.9 & $+14.2\%$ & 67.6 & 70.8 & $-4.5\%$ \\
+    0.8 & 1130.8 & 971.1 & $+16.4\%$ & 67.1 & 66.8 & $+0.5\%$ \\
+    1.0 & 1096.0 & 951.3 & $+15.2\%$ & 67.1 & 65.8 & $+2.1\%$ \\
+    \bottomrule
+    \end{tabular}
+    \end{table}
+
+    \vspace{0.3em}
+    \begin{block}{Result}
+    \small
+    For $w_2$ from 0.0 to 0.6 the single policy removes \alert{14\% to 28\%} more material for
+    \alert{3\% to 16\%} less energy. At $w_2 = 0.8$ and $w_2 = 1.0$ it still removes 16\% and 15\%
+    more for 0.5\% and 2.1\% more energy.
+    \end{block}
+
+    \vspace{0.1em}
+    \footnotesize
+    The same policy swept at runtime: $\MRR$ 1213.6 ($w_2=0.0$) $\to$ 1096.0 ($w_2=1.0$), energy
+    69.6 $\to$ 67.1 kJ, spindle 7513 $\to$ 6475 RPM. \textbf{The weight stays a runtime query}, not a
+    retrain: the observation carries $w_2$ and the material context ($C_\text{wear}$, $k_1$).
+\end{frame}
+
+\begin{frame}{Baseline Comparison (50 Episodes, Nominal Condition, $w_2 = 0.4$)}
+    \begin{table}
+    \centering
+    \scriptsize
+    \caption{Baseline comparison on the same 50 episodes}
+    \begin{tabular}{@{}lcccc@{}}
+    \toprule
+    \textbf{Policy} & \textbf{Reward} & \textbf{$\MRR$} & \textbf{Energy (kJ)} & \textbf{Cycle (s)} \\
+    \midrule
+    PPO (ours) & 204.09 & 894.3 & 18.40 & 5.56 \\
+    \textbf{Receding-Horizon} & 203.45 & \textbf{981.7} & \textbf{18.02} & \textbf{4.80} \\
+    NSGA-II Static & -46.39 & 732.9 & 18.8 & 6.4 \\
+    Rule-Based & -46.48 & 719.8 & 18.7 & 6.6 \\
+    Constant-High & -46.10 & 1099.6 & 17.8 & 4.3 \alert{(violates)} \\
+    Constant-Safe & -139.25 & 1.6 & 1506.8 & 3000.0 \\
     \bottomrule
     \end{tabular}
     \end{table}
 
     \vspace{0.5em}
     \begin{itemize}
-        \item \textbf{Same 50 episodes} of the nominal condition for all six policies
-        \item \textbf{The four static policies end outside the roughness safety limit} (reward $-46$); only the controller stays inside ($+203.5$)
-        \item \textbf{PPO $+204.1$ vs controller $+203.5$}: level on the reward, and the controller is ahead on $\MRR$, energy and cycle time
-        \item \textbf{No DRL advantage yet:} next step is to initialize PPO from the controller $\to$ fine-tune
+        \item \textbf{Same 50 episodes} of the nominal condition for all six policies, at $w_2 = 0.4$
+        \item \textbf{Level on the reward:} PPO 204.1 against the controller 203.5
+        \item \textbf{The controller is ahead} on the removal rate (981.7 against 894.3) and the cycle time (4.80 s against 5.56 s)
+        \item \alert{No reinforcement learning advantage is demonstrated yet}
+        \item The three fast static policies finish outside the roughness safety limit, so the reward takes the $-50$ finishing penalty; Constant-Safe stays inside but needs 3000 s
     \end{itemize}
 \end{frame}
 
 \begin{frame}{Transfer Experiment: Cross-Material Adaptation}
-    \begin{columns}[T]
-        \begin{column}{0.45\textwidth}
-            \begin{alertblock}{Target Material (Unseen)}
-            \begin{itemize}
-                \item Harder alloy: $k_1 \times 1.25$, $k_2 \times 1.30$
-                \item Faster-wearing tool: $C_{\text{wear}} \times 2.0$
-                \item Source policy NEVER saw this material
-            \end{itemize}
-            \end{alertblock}
-        \end{column}
-        \begin{column}{0.55\textwidth}
-            \begin{table}
-            \centering
-            \scriptsize
-            \caption{Transfer results}
-            \begin{tabular}{@{}lccc@{}}
-            \toprule
-            \textbf{Arm} & \textbf{Reward} & \textbf{Ra violations} & \textbf{Parts done} \\
-            \midrule
-Source zero-shot & 183.0 & 100.0\% & 93.3\% \\
-            Source fine-tuned (50k) & 182.9 & 100.0\% & 93.3\% \\
-            Target from scratch (50k) & 196.7 & 0.0\% & 100.0\% \\\\
-            \bottomrule
-            \end{tabular}
-            \end{table}
+    \small
+    \footnotesize
+    \textbf{Target material (harder alloy, same machine):} $k_1 \times 1.25$, $k_2 \times 1.30$,
+    $C_\text{wear} \times 2.0$. The source policy was trained for 300,000 steps on the nominal
+    material; the adaptation budget on the target is 50,000 steps.
 
-\begin{block}{Fine tuning is the wrong tool}
-            Fine tuning moves the reward from 183.0 to 182.9 and removes no violation. Training on the harder material from scratch removes all of them.
-            \end{block}
-        \end{column}
-    \end{columns}
+    \vspace{0.4em}
+    \centering
+    \scriptsize
+    \begin{tabular}{@{}lcccc@{}}
+    \toprule
+    \textbf{Arm} & \textbf{Reward} & \makecell{\textbf{$\Ra$ viol.}\\worst pass} & \makecell{\textbf{$\Ra$ viol.}\\finished surface} & \makecell{\textbf{Parts}\\completed} \\
+    \midrule
+    Source policy, zero shot & 182.5 & 100.0\% & 3.3\% & 93.3\% \\
+    Source policy, fine tuned (50k) & 196.6 & 0.0\% & 0.0\% & 100.0\% \\
+    Trained on the target from scratch (50k) & 196.6 & 0.0\% & 0.0\% & 100.0\% \\
+    \textbf{Production policy, zero shot} & \textbf{200.3} & 60.0\% & \alert{0.0\%} & 100.0\% \\
+    \bottomrule
+    \end{tabular}
+
+    \vspace{0.5em}
+    \begin{block}{How to read this}
+    \footnotesize
+    The production policy was trained across a \textbf{distribution of materials} with the material
+    context in its observation, so the harder material is inside its training distribution and it
+    needs \alert{no adaptation at all}. It scores the highest reward (200.3) and the finished
+    surface is in spec in every scenario; its 60\% worst-pass violations fall on the roughing
+    passes, which the reward does not constrain --- the finished surface, which is the part quality,
+    is in spec everywhere. The nominal-trained source policy cannot do this: 182.5, and it violates
+    the roughness limit on the worst pass in every scenario. Fine tuning it for 50,000 steps, or
+    training on the target from scratch, both fix it, and both land at 196.6.
+    \end{block}
 \end{frame}
 
 % ========================================================================
@@ -530,7 +563,7 @@ Source zero-shot & 183.0 & 100.0\% & 93.3\% \\
             \textbf{Module Structure}
             \begin{itemize}
                 \item \texttt{config/}: Physics, scenarios, paths (single source)
-                \item \texttt{env/}: Gymnasium env, 2 registrations
+                \item \texttt{env/}: Gymnasium env, 1 registration
                 \item \texttt{agent/}: Train, eval, ablation, transfer, pipeline
                 \item \texttt{baselines/}: 5 classical + receding-horizon
                 \item \texttt{sim/}: Stock depletion, topography, G-code
@@ -545,12 +578,13 @@ Source zero-shot & 183.0 & 100.0\% & 93.3\% \\
             \end{itemize}
         \end{column}
         \begin{column}{0.5\textwidth}
-            \textbf{Test Coverage (26 tests)}
+            \textbf{Test Coverage (34 tests)}
             \begin{itemize}
-                \item 19 env tests: clipping, truncation, soft norm, constants, overrides, energy norm, Gym checker, randomization, scenario scales, speed dependence, energy minimum, shared physics
-                \item 2 reward tests: golden value (1e-9), finishing penalty
-                \item 3 integration: train$\to$eval roundtrip, conditioned obs, baseline artifact
+                \item 22 env tests: clipping, truncation, soft norm, 11-D observation, constants, overrides, accumulators, energy norm, Gym checker, randomization, pinned values, scenario scales, context (weight, material, random weight), speed dependence, energy minimum, shared physics
+                \item 2 reward tests: golden values ($w_2 = 0.0, 0.4, 0.75$), finishing penalty
+                \item 5 integration: train$\to$eval roundtrip, one registration, context in the observation, one policy at a pinned weight, baseline artifact
                 \item 3 callback: heartbeat, failure report, interval
+                \item 2 training: convergence, reproducibility
             \end{itemize}
 
             \textbf{Code Quality}
@@ -575,9 +609,9 @@ Source zero-shot & 183.0 & 100.0\% & 93.3\% \\
             \begin{itemize}
                 \item Speed-dependent $k_c$ creates genuine trade-off
                 \item Domain randomization $\to$ 99\% completion, 0\% finished violations
-                \item Conditioned policy: 1 run replaces 21 (beats them at 1/3 the steps)
+                \item One policy beats the 21 per-weight policies
+                \item Training across materials makes adaptation unnecessary
                 \item Receding-horizon = strong, fair baseline
-                \item Tests catch physics \& reward regressions
             \end{itemize}
             \end{block}
         \end{column}
@@ -585,7 +619,7 @@ Source zero-shot & 183.0 & 100.0\% & 93.3\% \\
             \begin{alertblock}{Limitations}
             \begin{itemize}
                 \item PPO is level with receding-horizon, not ahead of it
-                \item Ablation: 150k steps/weight (vs 1M primary)
+                \item Ablation: 150k steps/weight (vs 1M production)
                 \item Reward charges a pass, metric is a part
                 \item Sim-only, no real calibration yet
             \end{itemize}
@@ -613,17 +647,19 @@ Source zero-shot & 183.0 & 100.0\% & 93.3\% \\
     \footnotesize
     \begin{itemize}
         \item \textbf{Digital Twin} with speed-dependent cutting energy, tool wear, roughness, stochastic breakage
-        \item \textbf{Gymnasium Environment} with domain randomization, conditioned observations, energy-aware reward
-        \item \textbf{PPO Policies} with rigorous evaluation: Monte Carlo (100 scenarios, 95\% CIs), ablation frontier, conditioned policy
-        \item \textbf{Strong Baselines} including receding-horizon controller (re-optimizes every pass)
-        \item \textbf{Transfer Experiment} showing that fine tuning does \emph{not} adapt, but training across materials does
+        \item \textbf{One Gymnasium Environment} (\texttt{MillingDTEnv-v1}) with domain randomization and an 11-D observation that always carries the context
+        \item \textbf{One Production Policy} (1M steps): the energy weight is a runtime query, not a retrain
+        \item \textbf{Rigorous Evaluation}: Monte Carlo (100 scenarios, 95\% CIs), ablation frontier, weight sweep against the 21 per-weight policies
+        \item \textbf{Baselines}: six policies on the same 50 episodes --- level on the reward, so no RL advantage yet
+        \item \textbf{Transfer Experiment}: the production policy needs no adaptation; the nominal-trained one does
         \item \textbf{Interactive Workstation}: 2D stock depletion, micro-topography, G-code, multi-controller comparison
         \item \textbf{Full Reproducibility}: every result table from committed artifacts by one script
     \end{itemize}
 
-    \vspace{0.6em}
+    \vspace{0.5em}
     \begin{alertblock}{Key Scientific Finding}
-    The speed-dependent specific cutting energy creates a \textbf{genuine energy/throughput trade-off}, and DRL learns to navigate it pass-by-pass while respecting surface quality and tool life constraints. Across the measured frontier the removal rate falls 18\% while the energy of the part falls 8.5\%. The conditioned policy makes the whole trade-off accessible at runtime with a single model.
+    \scriptsize
+    The speed-dependent specific cutting energy creates a \textbf{genuine energy/throughput trade-off}, and DRL learns to navigate it pass-by-pass while respecting surface quality and tool life constraints. Across the measured frontier the removal rate falls \alert{8.4\%} while the energy of the part falls \alert{9.5\%}. One conditioned policy reaches that whole frontier at runtime, beats the 21 policies trained per weight, and transfers to a harder material with no adaptation.
     \end{alertblock}
 \end{frame}
 
@@ -640,14 +676,15 @@ Source zero-shot & 183.0 & 100.0\% & 93.3\% \\
     \textbf{Task} & \textbf{Command} \\
     \midrule
     Tests & \texttt{pytest tests/ -v} \\
-    Train PPO & \texttt{python agent/train\_rl.py --steps 1000000} \\
-    Train conditioned & \texttt{python agent/train\_rl\_conditioned.py --steps 1000000} \\
-    Monte Carlo eval & \texttt{python agent/evaluate.py} \\
-    Ablation grid & \texttt{python agent/train\_rl\_ablation.py --steps 150000} \\
+    Production & \texttt{python agent/train\_rl.py --steps 1000000 --seed 42 --randomize --randomize-weight} \\
+    Pinned weight & \texttt{python agent/train\_rl.py --steps 150000 --seed 42 --randomize --w2 0.4} \\
+    Ablation grid & \texttt{python agent/train\_rl\_ablation.py --steps 150000 --scenarios 50 --slots 7} \\
+    MC eval & \texttt{python agent/evaluate.py --scenarios 100} \\
+    Weight sweep & \texttt{python agent/evaluate.py --sweep-weight --compare} \\
     Baselines & \texttt{python baselines/run\_baselines.py} \\
-    Transfer exp. & \texttt{python agent/transfer\_experiment.py} \\
-    Regenerate results & \texttt{python agent/summarize\_results.py} \\
-    Launch workstation & \texttt{streamlit run app.py} \\
+    Transfer & \texttt{python agent/transfer\_experiment.py} \\
+    Results & \texttt{python agent/summarize\_results.py} \\
+    Workstation & \texttt{streamlit run app.py} \\
     Full pipeline & \texttt{python agent/run\_pipeline.py --steps 1000000} \\
     \bottomrule
     \end{tabular}

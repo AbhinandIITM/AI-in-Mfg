@@ -2,19 +2,21 @@
 
 ## Project Commands
 - Run tests: `pytest tests/ -v`
-- Train the primary policy: `python agent/train_rl.py --steps 1000000 --seed 42 --randomize`
-- Train the conditioned policy: `python agent/train_rl_conditioned.py --steps 1000000 --seed 42`
-- Run the Monte Carlo sweep: `python agent/evaluate.py`
+- Train the production policy: `python agent/train_rl.py --steps 1000000 --seed 42 --randomize --randomize-weight`
+- Run the Monte Carlo sweep: `python agent/evaluate.py --scenarios 100`
+- Run the runtime weight sweep: `python agent/evaluate.py --sweep-weight --scenarios 100 --compare`
 - Run the energy weight ablation: `python agent/train_rl_ablation.py --steps 150000 --scenarios 50 --slots 7`
 - Run the classical baselines: `python baselines/run_baselines.py`
+- Run the transfer experiment: `python agent/transfer_experiment.py 300000 50000`
 - Rebuild the result tables: `python agent/summarize_results.py`
+- Run the full pipeline: `python agent/run_pipeline.py --steps 1000000 --ablation_steps 150000`
 - Launch the interactive Digital Twin simulator: `streamlit run app.py`
 
 ## Documentation
 - `README.md`: overview, method, and the measured findings
 - `PROJECT.md`: every plan and reference document, in one file
   - Part 1: the environment contract and the acceptance status
-  - Part 2: the conditioned policy, the transfer experiment, the controller
+  - Part 2: the method upgrade, the one policy, the transfer experiment, the controller
   - Part 3: position against the three papers in `docs/papers/`
   - Part 4: the design of the Streamlit workstation
   - Part 5: where every physics equation comes from

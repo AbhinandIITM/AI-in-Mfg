@@ -76,7 +76,7 @@ def add_bullet_list(slide, left, top, width, height, items, font_size=16, color=
         p.level = 0
     return txBox
 
-def add_two_column(slide, left, top, width, height, left_items, right_items, font_size=15, color=DARK_GRAY, title_left="", title_right=""):
+def add_two_column(slide, left, top, width, height, left_items, right_items, font_size=15, color=DARK_GRAY, title_left="", title_right="", spacing=Pt(6)):
     col_width = width / 2 - Inches(0.15)
     # Left column
     if title_left:
@@ -84,12 +84,37 @@ def add_two_column(slide, left, top, width, height, left_items, right_items, fon
         top_content = top + Inches(0.45)
     else:
         top_content = top
-    add_bullet_list(slide, left, top_content, col_width, height - Inches(0.5), left_items, font_size=font_size, color=color)
+    add_bullet_list(slide, left, top_content, col_width, height - Inches(0.5), left_items, font_size=font_size, color=color, spacing=spacing)
     # Right column
     right_left = left + col_width + Inches(0.3)
     if title_right:
         add_text_box(slide, right_left, top, col_width, Inches(0.4), title_right, font_size=font_size+2, bold=True, color=IIT_BLUE)
-    add_bullet_list(slide, right_left, top_content, col_width, height - Inches(0.5), right_items, font_size=font_size, color=color)
+    add_bullet_list(slide, right_left, top_content, col_width, height - Inches(0.5), right_items, font_size=font_size, color=color, spacing=spacing)
+
+def style_table(table, header_rows=1, font_size=13, header_size=None, center=True, highlight_rows=()):
+    """Apply the deck's table look: blue header, dark body text."""
+    header_size = header_size or font_size
+    for i, row in enumerate(table.rows):
+        for j, cell in enumerate(row.cells):
+            for p in cell.text_frame.paragraphs:
+                p.font.size = Pt(header_size if i < header_rows else font_size)
+                p.font.name = 'Calibri'
+                if center:
+                    p.alignment = PP_ALIGN.CENTER
+                if i < header_rows:
+                    p.font.bold = True
+                    p.font.color.rgb = WHITE
+                elif i in highlight_rows:
+                    p.font.bold = True
+                    p.font.color.rgb = IIT_BLUE
+                else:
+                    p.font.color.rgb = DARK_GRAY
+            if i < header_rows:
+                cell.fill.solid()
+                cell.fill.fore_color.rgb = IIT_BLUE
+            elif i in highlight_rows:
+                cell.fill.solid()
+                cell.fill.fore_color.rgb = RGBColor(255, 248, 220)
 
 # ============================================================
 # SLIDE 1: Title Slide
@@ -113,7 +138,7 @@ add_text_box(slide, Inches(1), Inches(4.2), Inches(11.333), Inches(0.6),
     font_size=18, color=WHITE, alignment=PP_ALIGN.CENTER)
 
 add_text_box(slide, Inches(1), Inches(5.2), Inches(11.333), Inches(0.6),
-    "Git Revision: 87a4021  •  All results reproducible from committed artifacts",
+    "Git Revision: d76603b  •  All results reproducible from committed artifacts",
     font_size=14, color=RGBColor(180, 200, 220), alignment=PP_ALIGN.CENTER)
 
 # ============================================================
@@ -170,14 +195,14 @@ contents = [
         "Domain randomization per episode",
     ],
     [
-        "Gymnasium environment (8/11-D obs, 3-D action)",
-        "Energy-aware reward: w₁·MRR − w₂·Energy + progress − penalties",
-        "Conditioned policy: single model covers full Pareto frontier",
+        "One Gymnasium environment (11-D obs, 3-D action)",
+        "Energy-aware reward: 5·(w₁·MRR − w₂·Energy) + progress − penalties",
+        "Conditioned policy: one model covers the full frontier",
         "PPO with VecNormalize, 4 parallel envs, CPU training",
     ],
     [
         "100-scenario Monte Carlo with 95% CIs",
-        "Ablation: 7 energy weights × 3 seeds = 21 policies",
+        "Ablation: 7 energy weights × 3 seeds, weight pinned",
         "5 classical baselines (incl. receding-horizon)",
         "Transfer experiment: cross-material adaptation",
         "Full reproducibility: RESULTS.md from artifacts",
@@ -192,7 +217,54 @@ for i, (title, items) in enumerate(zip(titles, contents)):
     x += col_w + col_gap
 
 # ============================================================
-# SLIDE 4: Physics - Key Equations
+# SLIDE 4: Related Work
+# ============================================================
+slide = prs.slides.add_slide(prs.slide_layouts[6])
+add_background(slide, WHITE)
+add_shape(slide, Inches(0), Inches(0), Inches(13.333), Inches(1.1), fill_color=IIT_BLUE)
+add_text_box(slide, Inches(0.5), Inches(0.2), Inches(12), Inches(0.7),
+    "Positioning Against the Reference Papers",
+    font_size=30, bold=True, color=WHITE)
+
+rel_data = [
+    ("Capability", "Mo et al. (2025)\nJ. Manuf. Process 156", "Wang et al. (2025a)\nJ. Manuf. Syst. 78", "This Work"),
+    ("Dynamic optimization", "✓", "✓", "✓"),
+    ("Tool wear in the state", "✓", "✗", "✓"),
+    ("Roughness constraint", "✓", "✗", "✓"),
+    ("Energy as an objective", "✗", "✗", "✓"),
+    ("Speed-dependent k_c", "✗", "✗", "✓"),
+    ("Domain randomization", "✗", "✗", "✓"),
+    ("Conditioned policy", "✗", "✗", "✓"),
+    ("Transfer experiment", "✗", "✗", "✓"),
+    ("Receding-horizon baseline", "✗", "✗", "✓"),
+    ("Monte Carlo (100 scenarios)", "✗", "✗", "✓"),
+    ("Interactive workstation", "✗", "✗", "✓"),
+]
+
+rel_table = slide.shapes.add_table(len(rel_data), 4, Inches(0.5), Inches(1.35), Inches(12.3), Inches(3.6)).table
+for j, w in enumerate([4.7, 2.6, 2.7, 2.3]):
+    rel_table.columns[j].width = Inches(w)
+for i, row in enumerate(rel_data):
+    for j, val in enumerate(row):
+        rel_table.cell(i, j).text = val
+style_table(rel_table, font_size=13)
+for j in range(4):
+    rel_table.cell(0, j).fill.solid()
+    rel_table.cell(0, j).fill.fore_color.rgb = IIT_BLUE
+
+add_text_box(slide, Inches(0.5), Inches(5.15), Inches(12.3), Inches(0.9),
+    "Mo et al.: PPO over a mixed action space (tool change + parameters); the state carries V_B, breakage and R_a; objectives are quality and efficiency.\n"
+    "Wang et al.: MATD3 for batch milling; objectives are dimensional quality and machining time.",
+    font_size=14, color=DARK_GRAY)
+
+add_shape(slide, Inches(0.5), Inches(6.15), Inches(12.3), Inches(0.95), fill_color=RGBColor(255, 248, 220), line_color=IIT_GOLD, line_width=Pt(2))
+add_text_box(slide, Inches(0.8), Inches(6.25), Inches(11.7), Inches(0.75),
+    "Key differentiator: neither reference treats energy as an objective. The speed-dependent k_c is what creates a genuine "
+    "energy/throughput trade-off, and one conditioned policy covers the whole frontier in a single run.",
+    font_size=15, bold=True, color=IIT_GOLD)
+
+# ============================================================
+# SLIDE 5: Physics - Key Equations
 # ============================================================
 slide = prs.slides.add_slide(prs.slide_layouts[6])
 add_background(slide, WHITE)
@@ -238,57 +310,54 @@ insight_items = [
 add_bullet_list(slide, Inches(7.3), Inches(2.2), Inches(5.2), Inches(4.2), insight_items, font_size=15, color=DARK_GRAY)
 
 # ============================================================
-# SLIDE 5: Environment Design
+# SLIDE 6: Environment Design
 # ============================================================
 slide = prs.slides.add_slide(prs.slide_layouts[6])
 add_background(slide, WHITE)
 add_shape(slide, Inches(0), Inches(0), Inches(13.333), Inches(1.1), fill_color=IIT_BLUE)
 add_text_box(slide, Inches(0.5), Inches(0.2), Inches(12), Inches(0.7),
-    "Environment: MillingDTEnv (Gymnasium Compliant)",
+    "One Gymnasium Environment: MillingDTEnv-v1",
     font_size=30, bold=True, color=WHITE)
 
 # Two columns
 left_items = [
-    "Two registrations:",
-    "  • MillingDTEnv-v1 (base, 8-D obs)",
-    "  • MillingDTEnv-w2-v1 (conditioned, 11-D obs)",
+    "One registration:",
+    "  • MillingDTEnv-v1 (env.ENV_ID), 200-step limit",
+    "  • The weight and the material are inputs, not tasks",
     "",
-    "Observation (8 features, each onto [0,1]):",
-    "  0: V_B  (tanh squashed)",
-    "  1: κ_rem (tanh squashed)",
-    "  2-4: prev n, f_r, a_p (machine envelope)",
-    "  5: MRR / MRR_max",
-    "  6: R_a (tanh squashed)",
-    "  7: tool_broken flag",
-    "  8-10: w₂, C_wear, k₁ (conditioned only)",
+    "Observation (11-D, always the same shape):",
+    "  0-7: V_B, κ_rem, prev n, f_r, a_p, MRR/MRR_max,",
+    "       R_a, tool-broken flag",
+    "  8-10: the context — w₂, C_wear [0.6,1.4], k₁ [0.8,1.2]",
     "",
-    "Action: continuous [-1,1]³ → clipped → mapped to machine envelope",
+    "Action: continuous [-1,1]³ → clipped → machine envelope",
 ]
 right_items = [
     "Reward per step:",
     "  r = 5·(w₁·MRR/MRR_max − w₂·E_pass/E_ref)",
     "       + 2·Δ(stock removed)",
-    "       − 50·1[V_B > V_B_safe]   − 100·1[broken]",
-    "       − 50·1[finishing pass ∧ R_a > R_a_safe]",
-    "       − 0.05",
+    "       − 50·1[V_B > V_B_safe] − 100·1[broken]",
+    "       − 50·1[finishing pass ∧ R_a > R_a_safe] − 0.05",
     "  +200 for a part finished in spec, +≤5 Pareto margin",
+    "  w₁ = 1 − w₂; safety limits 0.255 mm and 1.36 μm",
+    "  breakage p = 0.3·wear factor·(load factor)² above 0.15 mm",
     "",
-    "Domain Randomization (randomize=True):",
+    "Domain Randomization (--randomize):",
     "  • Workpiece: κ_total [2,15], D [40,150], L_cut [50,200]",
     "  • Material/Tool: C_wear [0.6,1.4]×, k₁,k₂,k₃ [0.8,1.2]× nominal",
     "  • Initial wear: V_B0 ~ U[0, 0.8]·V_B_max",
+    "  • Energy weight drawn U[0,1] per episode",
     "  • Same tables for training + Monte Carlo eval",
     "",
     "E_ref recomputed per scenario from its own D, L_cut, k_c",
-    "The objective scale (5) lets w₂ compete with the shaping terms",
 ]
 
-add_two_column(slide, Inches(0.5), Inches(1.3), Inches(12.3), Inches(5.8),
-    left_items, right_items, font_size=15, color=DARK_GRAY,
+add_two_column(slide, Inches(0.5), Inches(1.3), Inches(12.3), Inches(5.9),
+    left_items, right_items, font_size=14, color=DARK_GRAY, spacing=Pt(4),
     title_left="State & Action", title_right="Reward & Randomization")
 
 # ============================================================
-# SLIDE 6: RL Training Setup
+# SLIDE 7: RL Training Setup
 # ============================================================
 slide = prs.slides.add_slide(prs.slide_layouts[6])
 add_background(slide, WHITE)
@@ -343,114 +412,86 @@ for i, (k, v) in enumerate(params):
 add_shape(slide, Inches(7), Inches(1.4), Inches(5.8), Inches(5.5), fill_color=LIGHT_GRAY, line_color=IIT_BLUE, line_width=Pt(1.5))
 add_text_box(slide, Inches(7.3), Inches(1.6), Inches(5.2), Inches(0.5), "Training Runs", font_size=22, bold=True, color=IIT_BLUE)
 runs = [
-    "1️⃣ Primary PPO: 1M steps, seed 42, randomize=True",
+    "1️⃣ Production policy: 1M steps, seed 42",
+    "    --randomize --randomize-weight",
     "    → models/PPO_seed42/",
     "",
-    "2️⃣ Conditioned PPO: 1M steps, seed 42, on MillingDTEnv-w2-v1",
-    "    → models/PPO_conditioned_seed42/",
-    "",
-    "3️⃣ Ablation Grid: 7 weights × 3 seeds = 21 policies",
+    "2️⃣ Ablation grid: 7 weights × 3 seeds = 21 policies",
     "    w₂ ∈ {0.0, 0.2, 0.4, 0.5, 0.6, 0.8, 1.0}",
     "    seeds {42, 43, 44}, 150k steps each",
-    "    Parallel via run_experiments.py (multiprocessing + heartbeat)",
+    "    weight PINNED at training, evaluated at that",
+    "    same weight",
     "",
-    "Heartbeat callback: queue signal every 1000 steps → stall detection",
+    "Heartbeat callback: queue signal every 1000 steps",
+    "→ stall detection in run_experiments.py",
 ]
 add_bullet_list(slide, Inches(7.3), Inches(2.2), Inches(5.2), Inches(4.5), runs, font_size=15, color=DARK_GRAY)
 
 # ============================================================
-# SLIDE 7: Monte Carlo Results
+# SLIDE 8: Monte Carlo Results
 # ============================================================
 slide = prs.slides.add_slide(prs.slide_layouts[6])
 add_background(slide, WHITE)
 add_shape(slide, Inches(0), Inches(0), Inches(13.333), Inches(1.1), fill_color=IIT_BLUE)
 add_text_box(slide, Inches(0.5), Inches(0.2), Inches(12), Inches(0.7),
-    "Results: Primary PPO — Monte Carlo Sweep (100 Scenarios)",
+    "Results: Production Policy — Monte Carlo Sweep (100 Scenarios)",
     font_size=30, bold=True, color=WHITE)
 
 # Main metrics table
-table_shape = slide.shapes.add_table(6, 4, Inches(0.5), Inches(1.4), Inches(7), Inches(3.2))
+table_shape = slide.shapes.add_table(6, 4, Inches(0.35), Inches(1.4), Inches(6.6), Inches(2.0))
 table = table_shape.table
-table.columns[0].width = Inches(3)
-table.columns[1].width = Inches(1.3)
-table.columns[2].width = Inches(1.3)
-table.columns[3].width = Inches(1.4)
+for j, w in enumerate([2.9, 1.2, 1.2, 1.3]):
+    table.columns[j].width = Inches(w)
 
 mc_data = [
     ("Metric", "Mean", "Std", "95% CI"),
-    ("MRR (mm³/min)", "1239", "621", "[1116, 1363]"),
-    ("Energy/part (kJ)", "68.2", "48.7", "[58.5, 77.9]"),
-    ("Cycle time (s)", "19.4", "14.1", "[16.6, 22.2]"),
-    ("Max R_a (μm)", "1.475", "0.235", "[1.428, 1.521]"),
-    ("Max V_B (mm)", "0.124", "0.068", "[0.111, 0.138]"),
+    ("MRR (mm³/min)", "1205.2", "585.7", "[1088.9, 1321.4]"),
+    ("Energy/part (kJ)", "68.4", "48.3", "[58.8, 77.9]"),
+    ("Cycle time (s)", "20.3", "17.1", "[16.9, 23.6]"),
+    ("Max R_a (μm)", "1.379", "0.350", "[1.309, 1.448]"),
+    ("Max V_B (mm)", "0.1244", "0.0679", "[0.1109, 0.1378]"),
 ]
 
 for i, row in enumerate(mc_data):
     for j, val in enumerate(row):
-        cell = table.cell(i, j)
-        cell.text = val
-        for p in cell.text_frame.paragraphs:
-            p.font.size = Pt(14)
-            p.font.name = 'Calibri'
-            if i == 0:
-                p.font.bold = True
-                p.font.color.rgb = WHITE
-            else:
-                p.font.color.rgb = DARK_GRAY
-    if i == 0:
-        for j in range(4):
-            table.cell(i, j).fill.solid()
-            table.cell(i, j).fill.fore_color.rgb = IIT_BLUE
+        table.cell(i, j).text = val
+style_table(table, font_size=13)
 
 # Constraint violations
-vio_table = slide.shapes.add_table(5, 3, Inches(0.5), Inches(4.8), Inches(7), Inches(2.2))
-vt = vio_table.table
-vt.columns[0].width = Inches(3.5)
-vt.columns[1].width = Inches(1.5)
-vt.columns[2].width = Inches(2)
+vio_table = slide.shapes.add_table(8, 3, Inches(7.1), Inches(1.4), Inches(5.9), Inches(2.6)).table
+for j, w in enumerate([3.4, 1.0, 1.5]):
+    vio_table.columns[j].width = Inches(w)
 
 vio_data = [
     ("Constraint", "Rate", "95% CI"),
-    ("Roughness violations (worst pass)", "39%", "[29%, 49%]"),
-    ("Roughness violations (finished surface)", "0%", "[0%, 0%]"),
-    ("Flank wear violations (V_B > 0.3 mm)", "0%", "[0%, 0%]"),
-    ("Tool breakage", "1%", "[0%, 3%]"),
+    ("R_a viol., worst pass", "38.0%", "[28.5, 47.5]%"),
+    ("R_a viol., finished surface", "0.0%", "[0, 0]%"),
+    ("R_a above safety limit, worst", "56.0%", "[46.3, 65.7]%"),
+    ("R_a above safety limit, finished", "0.0%", "[0, 0]%"),
+    ("Flank wear violations (V_B > 0.3)", "0.0%", "[0, 0]%"),
+    ("Tool breakage", "1.0%", "[0, 3]%"),
+    ("Parts completed in spec", "99.0%", ""),
 ]
 
 for i, row in enumerate(vio_data):
     for j, val in enumerate(row):
-        cell = vt.cell(i, j)
-        cell.text = val
-        for p in cell.text_frame.paragraphs:
-            p.font.size = Pt(13)
-            p.font.name = 'Calibri'
-            if i == 0:
-                p.font.bold = True
-                p.font.color.rgb = WHITE
-            else:
-                p.font.color.rgb = DARK_GRAY
-    if i == 0:
-        for j in range(3):
-            vt.cell(i, j).fill.solid()
-            vt.cell(i, j).fill.fore_color.rgb = IIT_BLUE
+        vio_table.cell(i, j).text = val
+style_table(vio_table, font_size=13)
 
 # Key takeaway box
-add_shape(slide, Inches(8), Inches(1.4), Inches(4.8), Inches(5.6), fill_color=RGBColor(230, 245, 230), line_color=GREEN, line_width=Pt(2))
-add_text_box(slide, Inches(8.3), Inches(1.6), Inches(4.2), Inches(0.5), "✅ Key Findings", font_size=22, bold=True, color=GREEN)
+add_shape(slide, Inches(0.5), Inches(4.35), Inches(12.3), Inches(2.6), fill_color=RGBColor(230, 245, 230), line_color=GREEN, line_width=Pt(2))
+add_text_box(slide, Inches(0.8), Inches(4.5), Inches(11.7), Inches(0.5), "✅ Key Findings", font_size=22, bold=True, color=GREEN)
 takeaways = [
-    "• Finished surface ALWAYS within spec (0% violations)",
-    "• Flank wear NEVER exceeded (0% violations)",
-    "• 99% parts completed within all constraints",
-    "• Intermediate passes exceed safety margin (61%)",
-    "  → policy pushes limits, recovers by finish pass",
-    "• High MRR variance (std = 50% of mean)",
-    "  → domain randomization works: diverse operating points",
-    "• Mean operating point: 7241 RPM, 0.254 mm/r, 2.11 mm, 4 passes",
+    "• Finished surface ALWAYS within spec (0% violations) — the part quality holds",
+    "• Flank wear NEVER exceeded (0% violations); 99% of the parts completed",
+    "• 56% of the passes exceed the roughness safety margin (1.36 μm): the policy pushes and recovers by the finish pass",
+    "• High MRR variance (std = 49% of mean) → domain randomization works: diverse operating points",
+    "• Mean operating point: 7199 RPM, 0.247 mm/r, 2.11 mm, 4.0 passes",
 ]
-add_bullet_list(slide, Inches(8.3), Inches(2.2), Inches(4.2), Inches(4.5), takeaways, font_size=15, color=DARK_GRAY)
+add_bullet_list(slide, Inches(0.8), Inches(5.1), Inches(11.7), Inches(1.7), takeaways, font_size=15, color=DARK_GRAY, spacing=Pt(4))
 
 # ============================================================
-# SLIDE 8: Ablation — Pareto Frontier
+# SLIDE 9: Ablation — Pareto Frontier
 # ============================================================
 slide = prs.slides.add_slide(prs.slide_layouts[6])
 add_background(slide, WHITE)
@@ -460,204 +501,132 @@ add_text_box(slide, Inches(0.5), Inches(0.2), Inches(12), Inches(0.7),
     font_size=30, bold=True, color=WHITE)
 
 # Ablation table
-table_shape = slide.shapes.add_table(9, 7, Inches(0.3), Inches(1.4), Inches(7.5), Inches(4.5))
+table_shape = slide.shapes.add_table(8, 7, Inches(0.5), Inches(1.4), Inches(12.3), Inches(2.7))
 table = table_shape.table
-cols = [1.2, 1.3, 1.2, 1.0, 1.0, 1.0, 0.8]
+cols = [1.1, 2.3, 2.0, 1.7, 1.7, 1.5, 2.0]
 for i, w in enumerate(cols):
     table.columns[i].width = Inches(w)
 
 abl_data = [
-    ("w₂", "MRR\n(mm³/min)", "Energy\n(kJ)", "Cycle\n(s)", "n\n(RPM)", "f_r\n(mm/r)", "Frontier"),
-    ("0.0", "999.9±31", "82.8±0.7", "45.8±2", "6974", "0.177", "✗ dominated"),
-    ("0.2", "990.5±137", "76.3±2.2", "31.2±6", "7307", "0.186", "✗ dominated"),
-    ("0.4", "1069.0±40", "71.5±0.4", "22.9±1", "7205", "0.212", "✓"),
-    ("0.5", "1026.2±57", "71.0±0.7", "23.2±0.5", "7115", "0.208", "✓"),
-    ("0.6", "1008.4±23", "68.3±0.8", "21.6±1", "6775", "0.223", "✓"),
-    ("0.8", "888.3±58", "65.8±1.4", "23.1±1", "6307", "0.222", "✓"),
-    ("1.0", "876.6±43", "65.4±1.7", "22.7±1", "5924", "0.245", "✓"),
-    ("Frontier:", "1069→877", "71.5→65.4", "", "", "", "↓18%  ↓8.5%"),
+    ("w₂", "MRR (mm³/min)", "Energy (kJ)", "Cycle (s)", "n (RPM)", "f_r (mm/r)", "Frontier"),
+    ("0.0", "946.3±63.4", "82.9±1.4", "44.8", "7094", "0.166", "✗ dominated"),
+    ("0.2", "1007.8±22.7", "77.1±1.1", "31.3", "7471", "0.184", "✗ dominated"),
+    ("0.4", "1038.0±67.6", "72.7±0.5", "24.8", "7256", "0.203", "✓"),
+    ("0.5", "1035.8±43.8", "70.3±1.2", "22.0", "7080", "0.214", "✓"),
+    ("0.6", "1023.9±27.4", "70.8±0.6", "22.1", "7148", "0.209", "✗ dominated"),
+    ("0.8", "971.1±43.2", "66.8±1.2", "21.9", "6538", "0.228", "✓"),
+    ("1.0", "951.3±54.7", "65.8±0.6", "20.9", "6490", "0.229", "✓"),
 ]
 
 for i, row in enumerate(abl_data):
     for j, val in enumerate(row):
-        cell = table.cell(i, j)
-        cell.text = val
-        for p in cell.text_frame.paragraphs:
-            p.font.size = Pt(12)
-            p.font.name = 'Calibri'
-            p.alignment = PP_ALIGN.CENTER
-            if i == 0:
-                p.font.bold = True
-                p.font.color.rgb = WHITE
-            elif i == 8:
-                p.font.bold = True
-                p.font.color.rgb = IIT_GOLD
-            else:
-                p.font.color.rgb = DARK_GRAY
-    if i == 0:
-        for j in range(7):
-            table.cell(i, j).fill.solid()
-            table.cell(i, j).fill.fore_color.rgb = IIT_BLUE
-    elif i == 8:
-        for j in range(7):
-            table.cell(i, j).fill.solid()
-            table.cell(i, j).fill.fore_color.rgb = RGBColor(255, 248, 220)
+        table.cell(i, j).text = val
+style_table(table, font_size=13)
 
 # Insight box
-add_shape(slide, Inches(8.2), Inches(1.4), Inches(4.8), Inches(4.5), fill_color=RGBColor(255, 248, 220), line_color=IIT_GOLD, line_width=Pt(2))
-add_text_box(slide, Inches(8.5), Inches(1.6), Inches(4.2), Inches(0.5), "📊 Frontier Analysis", font_size=22, bold=True, color=IIT_GOLD)
+add_shape(slide, Inches(0.5), Inches(4.35), Inches(12.3), Inches(2.6), fill_color=RGBColor(255, 248, 220), line_color=IIT_GOLD, line_width=Pt(2))
+add_text_box(slide, Inches(0.8), Inches(4.5), Inches(11.7), Inches(0.5), "📊 Frontier Analysis", font_size=22, bold=True, color=IIT_GOLD)
 insights = [
-    "• Asymmetric trade-off:",
-    "  Large MRR sacrifice (18%) for",
-    "  modest energy gain (8.5%)",
-    "",
-    "• Dominated points (w₂=0.0, 0.2):",
-    "  HIGHER energy than w₂=0.4!",
-    "  → pushing speed too high increases",
-    "    cutting energy k_c(v_c) more than",
-    "    idle energy is saved",
-    "",
-    "• Speed-dependent k_c is ESSENTIAL:",
-    "  without it, frontier collapses",
-    "  to a single point",
-    "",
-    "• Mean over 3 seeds, 50 scenarios each",
+    "• From w₂ = 0.4 to w₂ = 1.0 the removal rate falls 8.4% (1038 → 951 mm³/min) and the energy falls 9.5% (72.7 → 65.8 kJ): a symmetric trade-off",
+    "• The spindle speed falls with the energy weight (7256 → 6490 RPM): the energy is bought with throughput, not with time",
+    "• Dominated points (w₂ = 0.0, 0.2, 0.6) remove less for more",
+    "• Each policy has its weight pinned at training and evaluated at that same weight; 3 seeds, 50 scenarios each",
 ]
-add_bullet_list(slide, Inches(8.5), Inches(2.2), Inches(4.2), Inches(3.5), insights, font_size=14, color=DARK_GRAY)
+add_bullet_list(slide, Inches(0.8), Inches(5.1), Inches(11.7), Inches(1.7), insights, font_size=14, color=DARK_GRAY, spacing=Pt(4))
 
 # ============================================================
-# SLIDE 9: Conditioned Policy
+# SLIDE 10: One Policy Against 21 Policies
 # ============================================================
 slide = prs.slides.add_slide(prs.slide_layouts[6])
 add_background(slide, WHITE)
 add_shape(slide, Inches(0), Inches(0), Inches(13.333), Inches(1.1), fill_color=IIT_BLUE)
 add_text_box(slide, Inches(0.5), Inches(0.2), Inches(12), Inches(0.7),
-    "Conditioned Policy: One Model → Entire Frontier",
+    "One Policy Against 21 Policies",
     font_size=30, bold=True, color=WHITE)
 
 # Comparison table
-table_shape = slide.shapes.add_table(9, 4, Inches(0.5), Inches(1.4), Inches(7), Inches(3.5))
+table_shape = slide.shapes.add_table(8, 7, Inches(0.75), Inches(1.4), Inches(11.8), Inches(2.7))
 table = table_shape.table
-table.columns[0].width = Inches(1.2)
-table.columns[1].width = Inches(2.0)
-table.columns[2].width = Inches(2.0)
-table.columns[3].width = Inches(1.8)
+for j, w in enumerate([1.1, 1.9, 1.9, 1.5, 1.9, 1.9, 1.6]):
+    table.columns[j].width = Inches(w)
 
 cond_data = [
-    ("w₂", "Conditioned 1M", "Per-weight 150k", "Energy gap"),
-    ("0.0", "1213.6", "999.9", "−15.9%"),
-    ("0.2", "1215.3", "990.5", "−9.5%"),
-    ("0.4", "1205.1", "1069.0", "−4.4%"),
-    ("0.5", "1191.0", "1026.2", "−4.2%"),
-    ("0.6", "1169.3", "1008.4", "−1.0%"),
-    ("0.8", "1130.8", "888.3", "+2.0%"),
-    ("1.0", "1096.0", "876.6", "+2.6%"),
+    ("w₂", "MRR, one policy", "MRR, per weight", "MRR gap", "Energy, one policy", "Energy, per weight", "Energy gap"),
+    ("0.0", "1213.6", "946.3", "+28.2%", "69.6", "82.9", "−16.0%"),
+    ("0.2", "1215.3", "1007.8", "+20.6%", "69.0", "77.1", "−10.5%"),
+    ("0.4", "1205.1", "1038.0", "+16.1%", "68.3", "72.7", "−6.0%"),
+    ("0.5", "1191.0", "1035.8", "+15.0%", "68.0", "70.3", "−3.3%"),
+    ("0.6", "1169.3", "1023.9", "+14.2%", "67.6", "70.8", "−4.5%"),
+    ("0.8", "1130.8", "971.1", "+16.4%", "67.1", "66.8", "+0.5%"),
+    ("1.0", "1096.0", "951.3", "+15.2%", "67.1", "65.8", "+2.1%"),
 ]
 
 for i, row in enumerate(cond_data):
     for j, val in enumerate(row):
-        cell = table.cell(i, j)
-        cell.text = val
-        for p in cell.text_frame.paragraphs:
-            p.font.size = Pt(15)
-            p.font.name = 'Calibri'
-            p.alignment = PP_ALIGN.CENTER
-            if i == 0:
-                p.font.bold = True
-                p.font.color.rgb = WHITE
-            else:
-                p.font.color.rgb = DARK_GRAY
-    if i == 0:
-        for j in range(4):
-            table.cell(i, j).fill.solid()
-            table.cell(i, j).fill.fore_color.rgb = IIT_BLUE
+        table.cell(i, j).text = val
+style_table(table, font_size=13)
 
 # Key message
-add_shape(slide, Inches(8), Inches(1.4), Inches(4.8), Inches(3.5), fill_color=RGBColor(230, 245, 230), line_color=GREEN, line_width=Pt(2))
-add_text_box(slide, Inches(8.3), Inches(1.6), Inches(4.2), Inches(0.5), "🎯 Result", font_size=24, bold=True, color=GREEN)
+add_shape(slide, Inches(0.5), Inches(4.35), Inches(12.3), Inches(2.6), fill_color=RGBColor(230, 245, 230), line_color=GREEN, line_width=Pt(2))
+add_text_box(slide, Inches(0.8), Inches(4.5), Inches(11.7), Inches(0.5), "🎯 Result", font_size=22, bold=True, color=GREEN)
 msg = [
-    "One run of 1M steps beats the 21",
-    "policies of 150k steps each (3.15M",
-    "steps total): 13–27% more removal rate",
-    "for at most 3% more energy.",
-    "",
-    "The weight stays a runtime query,",
-    "not a retrain.",
-    "",
-    "Observation carries:",
-    "  • Energy weight w₂ ∈ [0,1]",
-    "  • Material context (C_wear, k₁)",
-    "Both drawn per episode at reset().",
+    "• For w₂ from 0.0 to 0.6 the single policy removes 14% to 28% more material for 3% to 16% less energy",
+    "• At w₂ = 0.8 and w₂ = 1.0 it still removes 16% and 15% more for 0.5% and 2.1% more energy",
+    "• The weight stays a runtime query, not a retrain: the observation carries w₂ and the material context (C_wear, k₁)",
+    "• The same policy swept at runtime: MRR 1213.6 (w₂ = 0.0) → 1096.0 (w₂ = 1.0), energy 69.6 → 67.1 kJ, spindle 7513 → 6475 RPM",
 ]
-add_bullet_list(slide, Inches(8.3), Inches(2.3), Inches(4.2), Inches(2.5), msg, font_size=16, color=DARK_GRAY)
+add_bullet_list(slide, Inches(0.8), Inches(5.1), Inches(11.7), Inches(1.7), msg, font_size=15, color=DARK_GRAY, spacing=Pt(4))
 
 # ============================================================
-# SLIDE 10: Baseline Comparison
+# SLIDE 11: Baseline Comparison
 # ============================================================
 slide = prs.slides.add_slide(prs.slide_layouts[6])
 add_background(slide, WHITE)
 add_shape(slide, Inches(0), Inches(0), Inches(13.333), Inches(1.1), fill_color=IIT_BLUE)
 add_text_box(slide, Inches(0.5), Inches(0.2), Inches(12), Inches(0.7),
-    "Baseline Comparison (50 Episodes, Nominal Condition)",
+    "Baseline Comparison (50 Episodes, Nominal Condition, w₂ = 0.4)",
     font_size=30, bold=True, color=WHITE)
 
 # Baseline table
-table_shape = slide.shapes.add_table(7, 5, Inches(0.5), Inches(1.4), Inches(8), Inches(3.5))
+table_shape = slide.shapes.add_table(7, 5, Inches(1.2), Inches(1.4), Inches(10.8), Inches(2.4))
 table = table_shape.table
-table.columns[0].width = Inches(2.3)
-table.columns[1].width = Inches(1.6)
-table.columns[2].width = Inches(1.5)
-table.columns[3].width = Inches(1.3)
-table.columns[4].width = Inches(1.3)
+for j, w in enumerate([3.0, 1.8, 2.2, 2.0, 1.8]):
+    table.columns[j].width = Inches(w)
 
 base_data = [
-    ("Policy", "MRR (mm³/min)", "Energy (kJ)", "Cycle (s)", "Reward"),
-    ("PPO (primary)", "877.7", "18.5", "5.7", "+204.1"),
-    ("Receding-Horizon", "981.7", "18.0", "4.8", "+203.5"),
-    ("NSGA-II Static", "732.9", "18.8", "6.4", "−46.4"),
-    ("Rule-Based", "719.8", "18.7", "6.6", "−46.5"),
-    ("Constant-Safe", "1.6", "1506.8", "3000.0", "−139.3"),
-    ("Constant-High", "1099.6", "17.8", "4.3", "−46.1 ⚠ violates"),
+    ("Policy", "Reward", "MRR (mm³/min)", "Energy (kJ)", "Cycle (s)"),
+    ("PPO (ours)", "204.09", "894.3", "18.40", "5.56"),
+    ("Receding-Horizon", "203.45", "981.7", "18.02", "4.80"),
+    ("NSGA-II Static", "−46.39", "732.9", "18.8", "6.4"),
+    ("Rule-Based", "−46.48", "719.8", "18.7", "6.6"),
+    ("Constant-High", "−46.10", "1099.6", "17.8", "4.3  ⚠ violates"),
+    ("Constant-Safe", "−139.25", "1.6", "1506.8", "3000.0"),
 ]
 
 for i, row in enumerate(base_data):
     for j, val in enumerate(row):
-        cell = table.cell(i, j)
-        cell.text = val
-        for p in cell.text_frame.paragraphs:
-            p.font.size = Pt(14)
-            p.font.name = 'Calibri'
-            p.alignment = PP_ALIGN.CENTER
-            if i == 0:
-                p.font.bold = True
-                p.font.color.rgb = WHITE
-            elif i == 6 and j == 0:
-                p.font.bold = True
-                p.font.color.rgb = RED
-            else:
-                p.font.color.rgb = DARK_GRAY
-    if i == 0:
-        for j in range(5):
-            table.cell(i, j).fill.solid()
-            table.cell(i, j).fill.fore_color.rgb = IIT_BLUE
-    elif i == 6:
-        for j in range(5):
-            table.cell(i, j).fill.solid()
-            table.cell(i, j).fill.fore_color.rgb = RGBColor(255, 230, 230)
+        table.cell(i, j).text = val
+style_table(table, font_size=14)
+for j in range(5):
+    table.cell(6, j).fill.solid()
+    table.cell(6, j).fill.fore_color.rgb = RGBColor(255, 230, 230)
+    table.cell(5, j).fill.solid()
+    table.cell(5, j).fill.fore_color.rgb = RGBColor(255, 248, 220)
 
 # Analysis
-add_shape(slide, Inches(0.5), Inches(5.2), Inches(8), Inches(2), fill_color=LIGHT_GRAY, line_color=IIT_BLUE, line_width=Pt(1.5))
-add_text_box(slide, Inches(0.8), Inches(5.3), Inches(7.5), Inches(0.4), "Analysis", font_size=20, bold=True, color=IIT_BLUE)
+add_shape(slide, Inches(0.5), Inches(4.15), Inches(12.3), Inches(2.8), fill_color=LIGHT_GRAY, line_color=IIT_BLUE, line_width=Pt(1.5))
+add_text_box(slide, Inches(0.8), Inches(4.3), Inches(11.7), Inches(0.4), "Analysis", font_size=20, bold=True, color=IIT_BLUE)
 analysis = [
-    "• Same 50 episodes of the nominal condition for all six policies",
-    "• The four static policies end outside the roughness safety limit (reward −46); only the controller stays inside",
-    "• PPO +204.1 vs controller +203.5: level on the reward, controller ahead on MRR, energy and cycle time",
-    "• No DRL advantage yet: next step is to initialize PPO from the controller → fine-tune",
+    "• Same 50 episodes of the nominal condition for all six policies, at w₂ = 0.4",
+    "• Level on the reward: PPO 204.1 against the controller 203.5",
+    "• The controller is ahead on the removal rate (981.7 vs 894.3) and the cycle time (4.80 s vs 5.56 s)",
+    "• No reinforcement learning advantage is demonstrated yet",
+    "• The three fast static policies finish outside the roughness safety limit, so the reward takes the −50 finishing penalty; Constant-Safe stays inside but needs 3000 s",
 ]
-add_bullet_list(slide, Inches(0.8), Inches(5.8), Inches(7.5), Inches(1.2), analysis, font_size=15, color=DARK_GRAY)
+add_bullet_list(slide, Inches(0.8), Inches(4.85), Inches(11.7), Inches(2.0), analysis, font_size=15, color=DARK_GRAY, spacing=Pt(4))
 
 # ============================================================
-# SLIDE 11: Transfer Experiment
+# SLIDE 12: Transfer Experiment
 # ============================================================
 slide = prs.slides.add_slide(prs.slide_layouts[6])
 add_background(slide, WHITE)
@@ -666,71 +635,44 @@ add_text_box(slide, Inches(0.5), Inches(0.2), Inches(12), Inches(0.7),
     "Transfer Experiment: Cross-Material Adaptation",
     font_size=30, bold=True, color=WHITE)
 
-# Target material box
-add_shape(slide, Inches(0.5), Inches(1.4), Inches(6), Inches(2.5), fill_color=RGBColor(255, 240, 240), line_color=RED, line_width=Pt(2))
-add_text_box(slide, Inches(0.8), Inches(1.5), Inches(5.5), Inches(0.4), "🎯 Target Material (unseen during source training)", font_size=18, bold=True, color=RED)
-target_items = [
-    "• Harder alloy: k₁ × 1.25, k₂ × 1.30",
-    "• Faster-wearing tool: C_wear × 2.0",
-    "• Same machine constraints",
-    "• Source policy has NEVER seen this material",
-]
-add_bullet_list(slide, Inches(0.8), Inches(2.0), Inches(5.5), Inches(1.8), target_items, font_size=16, color=DARK_GRAY)
+add_text_box(slide, Inches(0.5), Inches(1.3), Inches(12.3), Inches(0.8),
+    "🎯 Target material (harder alloy, same machine): k₁ × 1.25, k₂ × 1.30, C_wear × 2.0. "
+    "The source policy was trained for 300,000 steps on the nominal material; the adaptation budget on the target is 50,000 steps.",
+    font_size=15, bold=True, color=RED)
 
-# Three arms
+# Four arms
 arm_data = [
-    ("1. Source Policy\n   Zero-Shot", "183.0", "100.0%", "93.3%"),
-    ("2. Source Policy\n   Fine-Tuned (50k)", "182.9", "100.0%", "93.3%"),
-    ("3. Target from\n   Scratch (50k)", "196.7", "0.0%", "100.0%"),
+    ("Arm", "Mean reward", "R_a violations\n(worst pass)", "R_a violations\n(finished surface)", "Parts\ncompleted"),
+    ("Source policy, zero shot", "182.5", "100.0%", "3.3%", "93.3%"),
+    ("Source policy, fine tuned (50k)", "196.6", "0.0%", "0.0%", "100.0%"),
+    ("Trained on the target from scratch (50k)", "196.6", "0.0%", "0.0%", "100.0%"),
+    ("Production policy, zero shot", "200.3", "60.0%", "0.0%", "100.0%"),
 ]
 
-table_shape = slide.shapes.add_table(4, 4, Inches(7), Inches(1.4), Inches(5.8), Inches(2.5))
+table_shape = slide.shapes.add_table(5, 5, Inches(0.7), Inches(2.2), Inches(11.9), Inches(1.9))
 table = table_shape.table
-table.columns[0].width = Inches(1.8)
-table.columns[1].width = Inches(1.3)
-table.columns[2].width = Inches(1.3)
-table.columns[3].width = Inches(1.4)
+for j, w in enumerate([4.4, 1.7, 2.0, 2.2, 1.6]):
+    table.columns[j].width = Inches(w)
 
-arm_header = ["Arm", "Mean Reward", "Ra violations", "Parts done"]
-for i, row in enumerate([arm_header] + arm_data):
+for i, row in enumerate(arm_data):
     for j, val in enumerate(row):
-        cell = table.cell(i, j)
-        cell.text = val
-        for p in cell.text_frame.paragraphs:
-            p.font.size = Pt(14)
-            p.font.name = 'Calibri'
-            p.alignment = PP_ALIGN.CENTER
-            if i == 0:
-                p.font.bold = True
-                p.font.color.rgb = WHITE
-            elif i == 2:
-                p.font.bold = True
-                p.font.color.rgb = GREEN
-            else:
-                p.font.color.rgb = DARK_GRAY
-    if i == 0:
-        for j in range(4):
-            table.cell(i, j).fill.solid()
-            table.cell(i, j).fill.fore_color.rgb = IIT_BLUE
-    elif i == 2:
-        for j in range(4):
-            table.cell(i, j).fill.solid()
-            table.cell(i, j).fill.fore_color.rgb = RGBColor(230, 245, 230)
+        table.cell(i, j).text = val
+style_table(table, font_size=13, highlight_rows=(4,))
 
 # Conclusion
-add_shape(slide, Inches(0.5), Inches(4.2), Inches(12.3), Inches(2.8), fill_color=RGBColor(255, 240, 220), line_color=IIT_GOLD, line_width=Pt(2))
-add_text_box(slide, Inches(0.8), Inches(4.3), Inches(11.5), Inches(0.4), "⚠ Fine tuning is the wrong tool here", font_size=22, bold=True, color=IIT_GOLD)
+add_shape(slide, Inches(0.5), Inches(4.35), Inches(12.3), Inches(2.6), fill_color=RGBColor(255, 248, 220), line_color=IIT_GOLD, line_width=Pt(2))
+add_text_box(slide, Inches(0.8), Inches(4.5), Inches(11.7), Inches(0.5), "⚠ How to read this", font_size=22, bold=True, color=IIT_GOLD)
 conc_items = [
-    "• Fine tuning moves the reward from 183.0 to 182.9 and removes no violation at all",
-    "• Training on the harder material from scratch removes every violation (196.7)",
-    "• Zero-shot on the harder alloy violates the roughness limit in 100% of scenarios",
-    "• The remedy is the one this project adopted: train across a distribution of materials",
-    "• Domain randomization is not a nicety here, it is what makes the policy transfer at all",
+    "• The production policy was trained across a distribution of materials with the material context in its observation, so the harder material is inside its training distribution and needs no adaptation at all",
+    "• It scores the highest reward (200.3); the finished surface, which is the part quality, is in spec in every scenario",
+    "• Its 60% worst-pass violations fall on the roughing passes, which the reward does not constrain",
+    "• The nominal-trained source policy cannot: 182.5, and it violates the roughness limit in every scenario",
+    "• Fine tuning it for 50,000 steps, or training on the target from scratch, both fix it, and both land at 196.6",
 ]
-add_bullet_list(slide, Inches(0.8), Inches(4.8), Inches(11.5), Inches(2), conc_items, font_size=15, color=DARK_GRAY)
+add_bullet_list(slide, Inches(0.8), Inches(5.1), Inches(11.7), Inches(1.8), conc_items, font_size=14, color=DARK_GRAY, spacing=Pt(4))
 
 # ============================================================
-# SLIDE 12: Interactive Workstation
+# SLIDE 13: Interactive Workstation
 # ============================================================
 slide = prs.slides.add_slide(prs.slide_layouts[6])
 add_background(slide, WHITE)
@@ -759,7 +701,7 @@ add_text_box(slide, Inches(0.5), Inches(6.8), Inches(12), Inches(0.5),
     font_size=20, bold=True, color=IIT_BLUE, alignment=PP_ALIGN.CENTER)
 
 # ============================================================
-# SLIDE 13: Software Engineering & Reproducibility
+# SLIDE 14: Software Engineering & Reproducibility
 # ============================================================
 slide = prs.slides.add_slide(prs.slide_layouts[6])
 add_background(slide, WHITE)
@@ -771,7 +713,7 @@ add_text_box(slide, Inches(0.5), Inches(0.2), Inches(12), Inches(0.7),
 left_items = [
     "Architecture:",
     "  config/  →  physics, scenarios, paths (single source)",
-    "  env/     →  Gymnasium env, 2 registrations",
+    "  env/     →  Gymnasium env, 1 registration",
     "  agent/   →  train, eval, ablation, transfer, pipeline",
     "  baselines/ →  5 classical + receding-horizon",
     "  sim/     →  stock depletion, micro-topography, G-code",
@@ -782,19 +724,22 @@ left_items = [
     "  • Shared scenario tables (train = eval)",
     "  • summarize_results.py regenerates RESULTS.md",
     "  • All randomness deterministic given seed",
-    "  • Centralized paths (config/paths.py), env IDs (env/__init__.py)",
+    "  • Centralized paths (config/paths.py), env ID (env/__init__.py)",
 ]
 right_items = [
-    "Testing (26 tests):",
-    "  • 19 env tests: clipping, truncation, soft norm,",
-    "    physics constants, overrides, energy norm,",
-    "    Gym checker, randomization, scenario scales,",
-    "    cutting energy speed dependence, part energy",
-    "    interior minimum, shared physics, shared tables",
-    "  • 2 reward tests: golden-value (1e-9), finishing penalty",
-    "  • 3 integration: train→eval roundtrip, conditioned obs,",
+    "Testing (34 tests):",
+    "  • 22 env tests: clipping, truncation, soft norm, 11-D",
+    "    observation, constants, overrides, accumulators, energy",
+    "    norm, Gym checker, randomization, pinned values, scenario",
+    "    scales, context (weight, material, random weight), speed",
+    "    dependence, energy minimum, shared physics",
+    "  • 2 reward tests: golden values (w₂ = 0.0, 0.4, 0.75),",
+    "    finishing penalty",
+    "  • 5 integration: train→eval roundtrip, one registration,",
+    "    context in the observation, one policy at a pinned weight,",
     "    baseline artifact",
     "  • 3 callback: heartbeat delivery, failure report, interval",
+    "  • 2 training: convergence, reproducibility",
     "",
     "Code Quality:",
     "  • No unused imports (AST verified)",
@@ -802,12 +747,12 @@ right_items = [
     "  • Lit citations in physics_constants.py",
 ]
 
-add_two_column(slide, Inches(0.5), Inches(1.3), Inches(12.3), Inches(5.8),
-    left_items, right_items, font_size=14, color=DARK_GRAY,
+add_two_column(slide, Inches(0.5), Inches(1.3), Inches(12.3), Inches(5.9),
+    left_items, right_items, font_size=14, color=DARK_GRAY, spacing=Pt(4),
     title_left="Architecture & Reproducibility", title_right="Test Coverage & Quality")
 
 # ============================================================
-# SLIDE 14: Discussion
+# SLIDE 15: Discussion
 # ============================================================
 slide = prs.slides.add_slide(prs.slide_layouts[6])
 add_background(slide, WHITE)
@@ -823,14 +768,14 @@ contents = [
     [
         "Speed-dependent k_c creates genuine trade-off",
         "Domain randomization → 99% completion, 0% finished violations",
-        "Conditioned policy: 1 run replaces 21 (beats them at 1/3 the steps)",
+        "One policy beats the 21 per-weight policies",
+        "Training across materials makes the adaptation unnecessary",
         "Receding-horizon = strong, fair baseline (same physics)",
-        "Test suite catches physics & reward regressions",
         "Full reproducibility: one script regenerates all tables",
     ],
     [
         "PPO is level with the receding-horizon, not ahead of it",
-        "Ablation uses 150k steps/weight (vs 1M primary)",
+        "Ablation uses 150k steps/weight (vs 1M production)",
         "The reward charges a pass, the metric is a part",
         "Micro-topography is simplified (no chatter/vibration)",
         "Sim-only — no real machine calibration yet",
@@ -853,7 +798,7 @@ for title, items in zip(titles, contents):
     x += col_w + Inches(0.15)
 
 # ============================================================
-# SLIDE 15: Conclusion
+# SLIDE 16: Conclusion
 # ============================================================
 slide = prs.slides.add_slide(prs.slide_layouts[6])
 add_background(slide, IIT_BLUE)
@@ -864,27 +809,28 @@ add_text_box(slide, Inches(1), Inches(1.2), Inches(11.333), Inches(1),
     font_size=40, bold=True, color=WHITE, alignment=PP_ALIGN.CENTER)
 
 conclusions = [
-    "🏭 Physics-grounded Digital Twin with speed-dependent cutting energy, tool wear, roughness, stochastic breakage",
-    "🤖 Gymnasium environment with domain randomization, conditioned observations, energy-aware reward",
-    "📊 PPO policies with rigorous evaluation: Monte Carlo (100 scenarios, 95% CIs), ablation frontier, conditioned policy",
-    "⚔️ Strong classical baselines including receding-horizon controller (re-optimizes every pass)",
-    "🔄 Transfer experiment: fine tuning does not adapt, training across materials does",
-    "🖥️ Interactive workstation: 2D stock depletion, micro-topography, G-code, multi-controller comparison",
-    "🔁 Full reproducibility: every result table generated from committed artifacts by one script",
+    "🏭 Physics-grounded Digital Twin: speed-dependent cutting energy, tool wear, roughness, breakage",
+    "🤖 One environment (MillingDTEnv-v1): domain randomization, 11-D observation with the context",
+    "📊 One production policy (1M steps): the energy weight is a runtime query, not a retrain",
+    "🔬 Monte Carlo (100 scenarios, 95% CIs), ablation frontier, sweep vs 21 per-weight policies",
+    "⚔️ Six baselines on the same 50 episodes — level on the reward, no RL advantage yet",
+    "🔄 Transfer: the production policy needs no adaptation; the nominal-trained one does",
+    "🖥️ Interactive workstation: 2D stock depletion, micro-topography, G-code, controllers",
+    "🔁 Full reproducibility: every result table from committed artifacts by one script",
 ]
 
-y = Inches(2.4)
+y = Inches(2.25)
 for c in conclusions:
-    add_text_box(slide, Inches(1), y, Inches(11.333), Inches(0.55), c, font_size=20, color=WHITE, alignment=PP_ALIGN.LEFT)
-    y += Inches(0.62)
+    add_text_box(slide, Inches(1), y, Inches(11.333), Inches(0.45), c, font_size=16, color=WHITE, alignment=PP_ALIGN.LEFT)
+    y += Inches(0.5)
 
-add_shape(slide, Inches(1), Inches(6.8), Inches(11.333), Pt(4), fill_color=IIT_GOLD)
-add_text_box(slide, Inches(1), Inches(6.9), Inches(11.333), Inches(0.5),
-    "Key Scientific Finding: The speed-dependent specific cutting energy creates a genuine energy/throughput trade-off, and DRL learns to navigate it pass-by-pass while respecting constraints. Across the measured frontier the removal rate falls 18% while the energy of the part falls 8.5%.",
-    font_size=18, bold=True, color=IIT_GOLD, alignment=PP_ALIGN.CENTER)
+add_shape(slide, Inches(1), Inches(6.2), Inches(11.333), Pt(4), fill_color=IIT_GOLD)
+add_text_box(slide, Inches(1), Inches(6.32), Inches(11.333), Inches(0.9),
+    "Key Scientific Finding: The speed-dependent specific cutting energy creates a genuine energy/throughput trade-off. Across the measured frontier the removal rate falls 8.4% while the energy of the part falls 9.5%. One conditioned policy reaches that whole frontier at runtime, beats the 21 policies trained per weight, and transfers to a harder material with no adaptation.",
+    font_size=15, bold=True, color=IIT_GOLD, alignment=PP_ALIGN.CENTER)
 
 # ============================================================
-# SLIDE 16: Reproducibility Commands
+# SLIDE 17: Reproducibility Commands
 # ============================================================
 slide = prs.slides.add_slide(prs.slide_layouts[6])
 add_background(slide, WHITE)
@@ -895,27 +841,27 @@ add_text_box(slide, Inches(0.5), Inches(0.2), Inches(12), Inches(0.7),
 
 cmds = [
     ("Tests", "pytest tests/ -v"),
-    ("Train Primary PPO", "python agent/train_rl.py --algo PPO --steps 1000000 --seed 42 --randomize"),
-    ("Train Conditioned", "python agent/train_rl_conditioned.py --steps 1000000 --seed 42"),
-    ("Monte Carlo Eval", "python agent/evaluate.py"),
-    ("Ablation Study", "python agent/train_rl_ablation.py --steps 150000 --scenarios 50 --slots 7"),
-    ("Classical Baselines", "python baselines/run_baselines.py"),
-    ("Transfer Experiment", "python agent/transfer_experiment.py"),
-    ("Regenerate Plots", "python viz/plot_eval.py && python viz/plot_results.py && python viz/plot_baselines_comparison.py"),
+    ("Production policy", "python agent/train_rl.py --steps 1000000 --seed 42 --randomize --randomize-weight"),
+    ("One pinned weight", "python agent/train_rl.py --steps 150000 --seed 42 --randomize --w2 0.4"),
+    ("Ablation grid", "python agent/train_rl_ablation.py --steps 150000 --scenarios 50 --slots 7"),
+    ("Monte Carlo eval", "python agent/evaluate.py --scenarios 100"),
+    ("Weight sweep + compare", "python agent/evaluate.py --sweep-weight --compare"),
+    ("Classical baselines", "python baselines/run_baselines.py"),
+    ("Transfer experiment", "python agent/transfer_experiment.py"),
     ("Regenerate RESULTS.md", "python agent/summarize_results.py"),
-    ("Launch Workstation", "streamlit run app.py"),
-    ("Full Pipeline", "python agent/run_pipeline.py --steps 1000000 --ablation_steps 100000 --scenarios 50 --slots 7"),
+    ("Launch workstation", "streamlit run app.py"),
+    ("Full pipeline", "python agent/run_pipeline.py --steps 1000000"),
 ]
 
 y = Inches(1.4)
-for name, cmd in cmds:
-    add_shape(slide, Inches(0.5), y, Inches(12.3), Inches(0.45), fill_color=LIGHT_GRAY if cmds.index((name, cmd)) % 2 == 0 else WHITE)
+for idx, (name, cmd) in enumerate(cmds):
+    add_shape(slide, Inches(0.5), y, Inches(12.3), Inches(0.45), fill_color=LIGHT_GRAY if idx % 2 == 0 else WHITE)
     add_text_box(slide, Inches(0.7), y + Inches(0.02), Inches(2.5), Inches(0.4), name, font_size=15, bold=True, color=IIT_BLUE)
     add_text_box(slide, Inches(3.3), y + Inches(0.02), Inches(9.3), Inches(0.4), cmd, font_size=14, color=DARK_GRAY, font_name='Consolas')
     y += Inches(0.5)
 
 # ============================================================
-# SLIDE 17: Thank You / Questions
+# SLIDE 18: Thank You / Questions
 # ============================================================
 slide = prs.slides.add_slide(prs.slide_layouts[6])
 add_background(slide, IIT_BLUE)

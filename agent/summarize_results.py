@@ -169,16 +169,17 @@ def transfer_table():
 
     df = pd.read_csv(path).iloc[0]
     lines = [
-        "| Arm | Mean episode reward | Ra violation rate | Parts completed |",
-        "| :--- | ---: | ---: | ---: |",
-        f"| Source policy, zero shot | {df['zero_shot_reward']:.1f} | {df['zero_shot_ra_violation']*100:.1f}% | {df['zero_shot_success']*100:.1f}% |",
-        f"| Source policy, fine tuned | {df['finetuned_reward']:.1f} | {df['finetuned_ra_violation']*100:.1f}% | {df['finetuned_success']*100:.1f}% |",
-        f"| Trained on the target from scratch | {df['from_scratch_reward']:.1f} | {df['from_scratch_ra_violation']*100:.1f}% | {df['from_scratch_success']*100:.1f}% |",
+        "| Arm | Mean episode reward | Ra violation, worst pass | Ra violation, finished surface | Parts completed |",
+        "| :--- | ---: | ---: | ---: | ---: |",
+        f"| Source policy, zero shot | {df['zero_shot_reward']:.1f} | {df['zero_shot_ra_violation']*100:.1f}% | {df['zero_shot_ra_final_violation']*100:.1f}% | {df['zero_shot_success']*100:.1f}% |",
+        f"| Source policy, fine tuned | {df['finetuned_reward']:.1f} | {df['finetuned_ra_violation']*100:.1f}% | {df['finetuned_ra_final_violation']*100:.1f}% | {df['finetuned_success']*100:.1f}% |",
+        f"| Trained on the target from scratch | {df['from_scratch_reward']:.1f} | {df['from_scratch_ra_violation']*100:.1f}% | {df['from_scratch_ra_final_violation']*100:.1f}% | {df['from_scratch_success']*100:.1f}% |",
     ]
     if 'production_reward' in df:
         lines.append(
             f"| Production policy, zero shot | {df['production_reward']:.1f} | "
-            f"{df['production_ra_violation']*100:.1f}% | {df['production_success']*100:.1f}% |"
+            f"{df['production_ra_violation']*100:.1f}% | {df['production_ra_final_violation']*100:.1f}% | "
+            f"{df['production_success']*100:.1f}% |"
         )
     lines += [
         "",
@@ -195,7 +196,7 @@ def main():
 
     mc, df = monte_carlo_table()
     if mc:
-        parts.append("## Primary PPO policy, Monte Carlo sweep\n")
+        parts.append("## Production policy, Monte Carlo sweep\n")
         parts.append("Artifact: `results/monte_carlo/eval_PPO_MC_v5.csv`\n")
         parts.append(mc + "\n")
         if df is not None:
