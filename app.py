@@ -454,7 +454,8 @@ if not df_ppo.empty:
         st.subheader("Synthesized Fanuc / Siemens Compatible G-Code Program")
         st.caption("Auto-generated CNC NC-block sequence parameterized directly from DRL pass-by-pass recommendations.")
         
-        gcode_text = generate_cnc_gcode(df_ppo, part_id="IITM-DRL-MILLING-01")
+        gcode_text = generate_cnc_gcode(df_ppo, part_id="IITM-DRL-MILLING-01",
+                                       tool_diameter=D)
         
         st.download_button(
             label=" Download CNC Program (.NC File)",

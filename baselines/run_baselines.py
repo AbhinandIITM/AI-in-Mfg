@@ -26,6 +26,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT_ROOT))
 
 import env # Register environment
+from env import ENV_ID
 from config.physics_constants import ALL_CONSTANTS
 from config.physics import (
     cutting_speed,
@@ -253,7 +254,7 @@ def evaluate_all_baselines():
 
     for b in baselines:
         print(f"Running {b}...")
-        res = run_baseline("MillingDTEnv-v1", b, n_episodes=50)
+        res = run_baseline(ENV_ID, b, n_episodes=50)
         all_records.extend(res)
 
     df = pd.DataFrame(all_records)

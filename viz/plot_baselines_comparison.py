@@ -18,13 +18,14 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT_ROOT))
 
 from viz.plotting_utils import set_style
+from config.paths import PRIMARY_MODEL_DIR
 import env
 from env.milling_env import MillingDTEnv
 from stable_baselines3 import PPO
 from stable_baselines3.common.vec_env import DummyVecEnv, VecNormalize
 
 def collect_ppo_baseline_eval(n_episodes=50, seed=42):
-    model_dir = PROJECT_ROOT / "models" / "PPO_seed42"
+    model_dir = PRIMARY_MODEL_DIR
     if not (model_dir / "final_model.zip").exists():
         raise FileNotFoundError("PPO model not found at models/PPO_seed42")
 

@@ -5,6 +5,11 @@ from config.physics_constants import (
     MACHINE_CONSTRAINTS
 )
 
+# The registered environments. The scripts import these instead of repeating
+# the identifiers, so a rename cannot leave a caller pointing at nothing.
+ENV_ID = "MillingDTEnv-v1"
+CONDITIONED_ENV_ID = "MillingDTEnv-w2-v1"
+
 # Physical defaults of the nominal machining condition. Every registration
 # starts from these, and a scenario or a constructor argument overrides them.
 BASE_KWARGS = {
@@ -23,7 +28,7 @@ BASE_KWARGS = {
 
 # Register once
 register(
-    id="MillingDTEnv-v1",
+    id=ENV_ID,
     entry_point="env.milling_env:MillingDTEnv",
     max_episode_steps=200,
     kwargs=dict(BASE_KWARGS)
@@ -34,7 +39,7 @@ register(
 # episode. One policy trained on this registration covers the whole weight
 # range and the whole scenario distribution.
 register(
-    id="MillingDTEnv-w2-v1",
+    id=CONDITIONED_ENV_ID,
     entry_point="env.milling_env:MillingDTEnv",
     max_episode_steps=200,
     kwargs=dict(
@@ -46,4 +51,4 @@ register(
 
 from env.milling_env import MillingDTEnv
 
-__all__ = ["MillingDTEnv"]
+__all__ = ["MillingDTEnv", "ENV_ID", "CONDITIONED_ENV_ID"]

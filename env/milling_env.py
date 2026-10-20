@@ -18,7 +18,7 @@ Improvements:
 import numpy as np
 import gymnasium as gym
 from gymnasium import spaces
-from typing import Optional, Dict, Tuple, Any
+from typing import Optional, Dict, Any
 from config.physics_constants import ALL_CONSTANTS, SCENARIO_BANDS
 from config.physics import (
     cutting_power,
@@ -247,7 +247,11 @@ class MillingDTEnv(gym.Env):
         return np.array(obs, dtype=np.float32)
 
     def step(self, action: np.ndarray):
-        # 1. Explicit Action Clipping & Scaling
+        # 1. Explicit Action Clipping & Scaling. The action space is the
+        # normalized [-1, 1] box; the policy output is not bounded, so the
+        # clip is the guard that keeps the physics inside the machine
+        # envelope. The feed and the speed can never reach zero, so the cut
+        # time stays finite.
         action = np.clip(action, -1.0, 1.0)
         n = self.n_min + (action[0] + 1.0) / 2.0 * (self.n_max - self.n_min)
         f_r = self.f_min + (action[1] + 1.0) / 2.0 * (self.f_max - self.f_min)
@@ -282,7 +286,9 @@ class MillingDTEnv(gym.Env):
         self.E_total += Energy
         self.step_idx += 1
 
-        # Stochastic Breakage
+        # Stochastic Breakage. The draw comes from the environment's own
+        # generator, which is seeded by reset(seed=...), so a scenario replayed
+        # with the same seed breaks in the same place.
         p_break = 0.0
         if self.VB > 0.15:
             wear_factor = (self.VB - 0.15) / (self.VB_max - 0.15)

@@ -23,6 +23,8 @@ sys.path.insert(0, str(PROJECT_ROOT))
 
 # Import registration and seeding
 import env
+from env import ENV_ID
+from config.paths import MODELS_DIR
 from utils.seeding import set_seed
 from stable_baselines3.common.logger import configure
 
@@ -60,7 +62,7 @@ class ProgressQueueCallback(BaseCallback):
         else:
             print(f"[WARN] {message}", flush=True)
 
-def train(algo="PPO", timesteps=1_000_000, seed=42, queue=None, device="auto", progress_bar=None, save_dir=None, env_kwargs=None, run_name=None, randomize=False, policy=None, env_id="MillingDTEnv-v1", init_weights=None):
+def train(algo="PPO", timesteps=1_000_000, seed=42, queue=None, device="auto", progress_bar=None, save_dir=None, env_kwargs=None, run_name=None, randomize=False, policy=None, env_id=ENV_ID, init_weights=None):
     """Train a PPO policy and save the policy plus its VecNormalize statistics.
 
     Args:
@@ -84,7 +86,7 @@ def train(algo="PPO", timesteps=1_000_000, seed=42, queue=None, device="auto", p
     if save_dir is not None:
         models_dir = Path(save_dir)
     else:
-        models_dir = PROJECT_ROOT / "models" / f"PPO_seed{seed}"
+        models_dir = MODELS_DIR / f"PPO_seed{seed}"
     models_dir.mkdir(parents=True, exist_ok=True)
 
     # Auto-detect or use user device

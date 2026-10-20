@@ -26,23 +26,14 @@ from stable_baselines3.common.vec_env import DummyVecEnv, VecNormalize
 
 
 import env # Triggers registration
+from env import ENV_ID
+from config.paths import MODELS_DIR
 from utils.seeding import set_seed
 from config.physics_constants import ENGINEERING_CONSTRAINTS
 from config.scenarios import generate_random_configs
 
-from config.scenarios import generate_random_configs as _generate_random_configs
-
-def generate_random_configs(n=100, seed=42):
-    """Generate randomized machining scenarios for the Monte Carlo sweep.
-
-    Kept as a module level name for callers that import it from here. The
-    implementation lives in config/scenarios.py, which is also what the
-    environment samples its training scenarios from.
-    """
-    return _generate_random_configs(n, seed)
-
 def evaluate_policy_on_scenarios(model, vec_norm_path, configs, seed=42, deterministic=True,
-                                 env_id="MillingDTEnv-v1", env_kwargs=None):
+                                 env_id=ENV_ID, env_kwargs=None):
     """Run one policy over a set of scenarios, returning one row per scenario.
 
     The same scenario set is used for every policy that is compared, so the
@@ -161,9 +152,9 @@ def compute_statistics(df, ci=0.95):
 def find_model_dir(algo="PPO"):
     """Locate a trained policy directory, preferring the seed 42 run."""
     candidates = [
-        PROJECT_ROOT / "models" / f"{algo}_seed42",
-        PROJECT_ROOT / "models" / f"{algo}_seed1",
-        PROJECT_ROOT / "models" / algo
+        MODELS_DIR / f"{algo}_seed42",
+        MODELS_DIR / f"{algo}_seed1",
+        MODELS_DIR / algo
     ] + list((PROJECT_ROOT / "models").glob(f"{algo}_seed*"))
 
     for cand in candidates:

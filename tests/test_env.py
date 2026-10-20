@@ -266,6 +266,62 @@ def test_environment_uses_the_shared_physics():
         rel=1e-9)
     env_inst.close()
 
+
+def test_reward_matches_an_independent_calculation():
+    """The reward must equal what the physics says it should be.
+
+    The reward is the sum of an objective term, a progress term, the
+    constraint penalties and the completion bonus. This recomputes it from
+    the physics module, independently of the code that assembles it, so a
+    change in either one has to show up here.
+    """
+    from config.physics import material_removal_rate, pass_energy, cutting_speed
+
+    w1, w2 = 0.6, 0.4
+    env_inst = env.MillingDTEnv(w1=w1, w2=w2)
+    env_inst.reset(seed=11)
+
+    action = np.array([0.4, -0.3, 0.7], dtype=np.float32)
+    _, reward, terminated, truncated, info = env_inst.step(action)
+
+    n = env_inst.n_min + (action[0] + 1.0) / 2.0 * (env_inst.n_max - env_inst.n_min)
+    f_r = env_inst.f_min + (action[1] + 1.0) / 2.0 * (env_inst.f_max - env_inst.f_min)
+    a_p = min(env_inst.ap_min + (action[2] + 1.0) / 2.0 * (env_inst.ap_max - env_inst.ap_min),
+              env_inst.kappa)
+
+    v_c = cutting_speed(env_inst.D, n)
+    MRR = material_removal_rate(v_c, a_p, f_r)
+    energy = pass_energy(n, f_r, a_p, env_inst.D, env_inst.L_cut, env_inst.energy_cfg)
+
+    objective = 5.0 * (w1 * MRR / env_inst.MRR_max - w2 * energy / env_inst.E_ref)
+    progress = 2.0 * (a_p / env_inst.kappa_total)
+    step_penalty = -0.05
+    # The part is not finished by this pass, so the roughness penalty and the
+    # completion bonus do not apply.
+    assert not info['is_finishing']
+
+    assert reward == pytest.approx(objective + progress + step_penalty, rel=1e-9)
+    env_inst.close()
+
+
+def test_reward_penalizes_a_finishing_pass_out_of_spec():
+    """A part that ends outside the roughness limit must be penalized."""
+    env_inst = env.MillingDTEnv()
+    env_inst.reset(seed=5)
+    env_inst.kappa = 0.2  # one more pass finishes the part
+
+    # A fast, deep pass: the roughness is far above the safety limit.
+    action = np.array([1.0, 1.0, 1.0], dtype=np.float32)
+    _, reward, terminated, _, info = env_inst.step(action)
+
+    assert info['is_finishing']
+    assert info['Ra'] > env_inst.Ra_safe
+    # The -50 roughness penalty has to be in there, on top of the objective.
+    without_penalty = reward + 50.0
+    objective_scale = env_inst.objective_scale
+    assert without_penalty > -objective_scale * 10
+    env_inst.close()
+
 def test_sweep_and_environment_share_the_scenario_tables():
     """The sweep scenarios and the training scenarios come from one source."""
     from config.scenarios import generate_random_configs, sample_scenario

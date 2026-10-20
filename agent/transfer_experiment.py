@@ -30,6 +30,7 @@ sys.path.insert(0, str(PROJECT_ROOT))
 
 import gymnasium as gym
 import env # Triggers registration
+from env import ENV_ID
 from stable_baselines3 import PPO
 from stable_baselines3.common.env_util import make_vec_env
 from stable_baselines3.common.vec_env import DummyVecEnv, VecNormalize
@@ -55,7 +56,7 @@ def evaluate_on_target(model, vec_norm_path, scenarios, env_kwargs=None, seed=42
     for idx, (name, scenario) in enumerate(scenarios.items()):
         # The target material overrides the scenario, it does not duplicate it.
         env_kwargs_full = {**scenario, **env_kwargs}
-        eval_env = gym.make("MillingDTEnv-v1", **env_kwargs_full)
+        eval_env = gym.make(ENV_ID, **env_kwargs_full)
         eval_env.reset(seed=seed + idx)
         vec_env = DummyVecEnv([lambda: eval_env])
         vec_env = VecNormalize.load(str(vec_norm_path), vec_env)
@@ -88,7 +89,7 @@ def evaluate_on_target(model, vec_norm_path, scenarios, env_kwargs=None, seed=42
     }
 
 
-def train_on(env_kwargs, timesteps, seed, save_dir, env_id="MillingDTEnv-v1"):
+def train_on(env_kwargs, timesteps, seed, save_dir, env_id=ENV_ID):
     """Train a policy from scratch on a given task."""
     from agent.train_rl import train
 
@@ -136,7 +137,7 @@ def main():
     curve = [{'stage': 'source', 'steps_on_target': 0, **zero_shot}]
 
     model = PPO.load(str(source_dir / "final_model.zip"), device="cpu")
-    env = make_vec_env("MillingDTEnv-v1", n_envs=4, seed=42, env_kwargs=TARGET_SCENARIO)
+    env = make_vec_env(ENV_ID, n_envs=4, seed=42, env_kwargs=TARGET_SCENARIO)
     env = VecNormalize(env, norm_obs=True, norm_reward=True, clip_obs=10., clip_reward=10.)
     model.set_env(env)
 

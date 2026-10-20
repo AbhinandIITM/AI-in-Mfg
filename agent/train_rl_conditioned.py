@@ -20,8 +20,10 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT_ROOT))
 
 from agent.train_rl import train
+from env import CONDITIONED_ENV_ID
+from config.paths import MODELS_DIR
 
-ENV_ID = "MillingDTEnv-w2-v1"
+ENV_ID = CONDITIONED_ENV_ID
 
 
 def main():
@@ -39,7 +41,7 @@ def main():
         progress_bar=False,
         env_id=ENV_ID,
         randomize=True,
-        save_dir=str(PROJECT_ROOT / "models" / f"PPO_conditioned_seed{args.seed}"),
+        save_dir=str(MODELS_DIR / f"PPO_conditioned_seed{args.seed}"),
         run_name=f"PPO_conditioned_seed{args.seed}",
     )
 

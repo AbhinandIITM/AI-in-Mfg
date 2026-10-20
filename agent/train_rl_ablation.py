@@ -28,8 +28,10 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT_ROOT))
 
 import env
-from agent.evaluate import generate_random_configs, evaluate_policy_on_scenarios
+from agent.evaluate import evaluate_policy_on_scenarios
 from agent.run_experiments import run_experiments
+from config.paths import MODELS_DIR
+from config.scenarios import generate_random_configs
 from stable_baselines3 import PPO
 from utils.seeding import set_seed
 from viz.plotting_utils import set_style
@@ -57,7 +59,7 @@ def build_jobs(weights, seeds, timesteps, randomize=True):
                 "seed": seed,
                 "steps": timesteps,
                 "tag": tag,
-                "save_dir": str(PROJECT_ROOT / "models" / tag),
+                "save_dir": str(MODELS_DIR / tag),
                 "env_kwargs": env_kwargs,
                 "run_name": tag,
             })
@@ -122,7 +124,7 @@ def run_ablation(weights=WEIGHTS, seeds=SEEDS, timesteps=200_000,
         w1 = round(1.0 - w2, 2)
         for seed in seeds:
             tag = model_tag(w2, seed)
-            model_dir = PROJECT_ROOT / "models" / tag
+            model_dir = MODELS_DIR / tag
             print(f"\n[+] Evaluating {tag} ...")
 
             eval_metrics = evaluate_ablation_model(model_dir, configs, seed=eval_seed)

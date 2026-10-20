@@ -22,13 +22,14 @@ from env.milling_env import MillingDTEnv
 from agent.train_rl_ablation import WEIGHTS as ABLATION_WEIGHTS
 from config.physics_constants import ALL_CONSTANTS
 from config.physics import cutting_power, cutting_speed
+from config.paths import MODELS_DIR, PRIMARY_MODEL_DIR
 from stable_baselines3 import PPO
 from stable_baselines3.common.vec_env import DummyVecEnv, VecNormalize
 
 def load_ppo_policy(model_dir: Path = None):
     """Loads the trained PPO model and VecNormalize statistics."""
     if model_dir is None:
-        model_dir = PROJECT_ROOT / "models" / "PPO_seed42"
+        model_dir = PRIMARY_MODEL_DIR
     
     model_path = model_dir / "final_model.zip"
     vec_path = model_dir / "vecnormalize.pkl"
@@ -72,7 +73,7 @@ def run_single_simulation(
             # actually trained in the ablation study, and load that policy.
             closest_w2 = min(ABLATION_WEIGHTS, key=lambda w: abs(w - w2))
             tag = f"ablation_w2_{closest_w2:.1f}_seed42".replace('.', '_')
-            cand_dir = PROJECT_ROOT / "models" / tag
+            cand_dir = MODELS_DIR / tag
             if (cand_dir / "final_model.zip").exists():
                 model, vec_path = load_ppo_policy(cand_dir)
             else:
@@ -186,11 +187,15 @@ def generate_surface_micro_profile(
 def generate_cnc_gcode(
     trajectory_df: pd.DataFrame, 
     part_id: str = "PPO-PART-01", 
-    program_num: int = 1001
+    program_num: int = 1001,
+    tool_diameter: float = 50.0
 ) -> str:
     """
     Synthesizes compliant ISO 6983 (Fanuc Series 0i / Siemens Sinumerik) G-code program
     corresponding to the exact DRL policy trajectory.
+
+    The tool diameter is written into the tool change line, so it has to be
+    the diameter the trajectory was cut with, not a default.
     """
     lines = [
         f"%",
@@ -200,7 +205,7 @@ def generate_cnc_gcode(
         f"G21 G90 G94 G40 G80 (METRIC, ABSOLUTE, FEED PER MINUTE)",
         f"G28 G91 Z0. (RETURN TO REFERENCE)",
         f"G90",
-        f"T01 M06 (D50 CORNER RADIUS END MILL)",
+        f"T01 M06 (D{tool_diameter:g} CORNER RADIUS END MILL)",
         f"G54 (WORKPIECE OFFSET 1)",
         f"M08 (FLOOD COOLANT ON)",
         f""

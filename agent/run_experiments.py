@@ -11,20 +11,26 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT_ROOT))
 
 from agent.train_rl import train
+from config.paths import WORKERS_DIR
 
 def worker_wrapper(worker_id, job, queue):
     """
     Wrapper to run the train function in a separate process.
     """
     try:
-        # Redirect stdout/stderr to a log file for each worker
-        log_dir = PROJECT_ROOT / "results" / "workers"
+        # Redirect stdout/stderr to a log file for each worker, so the
+        # supervisor's progress bars are not buried under the training output.
+        log_dir = WORKERS_DIR
         log_dir.mkdir(parents=True, exist_ok=True)
 
-        # Override stdout/stderr
         tag = job.get("tag", job["algo"])
-        sys.stdout = open(log_dir / f"worker_{tag}_{job['algo']}_{job['seed']}.log", "w")
-        sys.stderr = sys.stdout
+        log_path = log_dir / f"worker_{tag}_{job['algo']}_{job['seed']}.log"
+        try:
+            sys.stdout = open(log_path, "w")
+            sys.stderr = sys.stdout
+        except OSError as exc:
+            # A log that cannot be opened must not take the training down.
+            print(f"Worker {worker_id} could not open {log_path}: {exc}")
 
         train(
             algo=job["algo"],

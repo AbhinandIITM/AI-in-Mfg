@@ -25,9 +25,11 @@ from stable_baselines3 import PPO
 from agent.evaluate import evaluate_policy_on_scenarios
 from agent.train_rl_ablation import WEIGHTS
 from config.scenarios import generate_random_configs
+from env import CONDITIONED_ENV_ID
+from config.paths import MODELS_DIR, PROJECT_ROOT
 from utils.seeding import set_seed
 
-ENV_ID = "MillingDTEnv-w2-v1"
+ENV_ID = CONDITIONED_ENV_ID
 
 
 def evaluate_frontier(model_dir, weights=WEIGHTS, num_scenarios=50, seed=42):
@@ -93,7 +95,7 @@ def main():
     import argparse
 
     parser = argparse.ArgumentParser(description="Sweep the energy weight for the conditioned policy")
-    parser.add_argument("--model-dir", default=str(PROJECT_ROOT / "models" / "PPO_conditioned_seed42"))
+    parser.add_argument("--model-dir", default=str(MODELS_DIR / "PPO_conditioned_seed42"))
     parser.add_argument("--tag", default="conditioned_frontier")
     parser.add_argument("--scenarios", type=int, default=50)
     parser.add_argument("--compare", action="store_true",
