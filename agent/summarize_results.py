@@ -51,8 +51,10 @@ def monte_carlo_table():
             f"[{s['ci_lower']:.{digits}f}, {s['ci_upper']:.{digits}f}] |"
         )
 
-    for label, key in (('Roughness violations (Ra > 1.6 um)', 'Ra_violation'),
-                       ('Roughness above the safety limit', 'Ra_safe_violation'),
+    for label, key in (('Roughness violations, worst pass', 'Ra_violation'),
+                       ('Roughness violations, finished surface', 'Ra_final_violation'),
+                       ('Roughness above the safety limit, worst pass', 'Ra_safe_violation'),
+                       ('Roughness above the safety limit, finished surface', 'Ra_final_safe_violation'),
                        ('Flank wear violations (VB > 0.3 mm)', 'VB_violation'),
                        ('Tool breakage', 'Broken')):
         s = stats_dict[key]

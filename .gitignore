@@ -69,6 +69,7 @@ venv.bak/
 *.swp
 *.swo
 *.mp4
+desktop.ini
 .agents/
 .claude/
 logs/*/
@@ -76,5 +77,7 @@ logs/*/
 models/*/
 results/tensorboard/
 results/workers/
+results/transfer/*.pkl
+results/cloning/*.pkl
 *.mp4
 events.out*

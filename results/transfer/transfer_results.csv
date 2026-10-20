@@ -1,0 +1,2 @@
+source_steps,adapt_budget,zero_shot_reward,finetuned_reward,from_scratch_reward,zero_shot_ra_violation,finetuned_ra_violation,from_scratch_ra_violation,zero_shot_success,finetuned_success,from_scratch_success
+300000,50000,184.49169463018578,184.8257954766353,195.98081812535722,1.0,1.0,0.0,0.9333333333333333,0.9333333333333333,1.0

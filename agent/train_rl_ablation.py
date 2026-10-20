@@ -42,20 +42,23 @@ def model_tag(w2, seed):
     """Directory name for one ablation policy."""
     return f"ablation_w2_{w2:.1f}_seed{seed}".replace('.', '_')
 
-def build_jobs(weights, seeds, timesteps):
+def build_jobs(weights, seeds, timesteps, randomize=True):
     """One training job per (weight, seed) pair."""
     jobs = []
     for w2 in weights:
         w1 = round(1.0 - w2, 2)
         for seed in seeds:
             tag = model_tag(w2, seed)
+            env_kwargs = {"w1": w1, "w2": w2}
+            if randomize:
+                env_kwargs["randomize"] = True
             jobs.append({
                 "algo": "PPO",
                 "seed": seed,
                 "steps": timesteps,
                 "tag": tag,
                 "save_dir": str(PROJECT_ROOT / "models" / tag),
-                "env_kwargs": {"w1": w1, "w2": w2},
+                "env_kwargs": env_kwargs,
                 "tb_log_name": tag,
             })
     return jobs
@@ -77,10 +80,13 @@ def evaluate_ablation_model(model_dir, configs, seed=42):
         'MRR_std': df['MRR_mean'].std(),
         'Energy_mean': df['Energy_total'].mean(),
         'Energy_std': df['Energy_total'].std(),
+        'Energy_per_pass': df['Energy_total'].sum() / df['passes'].sum(),
         'Time_mean': df['T_total'].mean(),
         'Time_std': df['T_total'].std(),
         'n_mean': df['n_mean'].mean(),
         'f_r_mean': df['f_r_mean'].mean(),
+        'a_p_mean': df['a_p_mean'].mean(),
+        'passes_mean': df['passes'].mean(),
         'Ra_max_mean': df['Ra_max'].mean(),
         'VB_max_mean': df['VB_max'].mean(),
         'Ra_viol_rate': df['Ra_violation'].mean(),
@@ -89,7 +95,8 @@ def evaluate_ablation_model(model_dir, configs, seed=42):
     }
 
 def run_ablation(weights=WEIGHTS, seeds=SEEDS, timesteps=200_000,
-                 num_scenarios=50, eval_seed=42, parallel_slots=8, skip_training=False):
+                 num_scenarios=50, eval_seed=42, parallel_slots=8, skip_training=False,
+                 randomize=True):
     logs_dir = PROJECT_ROOT / "results" / "ablation"
     logs_dir.mkdir(parents=True, exist_ok=True)
     plots_dir = PROJECT_ROOT / "results" / "plots"
@@ -101,7 +108,7 @@ def run_ablation(weights=WEIGHTS, seeds=SEEDS, timesteps=200_000,
     print("=" * 70)
 
     if not skip_training:
-        jobs = build_jobs(weights, seeds, timesteps)
+        jobs = build_jobs(weights, seeds, timesteps, randomize=randomize)
         run_experiments(jobs=jobs, parallel_slots=parallel_slots)
 
     # Every policy is evaluated on the same scenarios, so the rows compare
@@ -141,10 +148,13 @@ def run_ablation(weights=WEIGHTS, seeds=SEEDS, timesteps=200_000,
         MRR_std=('MRR_mean', 'std'),
         Energy_mean=('Energy_mean', 'mean'),
         Energy_std=('Energy_mean', 'std'),
+        Energy_per_pass=('Energy_per_pass', 'mean'),
         Time_mean=('Time_mean', 'mean'),
         Time_std=('Time_mean', 'std'),
         n_mean=('n_mean', 'mean'),
         f_r_mean=('f_r_mean', 'mean'),
+        a_p_mean=('a_p_mean', 'mean'),
+        passes_mean=('passes_mean', 'mean'),
         Success_rate=('Success_rate', 'mean'),
         seeds=('seed', 'count'),
     ).reset_index()
@@ -154,25 +164,33 @@ def run_ablation(weights=WEIGHTS, seeds=SEEDS, timesteps=200_000,
     return df_res
 
 def plot_ablation(agg, weights, plots_dir):
-    """Pareto frontier of MRR against Energy, plus the two weight sweeps."""
+    """Pareto frontier of MRR against energy, plus the two weight sweeps."""
     set_style()
 
-    # Pareto frontier: throughput against energy
-    fig, ax = plt.subplots(figsize=(11, 7))
-    ax.errorbar(
-        agg['Energy_mean'], agg['MRR_mean'],
-        xerr=agg['Energy_std'].fillna(0.0), yerr=agg['MRR_std'].fillna(0.0),
-        fmt='o', color='#0d9488', ecolor='#0d9488', elinewidth=1.4,
-        capsize=4, markersize=9, linewidth=2.0, label='PPO (mean over seeds)'
-    )
-    for _, row in agg.iterrows():
-        ax.annotate(f"w2={row['w2']:.1f}", (row['Energy_mean'], row['MRR_mean']),
-                    textcoords="offset points", xytext=(8, -4), fontsize=9, color='#334155')
-    ax.set_title("Pareto Frontier: Throughput against Energy", fontweight='bold')
-    ax.set_xlabel("Total Energy per Part (kJ)")
-    ax.set_ylabel("Mean Material Removal Rate (mm3/min)")
-    ax.grid(True, linestyle="--", alpha=0.5)
-    ax.legend(loc="best")
+    # Pareto frontier: throughput against energy, per part and per pass.
+    fig, axes = plt.subplots(1, 2, figsize=(17, 6.5))
+
+    for ax, energy_col, energy_std, xlabel in (
+        (axes[0], 'Energy_mean', 'Energy_std', "Total Energy per Part (kJ)"),
+        (axes[1], 'Energy_per_pass', None, "Energy per Pass (kJ)"),
+    ):
+        yerr = agg['MRR_std'].fillna(0.0)
+        xerr = agg[energy_std].fillna(0.0) if energy_std else None
+        ax.errorbar(
+            agg[energy_col], agg['MRR_mean'],
+            xerr=xerr, yerr=yerr,
+            fmt='o', color='#0d9488', ecolor='#0d9488', elinewidth=1.4,
+            capsize=4, markersize=9, linewidth=2.0, label='PPO (mean over seeds)'
+        )
+        for _, row in agg.iterrows():
+            ax.annotate(f"w2={row['w2']:.1f}", (row[energy_col], row['MRR_mean']),
+                        textcoords="offset points", xytext=(8, -4), fontsize=9, color='#334155')
+        ax.set_title("Pareto Frontier: Throughput against Energy", fontweight='bold')
+        ax.set_xlabel(xlabel)
+        ax.set_ylabel("Mean Material Removal Rate (mm3/min)")
+        ax.grid(True, linestyle="--", alpha=0.5)
+        ax.legend(loc="best")
+
     plt.tight_layout()
     pareto_file = plots_dir / "ablation_pareto_frontier.png"
     plt.savefig(pareto_file, dpi=300)
@@ -216,7 +234,10 @@ if __name__ == "__main__":
     parser.add_argument("--scenarios", type=int, default=50, help="Scenarios per policy")
     parser.add_argument("--slots", type=int, default=8, help="Parallel training slots")
     parser.add_argument("--evaluate_only", action="store_true", help="Skip training, evaluate existing models")
+    parser.add_argument("--fixed_scenarios", action="store_true",
+                        help="Train every policy on the nominal condition instead of randomized scenarios")
     args = parser.parse_args()
 
     run_ablation(timesteps=args.steps, num_scenarios=args.scenarios,
-                 parallel_slots=args.slots, skip_training=args.evaluate_only)
+                 parallel_slots=args.slots, skip_training=args.evaluate_only,
+                 randomize=not args.fixed_scenarios)
