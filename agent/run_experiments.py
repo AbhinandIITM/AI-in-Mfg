@@ -2,6 +2,7 @@ import os
 import sys
 import time
 from multiprocessing import Process, Queue
+from queue import Empty
 from tqdm import tqdm
 from pathlib import Path
 
@@ -11,7 +12,7 @@ sys.path.insert(0, str(PROJECT_ROOT))
 
 from agent.train_rl import train
 
-def worker_wrapper(worker_id, algo, seed, steps, queue):
+def worker_wrapper(worker_id, job, queue):
     """
     Wrapper to run the train function in a separate process.
     """
@@ -21,10 +22,19 @@ def worker_wrapper(worker_id, algo, seed, steps, queue):
         log_dir.mkdir(parents=True, exist_ok=True)
 
         # Override stdout/stderr
-        sys.stdout = open(log_dir / f"worker_{algo}_{seed}.log", "w")
+        tag = job.get("tag", job["algo"])
+        sys.stdout = open(log_dir / f"worker_{tag}_{job['algo']}_{job['seed']}.log", "w")
         sys.stderr = sys.stdout
 
-        train(algo=algo, timesteps=steps, seed=seed, queue=queue)
+        train(
+            algo=job["algo"],
+            timesteps=job["steps"],
+            seed=job["seed"],
+            queue=queue,
+            save_dir=job.get("save_dir"),
+            env_kwargs=job.get("env_kwargs"),
+            tb_log_name=job.get("tb_log_name"),
+        )
     except Exception as e:
         print(f"Error in worker {worker_id}: {e}")
         import traceback
@@ -61,7 +71,7 @@ def run_experiments(jobs, parallel_slots=4):
 
                 job = job_queue.pop(0)
                 q = Queue()
-                p = Process(target=worker_wrapper, args=(slot_id, job['algo'], job['seed'], job['steps'], q))
+                p = Process(target=worker_wrapper, args=(slot_id, job, q))
                 p.start()
 
                 active_processes[slot_id] = (p, q, job, time.time())
@@ -72,16 +82,17 @@ def run_experiments(jobs, parallel_slots=4):
             # Check for updates and completion
             to_remove = []
             for slot_id, (p, q, job, start_time) in active_processes.items():
-                # Check for progress updates
-                while not q.empty():
+                # Drain the heartbeat queue. q.empty() is unreliable on
+                # multiprocessing queues, so drain until get_nowait raises Empty.
+                while True:
                     try:
                         msg = q.get_nowait()
-                        steps = msg['timesteps']
-                        slots_bars[slot_id].n = steps
-                        slots_bars[slot_id].refresh()
-                        last_update[slot_id] = time.time()
-                    except:
+                    except Empty:
                         break
+                    steps = msg['timesteps']
+                    slots_bars[slot_id].n = steps
+                    slots_bars[slot_id].refresh()
+                    last_update[slot_id] = time.time()
 
                 # Check if process is done
                 if not p.is_alive():
@@ -92,9 +103,12 @@ def run_experiments(jobs, parallel_slots=4):
                     slots_bars[slot_id].n = 0
                     slots_bars[slot_id].refresh()
                     to_remove.append(slot_id)
-                    tqdm.write(f"  [{done_counter}/{total_jobs}] {job['algo']} Seed {job['seed']} | Success")
+                    if p.exitcode == 0:
+                        tqdm.write(f"  [{done_counter}/{total_jobs}] {job['algo']} Seed {job['seed']} | Success")
+                    else:
+                        tqdm.write(f"  [{done_counter}/{total_jobs}] {job['algo']} Seed {job['seed']} | FAILED (exit code {p.exitcode})")
                 else:
-                    # Stalled worker detection (5 mins)
+                    # Stalled worker detection (5 mins without a heartbeat)
                     if time.time() - last_update[slot_id] > 300:
                         tqdm.write(f"  [WARN] Slot {slot_id} ({job['algo']} S{job['seed']}) stalled. Terminating.")
                         p.terminate()

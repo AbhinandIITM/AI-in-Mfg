@@ -1,5 +1,6 @@
 import os
 import sys
+import time
 from pathlib import Path
 import argparse
 
@@ -10,6 +11,7 @@ import torch
 torch.set_num_threads(1)
 torch.set_num_interop_threads(1)
 
+import numpy as np
 from stable_baselines3 import PPO
 from stable_baselines3.common.env_util import make_vec_env
 from stable_baselines3.common.vec_env import VecNormalize
@@ -25,22 +27,47 @@ import env
 from utils.seeding import set_seed
 
 class ProgressQueueCallback(BaseCallback):
+    """Reports training progress to the supervising process over a Queue.
+
+    The heartbeat is what tells agent/run_experiments.py that a worker is
+    still alive. It must never fail silently: a dropped heartbeat looks
+    identical to a hung worker, and the stall detector terminates the job.
+    """
+
+    REPORT_INTERVAL = 1000
+
     def __init__(self, queue=None, verbose=0):
         super().__init__(verbose)
         self.queue = queue
 
     def _on_step(self):
-        if self.queue and self.num_timesteps % 1000 == 0:
+        if self.queue and self.num_timesteps % self.REPORT_INTERVAL == 0:
+            rewards = self.locals.get("rewards", [0.0])
             try:
                 self.queue.put_nowait({
                     'timesteps': self.num_timesteps,
-                    'reward': np.mean([info.get('reward', 0) for info in self.locals['infos']]) if 'infos' in self.locals else 0
+                    'reward': float(np.mean(rewards)),
+                    'timestamp': time.time()
                 })
-            except:
-                pass
+            except Exception as exc:
+                self._log(f"Progress heartbeat dropped at {self.num_timesteps} steps: {exc!r}")
         return True
 
-def train(algo="PPO", timesteps=1_000_000, seed=42, queue=None, device="auto", progress_bar=None, save_dir=None, env_kwargs=None):
+    def _log(self, message):
+        logger = getattr(self, "logger", None)
+        if logger is not None:
+            logger.warning(message)
+        else:
+            print(f"[WARN] {message}", flush=True)
+
+def train(algo="PPO", timesteps=1_000_000, seed=42, queue=None, device="auto", progress_bar=None, save_dir=None, env_kwargs=None, tb_log_name=None):
+    """Train a PPO policy and save the policy plus its VecNormalize statistics.
+
+    Args:
+        env_kwargs: forwarded to MillingDTEnv (reward weights, physics overrides).
+        tb_log_name: TensorBoard run name. Pass a unique name per run, otherwise
+            consecutive runs append to the same TensorBoard directory.
+    """
     # Set seed
     set_seed(seed)
 
@@ -91,7 +118,7 @@ def train(algo="PPO", timesteps=1_000_000, seed=42, queue=None, device="auto", p
     model.learn(
         total_timesteps=timesteps,
         callback=callbacks,
-        tb_log_name=f"PPO_v4_seed{seed}",
+        tb_log_name=tb_log_name or f"PPO_v4_seed{seed}",
         progress_bar=progress_bar
     )
 
@@ -119,7 +146,6 @@ def train(algo="PPO", timesteps=1_000_000, seed=42, queue=None, device="auto", p
 
 
 if __name__ == "__main__":
-    import numpy as np # Needed for callback
     parser = argparse.ArgumentParser()
     parser.add_argument("--algo", type=str, default="PPO", choices=["PPO"])
     parser.add_argument("--steps", type=int, default=100_000)
