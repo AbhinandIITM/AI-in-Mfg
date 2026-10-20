@@ -1,10 +1,11 @@
 """
 baselines/run_baselines.py
-Implementation of 4 non-RL baselines for MillingDTEnv:
+Implementation of 5 non-RL baselines for MillingDTEnv:
 1. Constant-High
 2. Constant-Safe
 3. Rule-Based Degradation
 4. NSGA-II Static (pymoo)
+5. Receding-Horizon Controller
 
 Outputs:
     results/baseline_results_v5.csv
@@ -26,6 +27,7 @@ sys.path.insert(0, str(PROJECT_ROOT))
 
 import env # Register environment
 from config.physics_constants import ALL_CONSTANTS
+from baselines.receding_horizon import solve_next_pass
 import gymnasium as gym
 
 # ---------------------------------------------------------------------------
@@ -167,9 +169,11 @@ def run_baseline(env_id: str, policy_type: str, n_episodes: int = 50):
         ep_f_sum = 0.0
         ep_time = 0.0
         ep_broken = False
+        final_ra = 0.0
 
         # Access constants for violation check if needed, but we use info
         Ra_max = ALL_CONSTANTS['engineering']['Ra_max']
+        Ra_safe = Ra_max * ALL_CONSTANTS['engineering'].get('safety_factor', 0.85)
 
         while not done:
             if policy_type == "constant_high":
@@ -178,6 +182,22 @@ def run_baseline(env_id: str, policy_type: str, n_episodes: int = 50):
                 action = np.array([-1.0, -1.0, -1.0], dtype=np.float32)
             elif policy_type == "nsga2":
                 action = static_nsga_action
+            elif policy_type == "receding_horizon":
+                # Re-solve the next pass with the current wear and the
+                # remaining stock.
+                unwrapped = env.unwrapped
+                n, f_r, a_p = solve_next_pass(
+                    VB=unwrapped.VB, kappa_rem=unwrapped.kappa,
+                    D=unwrapped.D, L_cut=unwrapped.L_cut,
+                    w1=unwrapped.reward_cfg['w1'], w2=unwrapped.reward_cfg['w2'],
+                    MRR_max=unwrapped.MRR_max, E_ref=unwrapped.E_ref,
+                )
+                machine = ALL_CONSTANTS['machine']
+                action = np.array([
+                    2.0 * (n - machine['n_min']) / (machine['n_max'] - machine['n_min']) - 1.0,
+                    2.0 * (f_r - machine['f_r_min']) / (machine['f_r_max'] - machine['f_r_min']) - 1.0,
+                    2.0 * (a_p - machine['a_p_min']) / (machine['a_p_max'] - machine['a_p_min']) - 1.0,
+                ], dtype=np.float32)
             elif policy_type == "rule_based":
                 # Max feed, but drop speed by 10% every 2 passes
                 drop = (ep_steps // 2) * 0.2
@@ -198,6 +218,7 @@ def run_baseline(env_id: str, policy_type: str, n_episodes: int = 50):
             ep_n_sum += info['n']
             ep_f_sum += info['f_r']
             ep_time = info['T_total']
+            final_ra = info['Ra']
             if info['broken']:
                 ep_broken = True
 
@@ -208,6 +229,8 @@ def run_baseline(env_id: str, policy_type: str, n_episodes: int = 50):
             "passes": ep_steps,
             "broken": ep_broken,
             "ra_violation_rate": ep_ra_violations / max(ep_steps, 1),
+            "final_ra_um": final_ra,
+            "ra_safe_violation": 1.0 if final_ra > Ra_safe else 0.0,
             "total_energy_kJ": ep_energy,
             "mean_mrr_mm3_min": ep_mrr_sum / max(ep_steps, 1),
             "mean_n_rpm": ep_n_sum / max(ep_steps, 1),
@@ -224,7 +247,7 @@ def evaluate_all_baselines():
     print("=" * 70)
 
     all_records = []
-    baselines = ["constant_high", "constant_safe", "rule_based", "nsga2"]
+    baselines = ["constant_high", "constant_safe", "rule_based", "nsga2", "receding_horizon"]
 
     for b in baselines:
         print(f"Running {b}...")
@@ -244,6 +267,7 @@ def evaluate_all_baselines():
     summary = df.groupby("policy").agg({
         "broken": "mean",
         "ra_violation_rate": "mean",
+        "ra_safe_violation": "mean",
         "total_energy_kJ": "mean",
         "mean_mrr_mm3_min": "mean",
         "cycle_time_s": "mean",
