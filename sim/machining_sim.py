@@ -19,6 +19,7 @@ sys.path.insert(0, str(PROJECT_ROOT))
 
 import env
 from env.milling_env import MillingDTEnv
+from agent.train_rl_ablation import WEIGHTS as ABLATION_WEIGHTS
 from config.physics_constants import ALL_CONSTANTS
 from stable_baselines3 import PPO
 from stable_baselines3.common.vec_env import DummyVecEnv, VecNormalize
@@ -66,9 +67,10 @@ def run_single_simulation(
     
     if policy_type == "PPO":
         if ppo_model_tuple is None:
-            # Map w2 to closest ablation model or nominal model
-            closest_w2 = round(w2 * 5) / 5 # snap to 0.0, 0.2, 0.4, 0.6, 0.8, 1.0
-            tag = f"ablation_w2_{closest_w2:.1f}".replace('.', '_')
+            # Snap the requested energy weight to the closest weight that was
+            # actually trained in the ablation study, and load that policy.
+            closest_w2 = min(ABLATION_WEIGHTS, key=lambda w: abs(w - w2))
+            tag = f"ablation_w2_{closest_w2:.1f}_seed42".replace('.', '_')
             cand_dir = PROJECT_ROOT / "models" / tag
             if (cand_dir / "final_model.zip").exists():
                 model, vec_path = load_ppo_policy(cand_dir)

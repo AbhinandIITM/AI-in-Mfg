@@ -7,7 +7,7 @@ Implementation of 4 non-RL baselines for MillingDTEnv:
 4. NSGA-II Static (pymoo)
 
 Outputs:
-    logs/baseline_results.csv
+    results/baseline_results_v5.csv
 """
 
 import sys
@@ -163,6 +163,9 @@ def run_baseline(env_id: str, policy_type: str, n_episodes: int = 50):
         ep_ra_violations = 0
         ep_energy = 0.0
         ep_mrr_sum = 0.0
+        ep_n_sum = 0.0
+        ep_f_sum = 0.0
+        ep_time = 0.0
         ep_broken = False
 
         # Access constants for violation check if needed, but we use info
@@ -192,6 +195,9 @@ def run_baseline(env_id: str, policy_type: str, n_episodes: int = 50):
                 ep_ra_violations += 1
             ep_energy += info['Energy']
             ep_mrr_sum += info['MRR']
+            ep_n_sum += info['n']
+            ep_f_sum += info['f_r']
+            ep_time = info['T_total']
             if info['broken']:
                 ep_broken = True
 
@@ -204,6 +210,9 @@ def run_baseline(env_id: str, policy_type: str, n_episodes: int = 50):
             "ra_violation_rate": ep_ra_violations / max(ep_steps, 1),
             "total_energy_kJ": ep_energy,
             "mean_mrr_mm3_min": ep_mrr_sum / max(ep_steps, 1),
+            "mean_n_rpm": ep_n_sum / max(ep_steps, 1),
+            "mean_f_r_mm_rev": ep_f_sum / max(ep_steps, 1),
+            "cycle_time_s": ep_time,
         })
 
     env.close()
@@ -225,9 +234,9 @@ def evaluate_all_baselines():
     df = pd.DataFrame(all_records)
 
     # Save results
-    logs_dir = PROJECT_ROOT / "logs"
-    logs_dir.mkdir(parents=True, exist_ok=True)
-    out_path = logs_dir / "baseline_results_v4.csv"
+    out_dir = PROJECT_ROOT / "results"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    out_path = out_dir / "baseline_results_v5.csv"
     df.to_csv(out_path, index=False)
     print(f"\n✓ Saved baseline results to {out_path}")
 
@@ -237,6 +246,7 @@ def evaluate_all_baselines():
         "ra_violation_rate": "mean",
         "total_energy_kJ": "mean",
         "mean_mrr_mm3_min": "mean",
+        "cycle_time_s": "mean",
         "total_reward": "mean"
     }).round(4)
 

@@ -6,7 +6,8 @@ Executes the full pipeline sequentially:
 1. Primary PPO Training
 2. Monte Carlo Evaluation (Primary Model)
 3. Ablation Study (Trains Pareto Frontier Models)
-4. Viz Generation (Training Curves, MC Distributions, Pareto Frontier)
+4. Classical Baselines
+5. Viz Generation (Training Curves, MC Distributions, Baseline Comparison)
 """
 
 import os
@@ -30,7 +31,9 @@ def run_cmd(cmd):
 def main():
     parser = argparse.ArgumentParser(description="Run full CNC Digital Twin RL Pipeline")
     parser.add_argument("--steps", type=int, default=1_000_000, help="Timesteps for primary training")
-    parser.add_argument("--ablation_steps", type=int, default=300_000, help="Timesteps per ablation model")
+    parser.add_argument("--ablation_steps", type=int, default=100_000, help="Timesteps per ablation model")
+    parser.add_argument("--scenarios", type=int, default=50, help="Scenarios per ablation policy")
+    parser.add_argument("--slots", type=int, default=7, help="Parallel training slots for the ablation")
     args = parser.parse_args()
 
     print("="*80)
@@ -44,11 +47,16 @@ def main():
     run_cmd("python agent/evaluate.py")
 
     # 3. Ablation Study Training (Trains Pareto Frontier)
-    run_cmd(f"python agent/train_rl_ablation.py --steps {args.ablation_steps}")
+    run_cmd(f"python agent/train_rl_ablation.py --steps {args.ablation_steps} "
+            f"--scenarios {args.scenarios} --slots {args.slots}")
 
-    # 4. Generate all Visualizations
+    # 4. Classical Baselines
+    run_cmd("python baselines/run_baselines.py")
+
+    # 5. Generate all Visualizations
     run_cmd("python viz/plot_results.py")
     run_cmd("python viz/plot_eval.py")
+    run_cmd("python viz/plot_baselines_comparison.py")
 
     print("="*80)
     print(" FULL PIPELINE COMPLETED SUCCESSFULLY!")

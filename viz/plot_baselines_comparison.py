@@ -40,7 +40,7 @@ def collect_ppo_baseline_eval(n_episodes=50, seed=42):
 
         obs = vec_env.reset()
         done = False
-        ep_MRR, ep_Energy, ep_Ra, ep_VB = [], [], [], []
+        ep_MRR, ep_Energy, ep_Ra, ep_VB, ep_n, ep_f = [], [], [], [], [], []
         total_rew = 0.0
         steps = 0
 
@@ -54,6 +54,8 @@ def collect_ppo_baseline_eval(n_episodes=50, seed=42):
             ep_Energy.append(info['Energy'])
             ep_Ra.append(info['Ra'])
             ep_VB.append(info['VB'])
+            ep_n.append(info['n'])
+            ep_f.append(info['f_r'])
             if done[0]:
                 break
 
@@ -66,13 +68,16 @@ def collect_ppo_baseline_eval(n_episodes=50, seed=42):
             "ra_violation_rate": 1.0 if max(ep_Ra) > 1.6 else 0.0,
             "total_energy_kJ": sum(ep_Energy),
             "mean_mrr_mm3_min": np.mean(ep_MRR),
+            "mean_n_rpm": np.mean(ep_n),
+            "mean_f_r_mm_rev": np.mean(ep_f),
+            "cycle_time_s": info.get("T_total", 0.0),
         })
 
     return pd.DataFrame(rows)
 
 def plot_comparison():
     set_style()
-    baselines_path = PROJECT_ROOT / "results" / "baseline_results_v4.csv"
+    baselines_path = PROJECT_ROOT / "results" / "baseline_results_v5.csv"
     if not baselines_path.exists():
         print("Running run_baselines.py first...")
         from baselines.run_baselines import evaluate_all_baselines
