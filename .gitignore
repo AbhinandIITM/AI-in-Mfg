@@ -52,10 +52,11 @@ coverage.xml
 cover/
 
 # Environments
+# Note: a virtualenv named "env/" is not ignored, because env/ is the
+# Digital Twin environment package. Use .venv/ or venv/ instead.
 .env
 .venv
 venv/
-ENV/
 env.bak/
 venv.bak/
 
@@ -74,5 +75,4 @@ logs/*/
 /docs/ppts/
 models/*/
 *.mp4
-agent/
 events.out*
