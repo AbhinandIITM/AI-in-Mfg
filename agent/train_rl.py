@@ -24,6 +24,7 @@ sys.path.insert(0, str(PROJECT_ROOT))
 # Import registration and seeding
 import env
 from utils.seeding import set_seed
+from stable_baselines3.common.logger import configure
 
 class ProgressQueueCallback(BaseCallback):
     """Reports training progress to the supervising process over a Queue.
@@ -59,13 +60,14 @@ class ProgressQueueCallback(BaseCallback):
         else:
             print(f"[WARN] {message}", flush=True)
 
-def train(algo="PPO", timesteps=1_000_000, seed=42, queue=None, device="auto", progress_bar=None, save_dir=None, env_kwargs=None, tb_log_name=None, randomize=False, policy=None, env_id="MillingDTEnv-v1", init_weights=None):
+def train(algo="PPO", timesteps=1_000_000, seed=42, queue=None, device="auto", progress_bar=None, save_dir=None, env_kwargs=None, run_name=None, randomize=False, policy=None, env_id="MillingDTEnv-v1", init_weights=None):
     """Train a PPO policy and save the policy plus its VecNormalize statistics.
 
     Args:
         env_kwargs: forwarded to MillingDTEnv (reward weights, physics overrides).
-        tb_log_name: TensorBoard run name. Pass a unique name per run, otherwise
-            consecutive runs append to the same TensorBoard directory.
+        run_name: name of the run, used for the training curve file. Pass a
+            unique name per run, otherwise the curve of one run replaces the
+            curve of the previous one with the same name.
         randomize: draw a new machining scenario for every episode.
         policy: an existing policy to warm start from.
         env_id: which environment registration to train against.
@@ -79,7 +81,6 @@ def train(algo="PPO", timesteps=1_000_000, seed=42, queue=None, device="auto", p
     if randomize:
         env_kwargs['randomize'] = True
 
-    log_dir = PROJECT_ROOT / "results" / "tensorboard"
     if save_dir is not None:
         models_dir = Path(save_dir)
     else:
@@ -114,10 +115,12 @@ def train(algo="PPO", timesteps=1_000_000, seed=42, queue=None, device="auto", p
         gamma=0.99,
         ent_coef=0.02,
         seed=seed,
-        tensorboard_log=str(log_dir),
         policy_kwargs=policy_kwargs,
         device=device
     )
+
+    run_name = run_name or f"PPO_primary_seed{seed}"
+    curve_dir = PROJECT_ROOT / "results" / "curves" / run_name
 
     callbacks = []
     if queue:
@@ -126,10 +129,14 @@ def train(algo="PPO", timesteps=1_000_000, seed=42, queue=None, device="auto", p
     if init_weights is not None:
         init_weights(model)
 
+    # The training curve is written by Stable-Baselines3's own CSV logger, so
+    # the artifact is the standard progress.csv with the rollout and training
+    # statistics, and no extra dependency is needed to read it back.
+    model.set_logger(configure(folder=str(curve_dir), format_strings=["csv"]))
+
     model.learn(
         total_timesteps=timesteps,
         callback=callbacks,
-        tb_log_name=tb_log_name or f"PPO_primary_seed{seed}",
         progress_bar=progress_bar
     )
 
@@ -145,12 +152,12 @@ def train(algo="PPO", timesteps=1_000_000, seed=42, queue=None, device="auto", p
         print("=" * 65)
         print(f"  - Model Policy:        {final_model_path}")
         print(f"  - Normalization Stats: {vec_norm_path}")
-        print(f"  - TensorBoard Logs:    {log_dir}")
+        print(f"  - Training Curve:      {curve_dir / 'progress.csv'}")
         print("=" * 65)
         print("  Next Steps:")
         print("    1. Evaluate model:   python agent/evaluate.py")
-        print("    2. View curves:      tensorboard --logdir results/tensorboard")
-        print("    3. Plot curves:      python viz/plot_results.py")
+        print("    2. Plot curves:      python viz/plot_results.py")
+        print("    3. Rebuild tables:    python agent/summarize_results.py")
         print("=" * 65 + "\n")
 
     return model

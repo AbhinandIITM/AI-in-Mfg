@@ -132,6 +132,7 @@ Both the weight and the scenario are drawn per episode during training, so a sin
 |   |-- ablation/                # Ablation evaluation metrics and CSV summaries
 |   |-- baseline_results_v5.csv  # Classical baseline metrics
 |   |-- conditioned/             # Frontier of the conditioned policy
+|   |-- curves/                  # Training curves, one progress.csv per run
 |   |-- monte_carlo/             # Monte Carlo sweep per-scenario datasets
 |   |-- plots/                   # Generated evaluation plots and figures
 |   |-- transfer/                # Transfer experiment results
@@ -144,7 +145,7 @@ Both the weight and the scenario are drawn per episode during training, so a sin
 `-- viz/
     |-- plot_baselines_comparison.py # Comparative analysis between PPO and classical baselines
     |-- plot_eval.py             # Generates KDE distributions and failure landscape plots
-    |-- plot_results.py          # Parses TensorBoard logs for reward curves
+    |-- plot_results.py          # Plots the training curves from the progress.csv files
     |-- plotting_utils.py        # Shared plotting helpers, single source for figure style
 ```
 

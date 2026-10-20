@@ -160,7 +160,7 @@ material removal rate, the energy and the cycle time. The comparison in
 | :--- | :--- | :--- |
 | Passes `gymnasium.check_env()` with no warnings | Met | `tests/test_env.py::test_gymnasium_env_checker_passes` |
 | Two runs with the same seed produce identical results | Met | `tests/test_training.py::test_evaluation_reproducibility`; the Monte Carlo sweep acts deterministically and returns the same numbers on every run |
-| Convergence without divergence or NaN | Met | TensorBoard runs under `results/tensorboard/` |
+| Convergence without divergence or NaN | Met | Training curves in `results/curves/*/progress.csv`, plotted by `viz/plot_results.py` |
 | The Monte Carlo sweep reports 95% confidence intervals for every metric | Met | `results/monte_carlo/eval_PPO_MC_v5.csv`, five metrics with intervals |
 | The environment and the baselines use identical constants | Met | `tests/test_env.py::test_physics_constants_sync`; both import `config/physics_constants.py` |
 | No duplicated plotting code | Met | `viz/plotting_utils.py` is the single source |

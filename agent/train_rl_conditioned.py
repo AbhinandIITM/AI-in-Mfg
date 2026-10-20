@@ -40,7 +40,7 @@ def main():
         env_id=ENV_ID,
         randomize=True,
         save_dir=str(PROJECT_ROOT / "models" / f"PPO_conditioned_seed{args.seed}"),
-        tb_log_name=f"PPO_conditioned_seed{args.seed}",
+        run_name=f"PPO_conditioned_seed{args.seed}",
     )
 
 

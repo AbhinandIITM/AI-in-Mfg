@@ -95,7 +95,7 @@ def train_on(env_kwargs, timesteps, seed, save_dir, env_id="MillingDTEnv-v1"):
     train(
         algo="PPO", timesteps=timesteps, seed=seed, device="cpu",
         progress_bar=False, save_dir=str(save_dir),
-        env_kwargs=env_kwargs, tb_log_name=f"transfer_{save_dir.name}",
+        env_kwargs=env_kwargs, run_name=f"transfer_{save_dir.name}",
     )
     return save_dir
 

@@ -59,7 +59,7 @@ def build_jobs(weights, seeds, timesteps, randomize=True):
                 "tag": tag,
                 "save_dir": str(PROJECT_ROOT / "models" / tag),
                 "env_kwargs": env_kwargs,
-                "tb_log_name": tag,
+                "run_name": tag,
             })
     return jobs
 

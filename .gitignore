@@ -75,7 +75,6 @@ desktop.ini
 logs/*/
 /docs/ppts/
 models/*/
-results/tensorboard/
 results/workers/
 results/transfer/*.pkl
 *.mp4

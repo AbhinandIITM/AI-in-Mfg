@@ -33,7 +33,7 @@ def worker_wrapper(worker_id, job, queue):
             queue=queue,
             save_dir=job.get("save_dir"),
             env_kwargs=job.get("env_kwargs"),
-            tb_log_name=job.get("tb_log_name"),
+            run_name=job.get("run_name"),
         )
     except Exception as e:
         print(f"Error in worker {worker_id}: {e}")
