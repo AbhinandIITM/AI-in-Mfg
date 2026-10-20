@@ -50,7 +50,7 @@ item. The test suite grew from 21 tests to 34.
 
 ## 2. Critical Findings (Must Fix)
 
-### 2.1 Energy Normalization Uses Reference Condition, Not Scenario Physics — **DISMISSED**
+### 2.1 Energy Normalization Uses Reference Condition, Not Scenario Physics: **DISMISSED**
 
 **Original claim:** `E_ref` is computed from the reference cutting condition
 (fixed nominal parameters) rather than the current scenario's physics
@@ -92,7 +92,7 @@ scenario.
 
 ---
 
-### 2.2 Action Scaling Allows Zero Feed Rate & Depth of Cut — **PARTLY FIXED**
+### 2.2 Action Scaling Allows Zero Feed Rate & Depth of Cut: **PARTLY FIXED**
 
 The original observation is right and the original severity was not: the
 action is clipped to `[-1, 1]` before the physical parameters are computed,
@@ -105,7 +105,7 @@ the guard that keeps the physics inside the machine envelope.
 
 ---
 
-### 2.3 VecNormalize Statistics Mismatch in Evaluation — **DISMISSED**
+### 2.3 VecNormalize Statistics Mismatch in Evaluation: **DISMISSED**
 
 **Original claim:** the observation normalization statistics were computed on
 training scenarios, the evaluation scenarios have different physics
@@ -153,7 +153,7 @@ is unchanged.
 
 ---
 
-### 2.4 Stochastic Breakage Uses `np_random` Without Seed Control — **FIXED**
+### 2.4 Stochastic Breakage Uses `np_random` Without Seed Control: **FIXED**
 
 The report's own verification confirmed the behaviour is correct and asked for
 documentation.
@@ -166,7 +166,7 @@ replayed with the same seed breaks in the same place.
 
 ## 3. Code Quality & Maintainability Issues
 
-### 3.1 Duplicate Function Definitions — **FIXED**
+### 3.1 Duplicate Function Definitions: **FIXED**
 
 The `generate_random_configs` wrapper in `experiments/evaluate.py` was real: it
 re-exported the function from `MillingDT/config/scenarios.py` under the same
@@ -177,7 +177,7 @@ name, and the same function was imported twice in one file.
 `MillingDT/config/scenarios.py` directly. `experiments/transfer_experiment.py`
 already did.
 
-### 3.2 Hardcoded Paths & Magic Strings — **FIXED**
+### 3.2 Hardcoded Paths & Magic Strings: **FIXED**
 
 **Fixed:** there is now one environment identifier, `MillingDT.env.ENV_ID`,
 exported from `MillingDT/env/__init__.py` and used by the registration
@@ -189,14 +189,14 @@ itself. The paths are in `MillingDT/config/paths.yaml`, loaded by
 import them. The consolidation that followed removed the second registration,
 so the two identifier constants this finding asked for are now one.
 
-### 3.3 Training Callback Redundancy — **NO CHANGE, AGREED**
+### 3.3 Training Callback Redundancy: **NO CHANGE, AGREED**
 
 The recommendation is to keep the heartbeat callback, and the report says so.
 It is kept, and the reason is now in its docstring: the queue heartbeat is
 what tells `experiments/run_experiments.py` that a worker is alive, and a
 dropped heartbeat is indistinguishable from a hung one.
 
-### 3.4 Inconsistent Error Handling in `run_experiments.py` — **PARTLY FIXED**
+### 3.4 Inconsistent Error Handling in `run_experiments.py`: **PARTLY FIXED**
 
 The valid part of this finding is the failure mode: if the log file cannot be
 opened, the worker died before it trained anything, and the supervisor saw a
@@ -212,7 +212,7 @@ job a success.
 `run_experiments.py` are two parallel execution strategies. They are, and
 merging them is a design decision rather than a cleanup. See section 9.
 
-### 3.5 Unused Imports & Dead Code — **PARTLY FIXED**
+### 3.5 Unused Imports & Dead Code: **PARTLY FIXED**
 
 The list does not hold up. Every import named is used:
 
@@ -232,7 +232,7 @@ unused and is gone.
 
 ## 4. Testing Gaps
 
-### 4.1 Missing Integration Tests — **MOSTLY FIXED**
+### 4.1 Missing Integration Tests: **MOSTLY FIXED**
 
 **Added**, in `tests/test_integration.py`:
 
@@ -246,7 +246,7 @@ unused and is gone.
 of the ablation takes minutes, which is too slow for the suite, and the
 per-weight path is already covered by the roundtrip test.
 
-### 4.2 Physics Correctness Tests — **FIXED**
+### 4.2 Physics Correctness Tests: **FIXED**
 
 **Added:** `test_reward_matches_an_independent_calculation` recomputes the
 reward from `config/physics.py`, independently of the code that assembles
@@ -266,9 +266,9 @@ the golden value of the reward, and the roughness penalty.
 
 ---
 
-## 5. Streamlit App (`app.py`) — Specific Issues
+## 5. Streamlit App (`app.py`): Specific Issues
 
-### 5.1 Model Loading on Every Interaction — **DISMISSED**
+### 5.1 Model Loading on Every Interaction: **DISMISSED**
 
 The app already caches the policy. `app.py` line 112:
 
@@ -280,13 +280,13 @@ The app already caches the policy. `app.py` line 112:
 reloaded on a button press. The report's line references (180, 220, 260) point
 at calls inside the cached helper.
 
-### 5.2 Hardcoded Model Path — **FIXED**
+### 5.2 Hardcoded Model Path: **FIXED**
 
 **Fixed:** the default model directory is `MillingDT.config.PRIMARY_MODEL_DIR`,
 and the parameter was already there for the callers that need a different
 one.
 
-### 5.3 G-Code Generator Uses Undefined Variables — **PARTLY FIXED**
+### 5.3 G-Code Generator Uses Undefined Variables: **PARTLY FIXED**
 
 The diagnosis is wrong: there is no undefined `tool_diameter` in the
 function, and no `NameError` was reachable. The underlying observation is
@@ -301,14 +301,14 @@ reads `T01 M06 (D63 CORNER RADIUS END MILL)` for a 63 mm cutter.
 
 ## 6. Documentation Drift
 
-### 6.1 README vs Implementation Mismatches — **PARTLY FIXED**
+### 6.1 README vs Implementation Mismatches: **PARTLY FIXED**
 
 | README Claim | Reality | Action |
 | :--- | :--- | :--- |
 | "Observation space: 8-dimensional" | 11, the context is always present | The README now describes the 11-dimensional observation of the single registration |
 | "Action space: continuous 3D" | Normalized `[-1, 1]`, the policy output is unbounded and clipped | The README now says so |
 
-### 6.2 PROJECT.md Status Claims — **DISMISSED**
+### 6.2 PROJECT.md Status Claims: **DISMISSED**
 
 The report quotes a PROJECT.md claim of "18% mean reduction in energy per part
 at 15% MRR reduction" and checks it against "w2=0: 82.8 kJ, w2=1: 62.5 kJ" and
@@ -368,7 +368,7 @@ No code paths allow bypassing these constraints.
 
 ---
 
-## 9. Recommended Fix Priority Order — dispositioned
+## 9. Recommended Fix Priority Order, dispositioned
 
 | Priority | Issue | Disposition |
 |----------|-------|-------------|
@@ -387,13 +387,13 @@ No code paths allow bypassing these constraints.
 
 ## 10. Positive Observations (What Works Well)
 
-1. **Physics correctness validated by tests** — `test_cutting_energy_grows_with_the_cutting_speed` and `test_part_energy_has_an_interior_minimum_in_speed` catch the key physics property that enables the energy/throughput trade-off, and `test_reward_matches_an_independent_calculation` now pins the reward itself.
-2. **Domain randomization properly implemented** — `randomize=True` draws a new scenario per episode; the scales are recomputed in `_apply_scenario`; the same scenario tables are used for training and for the Monte Carlo sweep.
-3. **One policy covers the full range** — the energy weight and the material context are in the observation of the single registration; one policy answers every weight at runtime, and it beats the 21 policies of the ablation study by 14% to 28% of removal rate.
-4. **Receding-horizon baseline is a strong benchmark** — it re-solves at every pass with the current state, it uses the same physics, and the vectorized grid search is appropriate for a three dimensional action space.
-5. **The transfer experiment measures the adaptation that matters** — a policy trained across a distribution of materials reaches the harder alloy with no adaptation at all, which is the argument for the context being in the observation.
-5. **Comprehensive result artifacts** — CSVs for every experiment, plots generated from them, `RESULTS.md` rebuilt from the artifacts.
-6. **Clean Git history** — conventional commits, descriptive messages, no merge commits in recent history.
+1. **Physics correctness validated by tests**: `test_cutting_energy_grows_with_the_cutting_speed` and `test_part_energy_has_an_interior_minimum_in_speed` catch the key physics property that enables the energy/throughput trade-off, and `test_reward_matches_an_independent_calculation` now pins the reward itself.
+2. **Domain randomization properly implemented**: `randomize=True` draws a new scenario per episode; the scales are recomputed in `_apply_scenario`; the same scenario tables are used for training and for the Monte Carlo sweep.
+3. **One policy covers the full range**: the energy weight and the material context are in the observation of the single registration; one policy answers every weight at runtime, and it beats the 21 policies of the ablation study by 14% to 28% of removal rate.
+4. **Receding-horizon baseline is a strong benchmark**: it re-solves at every pass with the current state, it uses the same physics, and the vectorized grid search is appropriate for a three dimensional action space.
+5. **The transfer experiment measures the adaptation that matters**: a policy trained across a distribution of materials reaches the harder alloy with no adaptation at all, which is the argument for the context being in the observation.
+6. **Comprehensive result artifacts**: CSVs for every experiment, plots generated from them, `RESULTS.md` rebuilt from the artifacts.
+7. **Clean Git history**: conventional commits, descriptive messages, no merge commits in recent history.
 
 ---
 
