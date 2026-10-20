@@ -60,7 +60,7 @@ class ProgressQueueCallback(BaseCallback):
         else:
             print(f"[WARN] {message}", flush=True)
 
-def train(algo="PPO", timesteps=1_000_000, seed=42, queue=None, device="auto", progress_bar=None, save_dir=None, env_kwargs=None, tb_log_name=None, randomize=False, policy=None, env_id="MillingDTEnv-v1"):
+def train(algo="PPO", timesteps=1_000_000, seed=42, queue=None, device="auto", progress_bar=None, save_dir=None, env_kwargs=None, tb_log_name=None, randomize=False, policy=None, env_id="MillingDTEnv-v1", init_weights=None):
     """Train a PPO policy and save the policy plus its VecNormalize statistics.
 
     Args:
@@ -68,9 +68,10 @@ def train(algo="PPO", timesteps=1_000_000, seed=42, queue=None, device="auto", p
         tb_log_name: TensorBoard run name. Pass a unique name per run, otherwise
             consecutive runs append to the same TensorBoard directory.
         randomize: draw a new machining scenario for every episode.
-        policy: an existing policy to warm start from, used by the cloning
-            experiment in agent/clone_expert.py.
+        policy: an existing policy to warm start from.
         env_id: which environment registration to train against.
+        init_weights: callable that receives the fresh model before training,
+            used by the cloning experiment in agent/clone_expert.py.
     """
     # Set seed
     set_seed(seed)
@@ -123,6 +124,9 @@ def train(algo="PPO", timesteps=1_000_000, seed=42, queue=None, device="auto", p
     if queue:
         callbacks.append(ProgressQueueCallback(queue))
 
+    if init_weights is not None:
+        init_weights(model)
+
     model.learn(
         total_timesteps=timesteps,
         callback=callbacks,
@@ -159,8 +163,11 @@ if __name__ == "__main__":
     parser.add_argument("--steps", type=int, default=100_000)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--device", type=str, default="auto", choices=["auto", "cuda", "cpu"])
+    parser.add_argument("--randomize", action="store_true",
+                        help="draw a new machining scenario for every episode")
     args = parser.parse_args()
 
-    train(algo=args.algo, timesteps=args.steps, seed=args.seed, device=args.device)
+    train(algo=args.algo, timesteps=args.steps, seed=args.seed, device=args.device,
+          randomize=args.randomize)
 
 

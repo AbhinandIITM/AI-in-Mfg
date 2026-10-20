@@ -19,7 +19,7 @@ import numpy as np
 import gymnasium as gym
 from gymnasium import spaces
 from typing import Optional, Dict, Tuple, Any
-from config.physics_constants import ALL_CONSTANTS
+from config.physics_constants import ALL_CONSTANTS, SCENARIO_BANDS
 from config.scenarios import SCENARIO_KEYS, sample_scenario
 
 class MillingDTEnv(gym.Env):
@@ -39,7 +39,8 @@ class MillingDTEnv(gym.Env):
     """
     metadata = {"render_modes": ["human", "rgb_array"], "render_fps": 10}
 
-    def __init__(self, render_mode: Optional[str] = None, randomize: bool = False, **kwargs):
+    def __init__(self, render_mode: Optional[str] = None, randomize: bool = False,
+                 randomize_weight: bool = False, condition: bool = False, **kwargs):
         super().__init__()
 
         # Load constants from central config.
@@ -93,6 +94,8 @@ class MillingDTEnv(gym.Env):
 
         self.render_mode = render_mode
         self.randomize = bool(randomize)
+        self.randomize_weight = bool(randomize_weight)
+        self.condition = bool(condition)
         self.VB_init = None
 
         # Apply the pinned scenario and compute the scales that depend on it.
@@ -110,7 +113,10 @@ class MillingDTEnv(gym.Env):
         self.hv_scale = 5.0
 
         # State: [VB_norm, kappa_norm, n_norm, f_norm, ap_norm, MRR_norm, Ra_norm, is_broken]
-        self.observation_space = spaces.Box(low=0.0, high=1.0, shape=(8,), dtype=np.float32)
+        # and, for a conditioned environment, the context the policy is
+        # conditioned on: the energy weight and the material context.
+        self.observation_size = 8 + (3 if self.condition else 0)
+        self.observation_space = spaces.Box(low=0.0, high=1.0, shape=(self.observation_size,), dtype=np.float32)
         # Action: [n, f_r, a_p]
         self.action_space = spaces.Box(low=-1.0, high=1.0, shape=(3,), dtype=np.float32)
 
@@ -170,6 +176,14 @@ class MillingDTEnv(gym.Env):
             scenario.update(self.fixed_scenario)
             self._apply_scenario(scenario)
 
+        if self.randomize_weight:
+            # Draw the energy weight this part is optimized for. The policy
+            # sees the weight in its observation, so one policy covers the
+            # whole weight range.
+            w2 = float(self.np_random.uniform(0.0, 1.0))
+            self.reward_cfg['w2'] = w2
+            self.reward_cfg['w1'] = 1.0 - w2
+
         # Initial state
         if self.VB_init is not None:
             self.VB = float(self.VB_init)
@@ -197,8 +211,28 @@ class MillingDTEnv(gym.Env):
         normalized = 2 * (value - min_val) / (max_val - min_val) - 1
         return (np.tanh(normalized) + 1) / 2
 
+    def _context_features(self):
+        """The context a conditioned policy is conditioned on.
+
+        The energy weight it is asked to optimize, and the material context it
+        is cutting, both mapped onto [0, 1] over the range the scenarios span.
+        """
+        wear_band = SCENARIO_BANDS['C_wear']
+        roughness_band = SCENARIO_BANDS['k1']
+        nominal_wear = ALL_CONSTANTS['tool_wear']['C_wear']
+        nominal_k1 = ALL_CONSTANTS['surface_roughness']['k1']
+
+        c_wear = (self.tool_wear_cfg['C_wear'] / nominal_wear - wear_band[0]) / (wear_band[1] - wear_band[0])
+        k1 = (self.roughness_cfg['k1'] / nominal_k1 - roughness_band[0]) / (roughness_band[1] - roughness_band[0])
+
+        return [
+            float(np.clip(self.reward_cfg['w2'], 0.0, 1.0)),
+            float(np.clip(c_wear, 0.0, 1.0)),
+            float(np.clip(k1, 0.0, 1.0)),
+        ]
+
     def _get_obs(self) -> np.ndarray:
-        obs = np.array([
+        obs = [
             self._soft_normalize(self.VB, 0.0, self.VB_max),
             self._soft_normalize(self.kappa, 0.0, self.kappa_total),
             (self.prev_n - self.n_min) / (self.n_max - self.n_min),
@@ -207,8 +241,10 @@ class MillingDTEnv(gym.Env):
             np.clip(self.prev_MRR / self.MRR_max, 0.0, 1.0),
             self._soft_normalize(self.prev_Ra, 0.0, self.Ra_max),
             1.0 if self.broken else 0.0
-        ], dtype=np.float32)
-        return obs
+        ]
+        if self.condition:
+            obs.extend(self._context_features())
+        return np.array(obs, dtype=np.float32)
 
     def step(self, action: np.ndarray):
         # 1. Explicit Action Clipping & Scaling

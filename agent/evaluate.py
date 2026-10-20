@@ -41,16 +41,18 @@ def generate_random_configs(n=100, seed=42):
     """
     return _generate_random_configs(n, seed)
 
-def evaluate_policy_on_scenarios(model, vec_norm_path, configs, seed=42, deterministic=False):
+def evaluate_policy_on_scenarios(model, vec_norm_path, configs, seed=42, deterministic=False,
+                                 env_id="MillingDTEnv-v1", env_kwargs=None):
     """Run one policy over a set of scenarios, returning one row per scenario.
 
     The same scenario set is used for every policy that is compared, so the
     rows are directly comparable.
     """
     rows = []
+    extra_kwargs = dict(env_kwargs or {})
 
     for idx, (name, env_kwargs) in enumerate(configs.items()):
-        eval_env = gym.make("MillingDTEnv-v1", **env_kwargs)
+        eval_env = gym.make(env_id, **env_kwargs, **extra_kwargs)
         # Seed the underlying environment so every scenario is reproducible.
         # VecNormalize.reset() takes no seed, so the seed goes in first.
         eval_env.reset(seed=seed + idx)
