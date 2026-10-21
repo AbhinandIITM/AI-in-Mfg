@@ -570,11 +570,19 @@ between the two is measured in section 14.5.
 
 The robustness experiment compares two situations. The regime map measures the
 boundary between them, so the answer is a number a plant can act on. It has
-one sweep. The artifact is `results/evaluation/regime_map.csv` and the figure
+two sweeps: the noise on the measurement, and the error in the material model.
+The artifact is `results/evaluation/regime_map.csv` and the figure
 is `results/plots/regime_map.png`, both written by
 `python -m experiments.regime_map`.
 
-**The sweep: the wear measurement is noisy.**
+The noise sweep is the headline, because it is the fair test. The noise is a
+property of the instrumentation, and it applies to both arms identically. The
+model error sweep is supporting evidence: it degrades the setup's model of
+the material, which is the second way the setup can be wrong, and it changes
+what both arms believe about the material rather than what they read off the
+instrument.
+
+**The noise sweep: the wear measurement is noisy.**
 
 The setup: the flank wear and the remaining stock are measured with an
 instrument, not exactly, and the reading carries a Gaussian error of sigma, a
@@ -619,6 +627,59 @@ reading; the policy reads the same noise on its observation.
 The noise sweep is the fair test of the two methods, because it degrades one
 shared input instead of giving one method a different model of the machine:
 the same degraded input goes to both arms.
+
+**The model error sweep: the material model is miscalibrated.**
+
+The setup: the setup's model of the material it is cutting is wrong by a
+systematic fraction. Both arms get the same belief, the controller as the
+model it solves with and the policy as the material in its context, and the
+belief is optimistic: it under-rates the wear and the roughness of the
+material by the fraction, which is the damaging direction. The physics keep
+running on the truth.
+
+The belief is a channel of the environment and of the controller: the
+`belief` keyword of `MillingDT/env/milling_env.py`, which sets the material
+the policy reads in its context, and the `belief` argument of
+`controller_action` in `MillingDT/agent/controller_init.py`, which sets the
+model the controller solves with.
+
+| Material model off by | Receding-horizon | PPO | PPO trained for the noise | PPO ahead by |
+| ---: | ---: | ---: | ---: | ---: |
+| 0% | 248.9 | 233.6 | 219.6 | -15.3 |
+| 5% | 201.5 | 232.8 | 219.6 | +31.2 |
+| 10% | 136.0 | 237.8 | 219.6 | +101.8 |
+| 20% | 35.7 | 201.5 | 219.6 | +165.8 |
+| 30% | 32.5 | 116.7 | 219.6 | +84.3 |
+| 40% | 39.3 | 117.0 | 219.6 | +77.7 |
+
+1. **The controller's tolerance of a wrong material model is about 2% to 3%.**
+   A 5% error costs it 47 points, from 248.9 to 201.5, and a 20% error costs
+   it 213, down to 35.7.
+2. **The policy holds up to a 20% error**, at 201.5, which is 13% below its own
+   no-error score, and it collapses at 30%, at 116.7. The belief has then left
+   the distribution the policy was trained on, and its context feature is
+   clipped at the edge of the band. That limit is a design parameter: widen
+   the randomization band of the training and the tolerance widens with it.
+3. **A conservative policy is insensitive to a wrong model.** The policy
+   trained for the noise is flat at 219.6 across the whole range, because it
+   keeps the tool away from its limit whatever it believes about the
+   material. It pays for that with the reward: 219.6 against the general
+   policy's 233.6 in the ideal case, and it is below the general policy at
+   every level of the noise sweep.
+
+**The fairness decisions, which hold wherever the model error is discussed:**
+the same belief goes to both arms, the error is in the damaging direction,
+both arms are the general ones, and the noise is tilted against the policy,
+which receives it on both measured quantities while the controller receives it
+on the wear alone.
+
+The figure `results/plots/robustness_vs_controller.png` holds the six cases of
+the study on the same six panels, the reward, the spread, the removal rate,
+the energy, the cycle time and the reliability: the nominal machine, the wear
+measurement noisy by 2% and by 10%, and the material model off by 5%, 20% and
+30%.
+
+> The learned policy is the better operator once the wear measurement is noisier than about 2% of its range; inside a perfect digital twin the classical controller is better, by a margin that is inside the noise (248.9 against 233.6, with a standard error of 8 on each).
 
 ---
 

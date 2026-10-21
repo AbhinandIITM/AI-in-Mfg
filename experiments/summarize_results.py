@@ -345,9 +345,10 @@ def figures_table():
          "How noisy the wear measurement has to be before the learned policy is "
          "the better operator"),
         ("results/plots/robustness_vs_controller.png",
-         "The two regimes of the comparison against the classical controller, "
-         "across the reward, the throughput, the energy, the cycle time and the "
-         "reliability"),
+         "Every way the setup's model of the machine can be wrong, across the "
+         "reward, the throughput, the energy, the cycle time and the "
+         "reliability: the nominal machine, the wear measurement noisy at 2% "
+         "and 10%, and the material model off by 5%, 20% and 30%"),
         ("results/plots/batch_vs_ppo.png",
          "The batch against the part: the batch reward, the tool changes, the "
          "batch time and the batch energy of the three arms"),

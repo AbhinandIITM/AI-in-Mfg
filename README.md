@@ -74,6 +74,7 @@ The control policy is trained using **Proximal Policy Optimization (PPO)**:
 - **State Representation (11-dim):**
   $$s_t = \left[ \widetilde{VB}, \widetilde{\kappa}, \tilde{n}_{\text{prev}}, \tilde{f}_{\text{prev}}, \tilde{a}_{p,\text{prev}}, \widetilde{MRR}_{\text{prev}}, \widetilde{Ra}_{\text{prev}}, \mathbb{I}_{\text{broken}}, w_2, \widetilde{C_{\text{wear}}}, \widetilde{k_1} \right]$$
   The eight physics features are normalized with soft tanh-squashing, so the gradient magnitude survives a constraint violation. The three context features are always present: the energy weight the part is optimized for, and the material the part is cut from. A task with a pinned weight is the same environment with a constant there, so every policy works on the same observation shape.
+  The material in the context is what the setup believes the material to be. The environment takes a belief, and when one is given it replaces the material coefficients in the context while the physics keep running on the truth. That separation is what lets the regime map measure how far the setup's model of the material can be off.
 - **Action Space (3-dim continuous):**
   $$a_t = [a_n, a_f, a_p] \in [-1, 1]^3 \mapsto [n, f_r, a_p]$$
   The policy output is unbounded and is clipped to this box before the physical parameters are computed, which is what keeps the cut inside the machine envelope.
@@ -166,6 +167,8 @@ policy, and `--compare-only` puts it against the 21 policies of the ablation stu
 ### Domain Randomization
 `MillingDTEnv(randomize=True)` draws a new machining scenario for every part: the stock allowance, the tool diameter, the cutting length, the wear and roughness coefficients, and the initial flank wear of the tool. The bands live in `MillingDT/config/physics_constants.yaml` and are shared with the Monte Carlo sweep, so the policy is trained on the distribution it is measured on. `randomize_weight=True` draws the energy weight as well, which is what makes one policy cover the whole trade-off.
 
+The belief channel is separate from the randomization. The randomization is the truth the physics run on, and the belief is what the setup thinks the material is. A setup whose model of the material is off passes a belief, the context the policy reads follows it, and the physics do not.
+
 ### One Physical Model
 `MillingDT/config/physics.py` holds the equations of the digital twin: the cutting speed, the specific cutting energy, the material removal rate, the flank wear, the surface roughness and the energy of a pass. The environment, the classical baselines and the dashboard all import them, so a scenario that overrides a coefficient gets the physics of that scenario everywhere and no consumer can drift from another.
 
@@ -205,11 +208,23 @@ the result is finding 1.
 The noise regime is the same test the regime map runs. It degrades one shared
 input, the instrument reading, and it applies to both arms identically.
 
+The figure `results/plots/robustness_vs_controller.png` carries every case the
+study measures on the same six panels, the reward, the spread, the removal
+rate, the energy, the cycle time and the reliability. It holds six cases, not
+two: the two ways the setup's model of the machine can be wrong, the wear
+measurement noisy and the material model miscalibrated, at the levels the
+regime map sweeps. Its data comes from the regime map.
+
 ### The Regime Map
 `experiments/regime_map.py` measures where the boundary between the two
-methods is. It has one sweep, on the measurement.
+methods is. It has two sweeps: the noise on the measurement, and the error in
+the material model.
 
-The sweep degrades the measurement. The flank wear and the remaining
+The noise sweep is the headline, because it is the fair test. The noise is a
+property of the instrumentation, and it applies to both arms identically: the
+same degraded input goes to both.
+
+The noise sweep degrades the measurement. The flank wear and the remaining
 stock are measured with an instrument, and the reading carries a Gaussian
 error of sigma, a fraction of their range. The controller solves the next
 pass from that reading, and the policy reads the same noise on its
@@ -224,6 +239,37 @@ observation.
 | 5.0% | 181.3 | 226.8 | 213.6 | +45.5 |
 | 7.5% | 179.1 | 223.2 | 207.9 | +44.1 |
 | 10.0% | 171.5 | 222.0 | 206.5 | +50.6 |
+
+The model error sweep is supporting evidence. It degrades the setup's model of
+the material, which is the second way the setup can be wrong, and both arms
+get the same belief: the controller as the model it solves with, the policy as
+the material in its context. The belief is a channel of the environment (the
+`belief` keyword of `MillingDT/env/milling_env.py`) and of the controller (the
+`belief` argument of `controller_action` in
+`MillingDT/agent/controller_init.py`). The belief is optimistic, it
+under-rates the wear and the roughness of the material by the fraction, which
+is the damaging direction, and the physics always run on the truth.
+
+| Material model off by | Receding-horizon | PPO | PPO trained for the noise | PPO ahead by |
+| ---: | ---: | ---: | ---: | ---: |
+| 0% | 248.9 | 233.6 | 219.6 | -15.3 |
+| 5% | 201.5 | 232.8 | 219.6 | +31.2 |
+| 10% | 136.0 | 237.8 | 219.6 | +101.8 |
+| 20% | 35.7 | 201.5 | 219.6 | +165.8 |
+| 30% | 32.5 | 116.7 | 219.6 | +84.3 |
+| 40% | 39.3 | 117.0 | 219.6 | +77.7 |
+
+Three readings of the model error sweep:
+
+1. The controller's tolerance of a wrong material model is about 2% to 3%. A 5% error costs it 47 points, from 248.9 to 201.5, and a 20% error costs it 213, down to 35.7.
+2. The policy holds up to a 20% error, at 201.5, which is 13% below its own no-error score, and it collapses at 30%, at 116.7. The belief has then left the distribution the policy was trained on, and its context feature is clipped at the edge of the band. That limit is a design parameter: widen the randomization band of the training and the tolerance widens with it.
+3. A conservative policy is insensitive to a wrong model. The policy trained for the noise is flat at 219.6 across the whole range, because it keeps the tool away from its limit whatever it believes about the material. It pays for that with the reward: 219.6 against the general policy's 233.6 in the ideal case, and it is below the general policy at every level of the noise sweep.
+
+The fairness decisions, which hold wherever the model error is discussed: the
+same belief goes to both arms, the error is in the damaging direction, both
+arms are the general ones, and the noise is tilted against the policy, which
+receives it on both measured quantities while the controller receives it on
+the wear alone.
 
 The artifact is `results/evaluation/regime_map.csv`, the figure is
 `results/plots/regime_map.png`, and the result is finding 1.
@@ -278,7 +324,7 @@ measurement and the reason.
 |   |-- controller_experiment.py   # the controller initialization experiment
 |   |-- evaluate.py                # the Monte Carlo sweep and the runtime weight sweep
 |   |-- reward_sensitivity.py     # how much of the comparison against the controller the reward decides
-|   |-- regime_map.py             # the boundary between the controller and the policy, one sweep
+|   |-- regime_map.py             # the boundary between the controller and the policy, two sweeps
 |   |-- robustness_experiment.py   # the controller against the policy in two regimes
 |   |-- run_baselines.py           # the five classical baselines
 |   |-- run_experiments.py         # the parallel supervisor for multi-seed runs
@@ -309,7 +355,7 @@ measurement and the reason.
 |   |   |-- transfer_results.csv   # the transfer to a harder material
 |   |   |-- controller_init_results.csv # the controller initialization, three arms
 |   |   |-- robustness_results.csv # the controller against the policy, two regimes
-|   |   |-- regime_map.csv        # the boundary between the controller and the policy, one sweep
+|   |   |-- regime_map.csv        # the boundary between the controller and the policy, two sweeps
 |   |   |-- reward_sensitivity.csv # the reward scale and form behind the comparison against the controller
 |   |   |-- batch_results.csv      # the batch against the part
 |   |-- plots/                     # the cross-run figures
@@ -378,7 +424,7 @@ python -m experiments.run_pipeline --steps 1000000 --ablation_steps 150000
   ```bash
   python -m experiments.robustness_experiment
   ```
-- **The regime map** (where the boundary between the controller and the learned policy sits, swept on the wear measurement: a noisy wear measurement, with the controller, the general policy and the noise-trained policy on the same scenarios):
+- **The regime map** (where the boundary between the controller and the learned policy sits, swept on the wear measurement and on the material model: a noisy wear measurement and a miscalibrated material model, with the controller, the general policy and the noise-trained policy on the same scenarios):
   ```bash
   python -m experiments.regime_map
   ```
@@ -446,7 +492,9 @@ larger network, or an off-policy algorithm with a replay buffer.
 
 ## Experimental Findings
 
-1. **The learned policy is the better operator once the wear measurement is noisier than about 2% of its range, and the classical controller is better below that.** The boundary is measured, not asserted. The regime map (`results/evaluation/regime_map.csv`, `python -m experiments.regime_map`, figure `results/plots/regime_map.png`) puts the two arms on the same 100 randomized scenarios at the same energy weight w2 = 0.4 and sweeps the one way the setup's own instrument goes wrong.
+1. **The learned policy is the better operator once the wear measurement is noisier than about 2% of its range, and the classical controller is better below that.** The boundary is measured, not asserted. The regime map (`results/evaluation/regime_map.csv`, `python -m experiments.regime_map`, figure `results/plots/regime_map.png`) puts the two arms on the same 100 randomized scenarios at the same energy weight w2 = 0.4 and sweeps the two ways the setup's own model of the machine can be wrong.
+
+   The noise sweep is the headline, because it is the fair test. The noise is a property of the instrumentation, and it applies to both arms identically: the same degraded input goes to both. The model error sweep is supporting evidence.
 
    **The wear measurement is noisy.** A Gaussian error of sigma is added to the measured flank wear and the measured remaining stock, sigma expressed as a fraction of their range. The controller solves the next pass from that reading, and the policy reads the same noise on its observation.
 
@@ -465,6 +513,22 @@ larger network, or an off-policy algorithm with a replay buffer.
    - **Training for the noise does not pay.** The policy trained with the noise is below the general policy at every noise level, including the 5% it was trained for (213.6 against 226.8). The robustness of the general policy comes from being trained across a distribution of scenarios, and training against the noise only makes the policy more conservative.
    - **Nothing in the comparison is tilted towards the policy, and two of the choices are deliberate.** Both arms are the general ones, neither is trained for the noise. The policy trained with the noise is reported as a third and clearly labelled arm, and it is not the headline, because a controller can also be prepared for a noisy instrument by widening its safety margin, and that would be a design choice rather than a training one. And the noise is tilted against the policy: the controller is given a noisy reading of the flank wear, the measurement it depends on, while the policy receives the noise on the flank wear and on the remaining stock.
 
+   **The material model is miscalibrated.** The second sweep gives both arms the same belief about the material, and the belief is optimistic: the setup under-rates the wear and the roughness of the material it is cutting, which is the damaging direction. The controller solves with that belief as its model, the policy reads it as the material in its context, and the physics keep running on the truth.
+
+   | Material model off by | Receding-horizon | PPO | PPO trained for the noise | PPO ahead by |
+   | ---: | ---: | ---: | ---: | ---: |
+   | 0% | 248.9 | 233.6 | 219.6 | -15.3 |
+   | 5% | 201.5 | 232.8 | 219.6 | +31.2 |
+   | 10% | 136.0 | 237.8 | 219.6 | +101.8 |
+   | 20% | 35.7 | 201.5 | 219.6 | +165.8 |
+   | 30% | 32.5 | 116.7 | 219.6 | +84.3 |
+   | 40% | 39.3 | 117.0 | 219.6 | +77.7 |
+
+   - **The controller's tolerance of a wrong material model is about 2% to 3%.** A 5% error costs it 47 points, from 248.9 to 201.5, and a 20% error costs it 213, down to 35.7.
+   - **The policy holds up to a 20% error**, at 201.5, which is 13% below its own no-error score, and it collapses at 30%, at 116.7. The belief has then left the distribution the policy was trained on, and its context feature is clipped at the edge of the band. That limit is a design parameter: widen the randomization band of the training and the tolerance widens with it.
+   - **A conservative policy is insensitive to a wrong model.** The policy trained for the noise is flat at 219.6 across the whole range, because it keeps the tool away from its limit whatever it believes about the material. It pays for that with the reward: 219.6 against the general policy's 233.6 in the ideal case, and it is below the general policy at every level of the noise sweep.
+   - **The fairness decisions, which hold wherever the model error is discussed.** The same belief goes to both arms, the error is in the damaging direction, both arms are the general ones, and the noise is tilted against the policy, which receives it on both measured quantities while the controller receives it on the wear alone.
+
    The robustness experiment (`results/evaluation/robustness_results.csv`, `python -m experiments.robustness_experiment`) runs the receding-horizon controller and the learned policy over the same 100 randomized scenarios at the same energy weight w2 = 0.4, in two regimes.
 
    | Regime | Arm | Mean reward | Reward std | MRR (mm3/min) | Energy (kJ) | Cycle (s) | Broken | Completed |
@@ -479,7 +543,11 @@ larger network, or an off-policy algorithm with a replay buffer.
    - **The learned policy is the better throughput operator.** It removes 22% more material per minute (1608 against 1318), finishes a part in a third less time (11.4 against 17.1 s) and spends 3.7% less energy. It pays for that with twice the tool breakage, 6% against 3%, and 4% of its finished surfaces above the roughness limit against 2%.
    - **The same holds for a noisy measurement.** With 5% noise on the wear and the remaining stock the controller's reward falls to 181.3 and its spread more than doubles, to 185.9 against the policy's 87.2. The policy trained with the same noise keeps 213.6 and cuts the part in 12.0 s against the controller's 31.1 s, and the general policy, measured under the same 5% noise in the regime map, keeps 226.8.
 
-   The claim is not that reinforcement learning beats a model-based controller on the objective inside a perfect digital twin, because the controller computes the optimum of the same objective with strictly more information, and because the reward pays the controller for the passes it takes. The claim is a boundary with a number on it: the learned policy is the better operator once the wear measurement is noisier than about 2% of its range, and the classical controller is the better operator below that. The learned policy is also the better throughput operator wherever the two compete. The scale of the reward is a design decision, and it decides how the ideal case is scored. So is the form in which the reward pays for a rate: the per-pass crediting of the removal rate is worth about nine of the fifteen points between the two arms in the nominal regime, and it is documented in the reward formulation section above.
+   The figure `results/plots/robustness_vs_controller.png` carries all of it on the same six panels, the reward, the spread, the removal rate, the energy, the cycle time and the reliability, over six cases: the nominal machine, the wear measurement noisy by 2% and by 10%, and the material model off by 5%, 20% and 30%. The two ways the setup's model of the machine can be wrong sit side by side in it.
+
+   > The learned policy is the better operator once the wear measurement is noisier than about 2% of its range; inside a perfect digital twin the classical controller is better, by a margin that is inside the noise (248.9 against 233.6, with a standard error of 8 on each).
+
+   The claim is not that reinforcement learning beats a model-based controller on the objective inside a perfect digital twin, because the controller computes the optimum of the same objective with strictly more information, and because the reward pays the controller for the passes it takes. The claim is a boundary with a number on it: the learned policy is the better operator once the wear measurement is noisier than about 2% of its range, and the classical controller is the better operator below that. The learned policy is also the better throughput operator wherever the two compete. The scale of the reward is a design decision, and it decides how the ideal case is scored. So is the form in which the reward pays for a rate: the per-pass crediting of the removal rate is worth about nine of the fifteen points between the two arms in the nominal regime, and it is documented in the reward formulation section above. The model error sweep does not change the claim, it measures the second way the setup can be wrong, and it is reported here as supporting evidence.
 
 2. **The production policy over 100 randomized scenarios.** The policy is trained across randomized machining scenarios and evaluated on 100 held-out scenarios of the same kind. It completed 94.0% of the parts, kept the finished surface inside the roughness limit in 96% of them, never exceeded the flank wear limit, and broke a tool in 6%. Material removal rate 1608.5 mm3/min, energy 66.4 kJ per part, cycle time 11.4 s. The worst pass of an episode exceeds the roughness limit in 55% of the scenarios, which is the roughing pass: the reward constrains the finishing pass, because that is the pass that sets the surface of the part. The mean operating point is 7907 RPM, 0.318 mm/r, 2.07 mm of depth of cut and 4.0 passes per part. Under a reward that counts the throughput the policy is a much more aggressive operator than it was, and it pays for that with the breakage rate and with the finished surfaces.
 
@@ -577,7 +645,10 @@ environment contract is in Part 1.
 
    The regime map also has to be extended to the other imperfect
    measurements, the roughness reading in particular, since the reward
-   constrains the finishing pass on the roughness.
+   constrains the finishing pass on the roughness. The tolerance of a wrong
+   material model has to be measured on a real material as well: it is a
+   property of the training band, and the policy holds up to a 20% error and
+   collapses at 30%.
 
 ---
 
