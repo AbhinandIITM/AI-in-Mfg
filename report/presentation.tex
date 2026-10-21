@@ -127,7 +127,7 @@
 \end{frame}
 
 \begin{frame}{Proposed Approach}
-    \small
+    \footnotesize
     \begin{columns}[T]
         \begin{column}{0.5\textwidth}
             \textbf{1. Digital Twin (Physics)}
@@ -153,6 +153,7 @@
                 \item Ablation: 7 weights $\times$ 3 seeds
                 \item 5 classical baselines + receding-horizon
                 \item Robustness: 3 regimes against the controller
+                \item Regime map: the noise crossover against the controller
                 \item Batch: one tool, ten parts
                 \item Transfer experiment
                 \item Full reproducibility
@@ -191,19 +192,20 @@
     Transfer experiment & \XMark & \XMark & \CMark \\
     Receding-horizon baseline & \XMark & \XMark & \CMark \\
     Robustness vs a model-based controller & \XMark & \XMark & \CMark \\
+Noise crossover vs that controller & \XMark & \XMark & \CMark \\
     Monte Carlo (100 scenarios) & \XMark & \XMark & \CMark \\
     Interactive workstation & \XMark & \XMark & \CMark \\
     \bottomrule
     \end{tabular}
     \end{table}
 
-    \vspace{0.4em}
+    \vspace{0.1em}
     \scriptsize
     Mo \emph{et al.}: PPO over a mixed action space (tool change + parameters); the state carries
     $\VB$, breakage and $\Ra$; objectives are quality and efficiency.\\
     Wang \emph{et al.}: MATD3 for batch milling; objectives are dimensional quality and machining time.
 
-    \vspace{0.3em}
+    \vspace{0.1em}
     \alert{Key differentiator:} \textbf{neither reference treats energy as an objective}. The
     speed-dependent $k_c$ creates a genuine energy/throughput trade-off, and one conditioned
     policy covers the whole frontier in a single run.
@@ -557,7 +559,9 @@
     The same 100 randomized scenarios at $w_2 = 0.4$ in every row. The regime changes what the
     \alert{controller} is given, not what the policy is given: the exact model, the exact state and
     the material in its hand in the first regime, a material it has no model for in the second,
-    a 5\% noise on the wear and the remaining stock in the third.
+    a 5\% noise on the wear and the remaining stock in the third. \alert{Fairness: both arms are the
+    general ones, neither is trained for the noise, and the noise is tilted against the policy, which
+    receives it on both measured quantities while the controller receives it on the wear alone.}
 \end{frame}
 
 \begin{frame}{Robustness: How to Read It}
@@ -577,6 +581,7 @@
         has no model for, its reward collapses by three quarters, from 248.9 to 63.5, and the policy
         holds at 226.9. With a noisy wear measurement the controller falls to 181.3 and its spread
         doubles to 185.9 against the policy's 87.3, and the policy trained with the same noise keeps 213.6.
+        The general policy scores 226.8 at that same 5\% noise.
         \item \textbf{The policy does not need the material to be told.} Told the truth it scores 215.1,
         against 226.9 for the policy that believes the nominal material.
     \end{enumerate}
@@ -587,8 +592,79 @@
     Inside a perfect digital twin the learned policy and the model-based controller are comparable:
     the policy is ahead on the physical metrics and behind on the breakage, and the gap the reward does
     show is partly the artifact of how the reward pays for a rate. The advantage of the learned policy
-    appears where the controller's information advantage disappears. The sensitivity of the comparison
-    to the reward is published with the result.
+    appears where the controller's information advantage disappears, and the regime map on the next
+    frames puts a number on it: the crossover is at \alert{about 2\% of the wear measurement's range}.
+    The sensitivity of the comparison to the reward is published with the result.
+    \end{alertblock}
+\end{frame}
+
+\begin{frame}{The Regime Map: How Noisy the Wear Measurement Has to Be}
+    \scriptsize
+    \centering
+    \begin{tabular}{@{}rrrrr@{}}
+    \toprule
+    \makecell{\textbf{Measurement}\\\textbf{noise}} & \makecell{\textbf{Receding-}\\\textbf{horizon}} & \textbf{PPO} & \makecell{\textbf{PPO trained}\\\textbf{for the noise}} & \makecell{\textbf{PPO}\\\textbf{ahead by}} \\
+    \midrule
+    0.0\%  & \alert{248.9} & 233.6 & 219.6 & $-15.3$ \\
+    1.0\%  & 242.3 & 233.4 & 216.9 & $-8.9$ \\
+    2.0\%  & 231.5 & 233.1 & 214.3 & \alert{$+1.7$} \\
+    3.0\%  & 211.5 & 230.0 & 214.1 & $+18.5$ \\
+    5.0\%  & 181.3 & 226.8 & 213.6 & $+45.5$ \\
+    7.5\%  & 179.1 & 223.2 & 207.9 & $+44.1$ \\
+    10.0\% & 171.5 & 222.0 & 206.5 & $+50.6$ \\
+    \bottomrule
+    \end{tabular}
+
+    \vspace{0.3em}
+    {\footnotesize
+    Mean episode reward over the same 100 randomized scenarios at $w_2 = 0.4$. The noise is a
+    fraction of the range of the flank wear and of the remaining stock. The last column is the
+    general policy's reward minus the controller's.}
+
+    \vspace{0.3em}
+    \begin{alertblock}{The crossover is at about 2\% of the range of the wear measurement}
+    \small
+    Below it the classical controller is the better operator, above it the learned policy is. A plant
+    that can measure the flank wear to better than 2\% of its range has the better controller; one that
+    cannot has the better policy.
+    \end{alertblock}
+\end{frame}
+
+\begin{frame}{The Regime Map: Where the Crossover Sits}
+    \centering
+    \includegraphics[width=\textwidth,height=0.72\textheight,keepaspectratio]{regime_map.png}
+
+    \vspace{0.1em}
+    {\scriptsize
+    The controller's curve falls away and the policy's is nearly flat: the two cross at about
+    \alert{2\%} of the wear measurement's range, and the gap reaches 50.6 reward points at 10\% noise.}
+\end{frame}
+
+\begin{frame}{The Regime Map: How to Read It}
+    \scriptsize
+    \begin{enumerate}
+        \item \textbf{The crossover is at about 2\% of the range of the wear measurement.} Below it the
+        classical controller is the better operator, above it the learned policy is. That is the
+        actionable form of the whole result.
+        \item \textbf{The two degrade differently.} The controller falls from 248.9 to 171.5, a 31\% loss,
+        because a noisy wear reading makes its plan violate the limits and break tools. The policy falls
+        from 233.6 to 222.0, a 5\% loss, because a perturbed observation perturbs its action slightly.
+        A model-based controller has a cliff, a learned policy has a slope.
+        \item \textbf{Training for the noise does not pay.} The policy trained with the noise is below the
+        general policy at every noise level, including the 5\% it was trained for, where it scores 213.6
+        against 226.8. Its robustness comes from training across a distribution of scenarios.
+    \end{enumerate}
+
+    \vspace{0.2em}
+    \begin{alertblock}{The fairness decisions}
+    \scriptsize
+    Both arms of the headline comparison are the general ones, neither is trained for the noise. The
+    noise is tilted against the policy: the controller gets a noisy reading of the flank wear, the
+    measurement it depends on, while the policy gets the noise on the flank wear \emph{and} on the
+    remaining stock. The noise-trained policy is a third, clearly labelled arm and not the headline,
+    because a controller can also be prepared for a noisy instrument by widening its safety margin, and
+    that is a design choice rather than a training one. Of the two degraded regimes the noise test is
+    the fairer one, because the noise is a property of the instrumentation and not of the method.
     \end{alertblock}
 \end{frame}
 
@@ -751,8 +827,8 @@
     \scriptsize
     Inside a perfect digital twin the learned policy and the model-based controller are comparable:
     the policy is ahead on the physical metrics and behind on the breakage, and the gap the reward does
-    show is partly the reward's artifact. Its advantage appears where the controller's information
-    advantage disappears.
+    show is partly the reward's artifact. The regime map puts a number on the advantage: the crossover
+    is at \alert{about 2\% of the wear measurement's range}.
     \end{alertblock}
 \end{frame}
 
@@ -838,7 +914,7 @@
             \textbf{Module Structure}
             \begin{itemize}
                 \item \texttt{MillingDT/}: config, env (part + batch), agent (controller init), baselines, sim, utils
-                \item \texttt{experiments/}: train, eval, ablation, baselines, transfer, controller, robustness, batch, reward sensitivity, pipeline
+                \item \texttt{experiments/}: train, eval, ablation, baselines, transfer, controller, robustness, regime map, batch, reward sensitivity, pipeline
                 \item \texttt{viz/}: shared plotting utilities
                 \item \texttt{results/}: one directory per run
             \end{itemize}
@@ -871,6 +947,7 @@
     \begin{columns}[T]
         \begin{column}{0.48\textwidth}
             \begin{block}{What Worked}
+            \footnotesize
             \begin{itemize}
                 \item Speed-dependent $k_c$ creates a genuine trade-off
                 \item The \alert{scale of the reward} decides the operating point: 50 points per part against 200 for a part
@@ -882,9 +959,11 @@
         \end{column}
         \begin{column}{0.48\textwidth}
             \begin{block}{What Worked (continued)}
+            \footnotesize
             \begin{itemize}
                 \item A receding-horizon controller that prices the whole reward is a fair and strong baseline (184.3 $\to$ 248.9)
                 \item Robustness: comparable inside a perfect twin, and the advantage appears where the controller's information runs out
+                \item The regime map puts a number on it: the crossover is at \alert{about 2\% of the wear measurement's range}
                 \item Measuring the reward found the artifact a fair-looking comparison would have hidden: the credit grows with the number of passes
                 \item Batch context: 24\% fewer tool changes, 9.5\% less energy
             \end{itemize}
@@ -895,14 +974,16 @@
 
 \begin{frame}{Discussion: Limitations and Future Work}
     \scriptsize
+    \setlength{\itemsep}{1pt}
     \begin{columns}[T]
         \begin{column}{0.48\textwidth}
             \begin{alertblock}{Limitations}
             \begin{itemize}
-                \item Inside a perfect twin the two methods are comparable: 248.9 against 233.6, the gap is inside the noise, and about nine of those points are the reward's artifact
+                \item Inside a perfect twin the two methods are comparable: 248.9 against 233.6, the gap is inside the noise and partly the reward's artifact
                 \item The learned policy is the better throughput operator, at twice the tool breakage
+                \item The crossover at 2\% is a property of this controller, this reward and this noise model
                 \item Initializing from the controller is now \alert{harmful}: 119.8 against 233.6
-                \item The reward pays a rate per pass, so the credit grows with the number of passes: the bias is in the reward, and the scale is not the lever
+                \item The reward pays a rate per pass, so the credit grows with the pass count: the bias is in the reward
                 \item The wear tool life varies by only a factor of a few across the envelope
                 \item Ablation: 150k steps per weight, so the frontier is a lower bound; sim-only, no real machine calibration yet
             \end{itemize}
@@ -911,9 +992,10 @@
         \begin{column}{0.48\textwidth}
             \begin{exampleblock}{Future Work}
             \begin{itemize}
-                \item \alert{A reward that pays a rate correctly}: price the cycle time directly, or compare the part's average rate to a reference at the end of the part
+                \item \alert{A reward that pays a rate correctly}: price the cycle time directly, or compare the part's average rate to a reference
                 \item Publish the sensitivity of any comparison to the reward form, as it is here
                 \item Compare against a restricted controller (is the gap an information gap?)
+                \item Measure the crossover under a controller prepared for a noisy instrument
                 \item Sim-to-real calibration, true multi-objective RL, online $w_2$ adaptation, batch-level planning
             \end{itemize}
             \end{exampleblock}
@@ -929,14 +1011,17 @@
 \begin{frame}{Conclusion}
     \scriptsize
     \setlength{\itemsep}{0pt}
+    \setlength{\topsep}{0pt}
+    \setlength{\parsep}{0pt}
     \begin{itemize}
         \item \textbf{Digital Twin} with speed-dependent cutting energy, tool wear, roughness, breakage; the wear coefficient is anchored on a published tool life
-        \item \textbf{Two Gymnasium Environments} (the part, 11-D, and the batch, 13-D) and \textbf{One Production Policy} (1M steps): the energy weight is a runtime query, not a retrain
-        \item \textbf{Rigorous Evaluation}: Monte Carlo (100 scenarios, 95\% CIs), ablation frontier, weight sweep against the 21 per-weight policies
+        \item \textbf{Two Gymnasium Environments} (the part, 11-D, the batch, 13-D) and \textbf{One Production Policy} (1M steps): the energy weight is a runtime query
+        \item \textbf{Rigorous Evaluation}: Monte Carlo (100 scenarios, 95\% CIs), ablation frontier, weight sweep against the 21 policies
         \item \textbf{Baselines}: five classical policies on the same 50 episodes; the receding-horizon controller is the strongest at $+253.5$
-        \item \textbf{Robustness}: inside a perfect twin the two methods are comparable (248.9 against 233.6, the gap inside the noise and partly the reward's artifact); the controller collapses to 63.5 and 181.3, the policy holds at 226.9 and 213.6
-        \item \textbf{Reward sensitivity}: the reward pays the rate of every pass, so the credit grows with the pass count; the controller collects 27\% more credit for the same material
-        \item \textbf{Batch}: the batch context is worth 24\% fewer tool changes and 9.5\% less energy; the per-part controller needs 207.5 s against 113.1 s
+        \item \textbf{Robustness}: inside a perfect twin the two methods are comparable (248.9 against 233.6, the gap inside the noise and partly the reward's artifact); the controller collapses to 63.5 and 181.3, the policy holds at 226.9
+        \item \textbf{Regime map}: the crossover is at \alert{about 2\% of the wear measurement's range}, the actionable form of the result
+        \item \textbf{Reward sensitivity}: the credit grows with the number of passes (27\% more for the controller)
+        \item \textbf{Batch}: 24\% fewer tool changes and 9.5\% less energy; 207.5 s against 113.1 s for the batch
         \item \textbf{Controller Initialization}: the result reversed, the initialization is now harmful (119.8 against 233.6)
         \item \textbf{Transfer Experiment}: the production policy needs no adaptation; the nominal-trained one does
         \item \textbf{Interactive Workstation} and \textbf{full reproducibility}: every result table from the committed artifacts by one script
@@ -945,7 +1030,7 @@
     \vspace{-1ex}
     \begin{alertblock}{Key Scientific Finding}
     \scriptsize
-    The speed-dependent specific cutting energy creates a \textbf{genuine energy/throughput trade-off}, and DRL learns to navigate it pass-by-pass. Across the frontier the removal rate falls \alert{41\%} while the energy of the part falls \alert{17\%}. Against a model-based controller the claim is narrow: a tie, not a win.
+    The speed-dependent specific cutting energy creates a \textbf{genuine energy/throughput trade-off}, and DRL learns to navigate it pass-by-pass: across the frontier the removal rate falls \alert{41\%} while the energy of the part falls \alert{17\%}. Against a model-based controller the claim is a \alert{boundary}, not an advantage: inside a perfect digital twin the two are comparable, and the learned policy is the better operator once the wear measurement is noisier than \alert{about 2\% of its range}.
     \end{alertblock}
 \end{frame}
 % ========================================================================
@@ -973,6 +1058,7 @@
     Transfer & \texttt{experiments.transfer\_experiment 300000 50000} \\
     Controller init & \texttt{experiments.controller\_experiment 1000000 2000} \\
     Robustness & \texttt{experiments.robustness\_experiment} \\
+    Regime map & \texttt{experiments.regime\_map} \\
     Batch & \texttt{experiments.batch\_experiment} \\
     Reward sensitivity & \texttt{experiments.reward\_sensitivity} \\
     Results & \texttt{experiments.summarize\_results} \\
@@ -981,7 +1067,6 @@
     \bottomrule
     \end{tabular}
 
-    \vspace{0.3em}
     {\footnotesize Each entry is run as \texttt{python -m <module>} from the project root.}
 \end{frame}
 
