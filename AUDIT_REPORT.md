@@ -563,10 +563,64 @@ about 9 parts per tool.
 
 So the honest conclusion is not that reinforcement learning beats a model
 based controller. It is that the advantage of the learned policy appears in
-the two places where the controller's information advantage disappears, and
-that the reward's scale decides how the ideal case is scored.
+the two places where the controller's information advantage disappears.
 
 ---
+
+## 15. The reward is not neutral, and the comparison in the ideal case is biased
+
+The reward credits the removal rate of every pass, which is the standard way
+to express a rate in a reward that is paid per pass. It has a consequence
+that has to be measured rather than argued about: the total credit grows
+with the number of passes a plan takes, so a plan that cuts the same part in
+more, shallower passes is paid more for it.
+
+Measured on the same 100 randomized scenarios at w2 = 0.4, with the reward
+terms accumulated separately by `experiments/reward_sensitivity.py`:
+
+| | The controller | The policy |
+| :--- | ---: | ---: |
+| Passes per part | 5.85 | 4.00 |
+| Objective credit collected | +0.413 | +0.326 |
+| Mean reward | 248.9 | 233.6 |
+
+The two plans remove the same 5 mm of stock. The controller takes more
+passes, so it collects 27% more objective credit for the same material, and
+at the objective scale of the configuration that is about nine of the fifteen
+reward points that separate the two arms in the ideal case. **The ideal case
+comparison is therefore biased against the learned policy, and the
+defensible reading of it is that the two methods are comparable, with the
+policy ahead on the physical metrics and behind on the tool breakage.**
+
+Three things were checked before that conclusion was drawn:
+
+1. **The objective scale is not the lever.** The controller wins at every
+   scale from 5 to 4000, and the gap grows with it, from 7.1 points at 5 to
+   352 points at 4000. The sign never flips. The sensitivity table is in
+   `results/evaluation/reward_sensitivity.csv`.
+2. **The alternative was implemented and rejected.** Crediting the material
+   of the part against the energy of the part removes the pass count from
+   the accounting, and under that form the two arms are level at the current
+   scale and the policy is ahead above it. It is not the right fix, because
+   the material a part gives up is fixed by its stock: the volume of a part
+   is `pi * D * kappa * L_cut / 1000`, independent of every cutting
+   parameter. The throughput weight would then be inert and the reward would
+   be an energy objective with a throughput weight that does nothing, and
+   the weight sweep of the project would stop measuring what it claims to
+   measure.
+3. **What a correct formulation would need.** The removal rate of a part is
+   the ratio of a fixed volume to the part's time, and a rate cannot be
+   accumulated over a part without becoming a volume. A reward that expresses
+   it has to either price the cycle time directly, or compare the part's
+   average rate to a reference at the end of the part. Both change the
+   meaning of the weights, and the second makes the objective sparse and the
+   credit assignment poor. Neither was adopted here, and the reward as
+   shipped carries the artifact instead, documented rather than hidden.
+
+This is the open question of the work, and it belongs in the future work of
+the report: the comparison against a model-based controller is sensitive to
+how the reward pays for a rate, and the sensitivity has to be published
+alongside the result.
 
 ---
 
