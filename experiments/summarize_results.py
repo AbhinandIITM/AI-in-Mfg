@@ -278,6 +278,40 @@ def batch_table():
     return "\n".join(lines)
 
 
+def regime_map_table():
+    """Where the learned policy overtakes the classical controller."""
+    path = EVALUATION_DIR / "regime_map.csv"
+    if not path.exists():
+        return None
+
+    df = pd.read_csv(path)
+    lines = [
+        "| Measurement noise | Receding-horizon | PPO | PPO trained for the noise | PPO ahead by |",
+        "| ---: | ---: | ---: | ---: | ---: |",
+    ]
+    for noise, group in df.groupby('noise'):
+        arms = {row['arm']: row for _, row in group.iterrows()}
+        controller = arms.get('Receding-horizon controller')
+        policy = arms.get('PPO')
+        prepared = arms.get('PPO trained for the noise')
+        difference = (policy['mean_reward'] - controller['mean_reward']
+                      if controller is not None and policy is not None else 0.0)
+        lines.append(
+            f"| {noise*100:.1f}% | {controller['mean_reward']:.1f} | "
+            f"{policy['mean_reward']:.1f} | "
+            f"{prepared['mean_reward']:.1f} | {difference:+.1f} |"
+        )
+    lines += [
+        "",
+        "The noise is a fraction of the range of the flank wear and of the "
+        "remaining stock. Both arms are the general ones, neither is trained "
+        "for the noise, and the noise is tilted against the policy, which "
+        "receives it on both measured quantities while the controller receives "
+        "it on the wear alone.",
+    ]
+    return "\n".join(lines)
+
+
 def figures_table():
     """The figures, and what each one shows."""
     figures = [
@@ -293,6 +327,9 @@ def figures_table():
         ("results/plots/training_curves.png",
          "The training curve of every run: the production policy, the transfer arms "
          "and the ablation grid"),
+        ("results/plots/regime_map.png",
+         "How noisy the wear measurement has to be before the learned policy is "
+         "the better operator"),
         ("results/run_PPO_seed42/plots/monte_carlo_failure_landscape.png",
          "The operating envelope of the production policy: flank wear against "
          "roughness over the 100 scenarios"),
@@ -364,6 +401,12 @@ def main():
         parts.append("## Robustness against the classical controller\n")
         parts.append("Artifact: `results/evaluation/robustness_results.csv`\n")
         parts.append(rb + "\n")
+
+    rm = regime_map_table()
+    if rm:
+        parts.append("## How noisy the wear measurement has to be\n")
+        parts.append("Artifact: `results/evaluation/regime_map.csv`\n")
+        parts.append(rm + "\n")
 
     bt = batch_table()
     if bt:

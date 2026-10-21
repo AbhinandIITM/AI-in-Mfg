@@ -74,11 +74,13 @@ NOMINAL_MATERIAL = {
 
 
 def evaluate_controller(scenarios, seed=42, weight=WEIGHT, belief=None,
-                        material=None, obs_noise=0.0, noise_rng=None):
+                        beliefs=None, material=None, obs_noise=0.0, noise_rng=None):
     """Roll the controller out, with the material and the belief it works with.
 
     The belief is what the controller thinks the material is. The material
     is what the machine actually cuts, and the physics always run on it.
+    The beliefs argument carries one belief per scenario, which is what a
+    setup with a miscalibrated material model has.
 
     With obs_noise the controller is given a noisy reading of the flank wear,
     the same measurement noise the policy sees on its observation.
@@ -100,11 +102,14 @@ def evaluate_controller(scenarios, seed=42, weight=WEIGHT, belief=None,
         ep_n, ep_f, ep_ap = [], [], []
         info = {}
         total_reward = 0.0
+        scenario_belief = belief
+        if beliefs and name in beliefs:
+            scenario_belief = beliefs[name]
         while not done:
             measured_vb = unwrapped.VB
             if obs_noise and noise_rng is not None:
                 measured_vb += noise_rng.normal(0.0, obs_noise * unwrapped.VB_max)
-            action = controller_action(unwrapped, belief=belief, vb=measured_vb)
+            action = controller_action(unwrapped, belief=scenario_belief, vb=measured_vb)
             obs, reward, terminated, truncated, info = eval_env.step(action)
             done = terminated or truncated
             total_reward += float(reward)
