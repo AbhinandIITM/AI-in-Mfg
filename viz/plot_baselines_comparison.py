@@ -170,11 +170,12 @@ def plot_comparison():
     plt.suptitle("Benchmark: Dynamic DRL (PPO) vs. Classical & Metaheuristic Baselines\n"
                  f"The learned policy is queried at the energy weight w2 = {QUERY_WEIGHT:.2f}",
                  fontsize=15, fontweight="bold", y=1.06)
-    # The context a reader needs: the four static policies are infeasible, so
-    # the comparison that matters is the receding-horizon controller.
+    # The context a reader needs: the three fast static policies are
+    # infeasible on roughness, and the fourth is infeasible on time, so the
+    # comparison that matters is the receding-horizon controller.
     fig.text(0.5, -0.02,
-             "The four static policies finish outside the roughness safety limit, "
-             "which is what their negative reward measures.\n"
+             "Three of the four static policies finish outside the roughness safety "
+             "limit, and the fourth takes 3000 s and 1507 kJ per part.\n"
              "The receding-horizon controller and the learned policy finish every "
              "part in spec; the controller removes more material per minute.",
              ha="center", va="top", fontsize=11, color="#334155")

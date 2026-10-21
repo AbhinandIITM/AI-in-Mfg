@@ -727,9 +727,9 @@ this repository, from `MillingDT/config/physics_constants.yaml`.
    the one registration, so there is no second environment to keep in step.
 6. A receding-horizon controller as a classical baseline. The static NSGA-II
    baseline cannot react to the tool state, and three of the four static
-   baselines end outside the roughness safety limit. The receding-horizon one
-   re-solves at every pass and is the only classical policy that stays inside
-   it.
+   baselines finish outside the roughness safety limit, while the fourth takes
+   3000 s per part. The receding-horizon one re-solves at every pass and is the
+   only classical policy that stays inside the limit.
 7. A transfer experiment. A policy trained on one material is evaluated on a
    harder one, zero shot, then fine tuned, and compared against a policy
    trained on the new material from scratch for the same budget. The

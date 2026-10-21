@@ -1,6 +1,7 @@
 # Digital Twin CNC Milling - Claude Code Project Guide
 
 ## Repository Layout
+- The repository sits in a Google Drive folder, and Drive drops a `desktop.ini` into every folder it syncs, including the ones inside `.git`. Git reads every file under `.git/refs` as a ref, so a stray `desktop.ini` becomes a broken ref and every git command fails with `bad object refs/desktop.ini`. The hooks in `.git/hooks` (`pre-push`, `post-commit`, `post-merge`, `post-checkout`, `post-rewrite`, all calling `clean-drive-ini.sh`) delete those files after every git operation. If a git command ever fails that way, delete the files with `find .git -name '*.ini' -type f -delete` and re-run it.
 - `MillingDT/` is the library package: the environment, the physical model, the classical baselines, the controller and the seeding.
   - `MillingDT/config/` holds the configuration, in YAML: `physics_constants.yaml` (the calibrated constants, the reward weights, the scenario tables) and `paths.yaml` (where the project keeps its runs, logs, plots and tables). `MillingDT/config/__init__.py` loads both and exposes the constants and the paths, so no other module parses YAML.
   - `MillingDT/env/milling_env.py` is the environment, `MillingDT/config/physics.py` the physical model, `MillingDT/config/scenarios.py` the randomized scenarios.

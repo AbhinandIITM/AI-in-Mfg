@@ -9,6 +9,7 @@ from pptx.util import Inches, Pt, Emu
 from pptx.dml.color import RGBColor
 from pptx.enum.text import PP_ALIGN, MSO_ANCHOR
 from pptx.enum.shapes import MSO_SHAPE
+from PIL import Image
 import os
 
 # Colors
@@ -115,6 +116,45 @@ def style_table(table, header_rows=1, font_size=13, header_size=None, center=Tru
             elif i in highlight_rows:
                 cell.fill.solid()
                 cell.fill.fore_color.rgb = RGBColor(255, 248, 220)
+
+# The figures live in ../results/plots, relative to the report directory.
+# The path is resolved against this file so the script runs from any directory.
+REPORT_DIR = os.path.dirname(os.path.abspath(__file__))
+PLOTS_DIR = os.path.normpath(os.path.join(REPORT_DIR, "..", "results", "plots"))
+
+def figure_path(name):
+    """Path of one figure, relative to the report directory."""
+    return os.path.join(PLOTS_DIR, name)
+
+def add_picture_fit(slide, image_path, left, top, max_width, max_height):
+    """Place a picture scaled to fit the box, keeping its aspect ratio."""
+    with Image.open(image_path) as im:
+        iw, ih = im.size
+    scale = min(max_width / iw, max_height / ih)
+    width = int(iw * scale)
+    height = int(ih * scale)
+    left = left + int((max_width - width) / 2)
+    top = top + int((max_height - height) / 2)
+    return slide.shapes.add_picture(image_path, left, top, width, height)
+
+def add_figure_slide(title, image_name, note_title, note):
+    """A figure slide in the deck's layout: blue header, full-width image, reading box."""
+    slide = prs.slides.add_slide(prs.slide_layouts[6])
+    add_background(slide, WHITE)
+    add_shape(slide, Inches(0), Inches(0), Inches(13.333), Inches(1.1), fill_color=IIT_BLUE)
+    add_text_box(slide, Inches(0.5), Inches(0.2), Inches(12), Inches(0.7),
+        title, font_size=30, bold=True, color=WHITE)
+
+    add_picture_fit(slide, figure_path(image_name),
+                    Inches(0.3), Inches(1.25), Inches(12.73), Inches(4.75))
+
+    add_shape(slide, Inches(0.5), Inches(6.08), Inches(12.3), Inches(1.12),
+        fill_color=RGBColor(255, 248, 220), line_color=IIT_GOLD, line_width=Pt(2))
+    add_text_box(slide, Inches(0.8), Inches(6.16), Inches(11.7), Inches(0.35),
+        note_title, font_size=16, bold=True, color=IIT_GOLD)
+    add_text_box(slide, Inches(0.8), Inches(6.52), Inches(11.7), Inches(0.6),
+        note, font_size=14, color=DARK_GRAY)
+    return slide
 
 # ============================================================
 # SLIDE 1: Title Slide
@@ -535,7 +575,18 @@ insights = [
 add_bullet_list(slide, Inches(0.8), Inches(5.1), Inches(11.7), Inches(1.7), insights, font_size=14, color=DARK_GRAY, spacing=Pt(4))
 
 # ============================================================
-# SLIDE 10: One Policy Against 21 Policies
+# SLIDE 10: Ablation Frontier (figure)
+# ============================================================
+add_figure_slide(
+    "Ablation Frontier: Removal Rate against Energy",
+    "ablation_pareto_frontier.png",
+    "How to read this",
+    "Seven pinned-weight policies, three seeds each. The four non-dominated points are joined into the frontier: "
+    "w₂ = 0.4, 0.5, 0.8 and 1.0, and the three dominated points sit off it. Left: the energy of a part. "
+    "Right: the energy of a pass, which the reward charges.")
+
+# ============================================================
+# SLIDE 11: One Policy Against 21 Policies
 # ============================================================
 slide = prs.slides.add_slide(prs.slide_layouts[6])
 add_background(slide, WHITE)
@@ -578,7 +629,7 @@ msg = [
 add_bullet_list(slide, Inches(0.8), Inches(5.1), Inches(11.7), Inches(1.7), msg, font_size=15, color=DARK_GRAY, spacing=Pt(4))
 
 # ============================================================
-# SLIDE 11: Baseline Comparison
+# SLIDE 12: Baseline Comparison
 # ============================================================
 slide = prs.slides.add_slide(prs.slide_layouts[6])
 add_background(slide, WHITE)
@@ -626,7 +677,18 @@ analysis = [
 add_bullet_list(slide, Inches(0.8), Inches(4.85), Inches(11.7), Inches(2.0), analysis, font_size=15, color=DARK_GRAY, spacing=Pt(4))
 
 # ============================================================
-# SLIDE 12: Controller Initialization, Method and Result
+# SLIDE 13: Policy Comparison (figure)
+# ============================================================
+add_figure_slide(
+    "Policy Comparison: Six Policies, Same 50 Episodes",
+    "baseline_vs_ppo_comparison.png",
+    "How to read this",
+    "The four static policies all take a negative reward: three of them finish outside the roughness safety "
+    "limit and Constant-Safe stays inside but needs 3000 s per part. The comparison that matters is the "
+    "controller against the learned policy, the only two with a positive reward.")
+
+# ============================================================
+# SLIDE 14: Controller Initialization, Method and Result
 # ============================================================
 slide = prs.slides.add_slide(prs.slide_layouts[6])
 add_background(slide, WHITE)
@@ -689,7 +751,7 @@ add_bullet_list(slide, Inches(6.55), Inches(6.15), Inches(6.0), Inches(0.6), [
 ], font_size=13, color=DARK_GRAY, spacing=Pt(2))
 
 # ============================================================
-# SLIDE 13: Controller Initialization, What It Shows
+# SLIDE 15: Controller Initialization, What It Shows
 # ============================================================
 slide = prs.slides.add_slide(prs.slide_layouts[6])
 add_background(slide, WHITE)
@@ -724,7 +786,18 @@ add_bullet_list(slide, Inches(0.8), Inches(5.9), Inches(11.7), Inches(0.8), [
 ], font_size=16, color=DARK_GRAY, spacing=Pt(4))
 
 # ============================================================
-# SLIDE 14: Transfer Experiment
+# SLIDE 16: Controller Initialization, The Three Arms (figure)
+# ============================================================
+add_figure_slide(
+    "Controller Initialization: The Three Arms",
+    "controller_vs_ppo.png",
+    "How to read this",
+    "Six panels at slide size, so the values are in the table. The three arms are level on the reward, and the "
+    "spread over the 100 scenarios separates them: 65.9, 30.0 and 3.4. The controller leads on the removal rate "
+    "and the cycle time, the learned policies on the reliability.")
+
+# ============================================================
+# SLIDE 17: Transfer Experiment
 # ============================================================
 slide = prs.slides.add_slide(prs.slide_layouts[6])
 add_background(slide, WHITE)
@@ -770,7 +843,7 @@ conc_items = [
 add_bullet_list(slide, Inches(0.8), Inches(5.1), Inches(11.7), Inches(1.8), conc_items, font_size=14, color=DARK_GRAY, spacing=Pt(4))
 
 # ============================================================
-# SLIDE 15: Interactive Workstation
+# SLIDE 18: Interactive Workstation
 # ============================================================
 slide = prs.slides.add_slide(prs.slide_layouts[6])
 add_background(slide, WHITE)
@@ -799,7 +872,7 @@ add_text_box(slide, Inches(0.5), Inches(6.8), Inches(12), Inches(0.5),
     font_size=20, bold=True, color=IIT_BLUE, alignment=PP_ALIGN.CENTER)
 
 # ============================================================
-# SLIDE 16: Software Engineering & Reproducibility
+# SLIDE 19: Software Engineering & Reproducibility
 # ============================================================
 slide = prs.slides.add_slide(prs.slide_layouts[6])
 add_background(slide, WHITE)
@@ -851,7 +924,7 @@ add_two_column(slide, Inches(0.5), Inches(1.3), Inches(12.3), Inches(5.9),
     title_left="Architecture & Reproducibility", title_right="Test Coverage & Quality")
 
 # ============================================================
-# SLIDE 17: Discussion
+# SLIDE 20: Discussion
 # ============================================================
 slide = prs.slides.add_slide(prs.slide_layouts[6])
 add_background(slide, WHITE)
@@ -899,7 +972,7 @@ for title, items in zip(titles, contents):
     x += col_w + Inches(0.15)
 
 # ============================================================
-# SLIDE 18: Conclusion
+# SLIDE 21: Conclusion
 # ============================================================
 slide = prs.slides.add_slide(prs.slide_layouts[6])
 add_background(slide, IIT_BLUE)
@@ -932,7 +1005,7 @@ add_text_box(slide, Inches(1), Inches(6.32), Inches(11.333), Inches(0.9),
     font_size=15, bold=True, color=IIT_GOLD, alignment=PP_ALIGN.CENTER)
 
 # ============================================================
-# SLIDE 19: Reproducibility Commands
+# SLIDE 22: Reproducibility Commands
 # ============================================================
 slide = prs.slides.add_slide(prs.slide_layouts[6])
 add_background(slide, WHITE)
@@ -965,7 +1038,7 @@ for idx, (name, cmd) in enumerate(cmds):
     y += Inches(0.45)
 
 # ============================================================
-# SLIDE 20: Thank You / Questions
+# SLIDE 23: Thank You / Questions
 # ============================================================
 slide = prs.slides.add_slide(prs.slide_layouts[6])
 add_background(slide, IIT_BLUE)

@@ -508,11 +508,11 @@ Key observations:
 \begin{figure}[H]
     \centering
     \includegraphics[width=0.9\textwidth]{monte_carlo_failure_landscape.png}
-    \caption{The operating envelope of the 100 Monte Carlo scenarios: the maximum flank wear of a scenario on the horizontal axis against its maximum surface roughness on the vertical axis. The shaded rectangle is the safe operating window, bounded by the wear safety limit $\VBSafe$ (0.255 mm, drawn at 0.26 mm) and the roughness safety limit $\RaSafe$ (1.36 $\mu$m, drawn at 1.4 $\mu$m). The dashed lines mark the hard limits $\VBMax = 0.3$ mm and $\RaMax = 1.6\ \mu$m. A circle marks a scenario that stays inside both hard limits, a cross a scenario that ends above the roughness limit or breaks a tool.}
+    \caption{The operating envelope of the 100 Monte Carlo scenarios: the maximum flank wear of a scenario on the horizontal axis against its maximum surface roughness on the vertical axis. The shaded rectangle is the safe operating window, bounded by the wear safety limit $\VBSafe$ (0.255 mm, drawn at 0.26 mm) and the roughness safety limit $\RaSafe$ (1.36 $\mu$m, drawn at 1.4 $\mu$m). The dashed lines mark the hard limits $\VBMax = 0.3$ mm and $\RaMax = 1.6\ \mu$m. A circle marks a scenario that stays inside both hard limits, a cross a scenario that ends above the roughness limit.}
     \label{fig:mc-envelope}
 \end{figure}
 
-Figure~\ref{fig:mc-envelope} puts the two constraints on one plane and shows where the 100 scenarios land. No scenario reaches the wear limit: the rightmost point stops at 0.239 mm against $\VBMax = 0.3$ mm, which is the 0\% wear violation rate of Table~\ref{tab:mc}. The scenarios lie on a downward slope, the more the tool wears the smoother the surface, so the scenarios that push the roughness up are the ones with the least wear. The 38 crosses above $\RaMax = 1.6\ \mu$m are the worst-pass roughness violations of the table, one more cross is the scenario in which the tool broke, and the 18 circles between $\RaSafe$ and $\RaMax$ are the scenarios that exceed the safety margin without violating the limit. All of these are intermediate passes: the finished surface is inside the limit in every one of the 100 scenarios.
+Figure~\ref{fig:mc-envelope} puts the two constraints on one plane and shows where the 100 scenarios land. No scenario reaches the wear limit: the rightmost point stops at 0.239 mm against $\VBMax = 0.3$ mm, which is the 0\% wear violation rate of Table~\ref{tab:mc}. The scenarios lie on a downward slope, the more the tool wears the smoother the surface, so the scenarios that push the roughness up are the ones with the least wear. The 38 crosses above $\RaMax = 1.6\ \mu$m are the worst-pass roughness violations of the table, and the 18 circles between $\RaSafe$ and $\RaMax$ are the scenarios that exceed the safety margin without violating the limit. All of these are intermediate passes: the finished surface is inside the limit in every one of the 100 scenarios.
 
 \begin{figure}[H]
     \centering
@@ -652,10 +652,19 @@ Constant-Safe & 1.6 & 1506.8 & 3000.0 & $-139.25$ \\
 \end{table}
 
 \begin{itemize}
-    \item \textbf{The four static policies finish outside the roughness safety limit} ($\RaSafe = 0.85 \times 1.6 = 1.36\ \mu$m), which the reward penalizes with $-50$. The receding-horizon controller is the only classical policy that stays inside it, and it reaches $+203.45$ against $-46$ for the rest.
+    \item \textbf{Three of the four static policies finish outside the roughness safety limit} ($\RaSafe = 0.85 \times 1.6 = 1.36\ \mu$m), which the reward penalizes with $-50$, and they land at about $-46$. The fourth, Constant-Safe, stays inside the limit but needs 3000 s and 1506.8 kJ per part, which is what its $-139.25$ measures. The receding-horizon controller is the only classical policy that stays inside the limit and reaches a positive reward, $+203.45$.
     \item \textbf{The learned policy and the controller are level on the reward} ($+204.09$ against $+203.45$), while the controller is ahead on the removal rate (981.7 against 894.3 mm$^3$/min) and on the cycle time (4.80 s against 5.56 s). The energy of the part is close (18.02 kJ against 18.40 kJ).
     \item \textbf{This digital twin does not yet show a reinforcement learning advantage.} The next experiment initializes the policy from the controller and fine-tunes from there (Section~\ref{sec:controllerinit}).
 \end{itemize}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=\textwidth]{baseline_vs_ppo_comparison.png}
+    \caption{The six policies on the same 50 episodes of the nominal condition at $w_2 = 0.4$: the mean removal rate, the energy per part and the cumulative reward. The four static policies all take a negative reward, the three fast ones because they finish outside the roughness safety limit and Constant-Safe because it needs 3000 s per part, so the comparison that matters is the receding-horizon controller against the learned policy, the only two with a positive reward.}
+    \label{fig:baseline-comparison}
+\end{figure}
+
+Figure~\ref{fig:baseline-comparison} shows the same six policies as three bar charts. The first two panels cannot be compared directly, because Constant-Safe sits at the edge of both scales: it removes 1.6 mm$^3$/min and needs 1506.8 kJ, which is why it appears as a sliver in the throughput panel and is left out of the energy panel. The energy of the other five policies lies between 17.8 kJ and 18.8 kJ, so the energy does not separate them. The third panel does, because the reward carries the constraint penalties: the three fast static policies sit at about $-46$, the level of the finishing-pass penalty alone, Constant-Safe sits at $-139$, and the receding-horizon controller and the learned policy sit at \alert{$+203$} and \alert{$+204$}. The controller removes more material per minute, and the two are level on the reward.
 
 \subsection{Controller Initialization Experiment}
 \label{sec:controllerinit}
@@ -686,6 +695,15 @@ PPO from scratch & 198.57 & 30.03 & 1205.1 & 68.35 & 20.25 & 0.0\% & 1\% & 99\% 
 \textbf{What it does produce is consistency.} The spread of the episode reward across the 100 scenarios falls from 30.0 to 3.4, the tool breakage falls to zero, and every part is completed. The controller itself is the least reliable of the three arms, with a reward std of 65.9, 5\% tool breakage and 95\% of the parts completed.
 
 \textbf{The consistency is paid for with throughput and energy.} Against the from-scratch policy the initialized policy removes 6.6\% less material per minute and spends 12.9\% more energy per part. Starting from the feasible behavior of the controller gives a policy that scores almost the same on every scenario, and that operating point is slower and more expensive than the one a policy started from noise finds.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=\textwidth]{controller_vs_ppo.png}
+    \caption{The three arms of the controller initialization experiment on the same 100 scenarios at $w_2 = 0.4$: the mean episode reward with its spread over the scenarios, the spread on its own, the removal rate, the energy per part, the cycle time and the reliability. The three arms are level on the reward, and the spread across the scenarios is what separates them: the reward standard deviation of the initialized policy is \alert{3.4} against \alert{65.9} for the controller. The controller is ahead on the removal rate and the cycle time, and the two learned policies are ahead on the reliability, with no tool breakage and every part completed.}
+    \label{fig:controller-comparison}
+\end{figure}
+
+Figure~\ref{fig:controller-comparison} puts the three arms side by side over the six measures. The top-left panel is the one to read with care: the three bars are 187.96, 198.57 and 199.35, and the error bars, which are the standard deviation over the 100 scenarios, are far wider than the gaps between the bars, so the reward does not separate the arms. The second panel is where they do separate: the spread of the episode reward falls from 65.9 for the controller to 30.0 for the from-scratch policy and to 3.4 for the initialized policy. The remaining panels show what that consistency costs and what it buys. The controller removes 1560.6 mm$^3$/min in 13.54 s, against 1126.1 mm$^3$/min in 32.35 s for the initialized policy, and it spends 68.01 kJ against 77.17 kJ. On the reliability panel the controller breaks 5\% of its tools and completes 95\% of the parts, against 0\% and 100\% for the initialized policy.
 
 \subsection{Transfer Experiment}
 

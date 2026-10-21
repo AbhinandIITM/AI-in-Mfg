@@ -7,6 +7,7 @@
 \usepackage[T1]{fontenc}
 \usepackage{amsmath,amssymb,amsthm}
 \usepackage{graphicx}
+\graphicspath{{../results/plots/}{../results/run_PPO_seed42/plots/}}
 \usepackage{booktabs}
 \usepackage{hyperref}
 \usepackage{xcolor}
@@ -31,7 +32,9 @@
 
 \setbeamercolor{structure}{fg=IITBlue}
 \setbeamercolor{title}{fg=IITBlue}
-\setbeamercolor{frametitle}{fg=IITBlue}
+% The frame title sits on the IIT blue title bar, so its text has to be white.
+% In IIT blue it was invisible on every frame.
+\setbeamercolor{frametitle}{fg=white}
 \setbeamercolor{block title}{bg=IITBlue,fg=white}
 \setbeamercolor{block body}{bg=IITBlue!10,fg=black}
 \setbeamercolor{alerted text}{fg=IITGold}
@@ -431,6 +434,17 @@
     \end{alertblock}
 \end{frame}
 
+\begin{frame}{Ablation Frontier: Removal Rate against Energy}
+    \centering
+    \includegraphics[width=\textwidth,height=0.66\textheight,keepaspectratio]{ablation_pareto_frontier.png}
+
+    \vspace{0.3em}
+    {\footnotesize
+    Seven pinned-weight policies, three seeds each. \alert{The four non-dominated points are joined into
+    the frontier}: $w_2 = 0.4$, $0.5$, $0.8$, $1.0$, and the three dominated points sit off it.
+    Left panel: the energy of a part. Right panel: the energy of a pass, which the reward charges.}
+\end{frame}
+
 \begin{frame}{One Policy Against 21 Policies}
     \small
     \begin{table}
@@ -494,6 +508,17 @@
         \item \alert{No reinforcement learning advantage is demonstrated yet}
         \item The three fast static policies finish outside the roughness safety limit, so the reward takes the $-50$ finishing penalty; Constant-Safe stays inside but needs 3000 s
     \end{itemize}
+\end{frame}
+
+\begin{frame}{Policy Comparison: Six Policies, Same 50 Episodes}
+    \centering
+    \includegraphics[width=\textwidth,height=0.66\textheight,keepaspectratio]{baseline_vs_ppo_comparison.png}
+
+    \vspace{0.3em}
+    {\footnotesize
+    \alert{The four static policies all take a negative reward}: three of them finish outside the roughness
+    safety limit and Constant-Safe stays inside but needs 3000 s per part. The comparison that matters is the
+    receding-horizon controller against the learned policy, the only two with a positive reward.}
 \end{frame}
 
 \begin{frame}{Controller Initialization: Method and Result}
@@ -561,6 +586,18 @@
     The reinforcement learning agent navigates the energy/throughput trade-off inside a fixed constraint set.
     It does not beat a classical controller that re-optimizes every pass with the exact physics.
     \end{alertblock}
+\end{frame}
+
+\begin{frame}{Controller Initialization: The Three Arms}
+    \centering
+    \includegraphics[width=\textwidth,height=0.66\textheight,keepaspectratio]{controller_vs_ppo.png}
+
+    \vspace{0.3em}
+    {\footnotesize
+    Six panels, too detailed to read at slide size: the values are in the table.
+    \alert{The three arms are level on the reward}, and the spread over the 100 scenarios separates them:
+    65.9, 30.0, \alert{3.4}. The controller is ahead on the removal rate and the cycle time, the two
+    learned policies ahead on the reliability.}
 \end{frame}
 
 \begin{frame}{Transfer Experiment: Cross-Material Adaptation}
