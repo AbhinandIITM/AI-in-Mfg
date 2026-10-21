@@ -246,8 +246,10 @@ def robustness_table():
     lines += [
         "",
         "All the arms are measured on the same 100 randomized scenarios at the "
-        "same energy weight. The model error regime runs a harder material than "
-        "the controller was built for.",
+        "same energy weight. In the noisy regime the wear and the remaining "
+        "stock are measured with an instrument, and the noise is tilted "
+        "against the policy, which receives it on both measured quantities "
+        "while the controller receives it on the wear alone.",
     ]
     return "\n".join(lines)
 
@@ -331,7 +333,7 @@ def figures_table():
          "How noisy the wear measurement has to be before the learned policy is "
          "the better operator"),
         ("results/plots/robustness_vs_controller.png",
-         "The three regimes of the comparison against the classical controller, "
+         "The two regimes of the comparison against the classical controller, "
          "across the reward, the throughput, the energy, the cycle time and the "
          "reliability"),
         ("results/plots/batch_vs_ppo.png",
