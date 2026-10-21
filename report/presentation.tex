@@ -153,7 +153,7 @@
                 \item Ablation: 7 weights $\times$ 3 seeds
                 \item 5 classical baselines + receding-horizon
                 \item Robustness: 3 regimes against the controller
-                \item Regime map: the noise crossover against the controller
+                \item Regime map: two sweeps, the noise and the model error
                 \item Batch: one tool, ten parts
                 \item Transfer experiment
                 \item Full reproducibility
@@ -192,7 +192,7 @@
     Transfer experiment & \XMark & \XMark & \CMark \\
     Receding-horizon baseline & \XMark & \XMark & \CMark \\
     Robustness vs a model-based controller & \XMark & \XMark & \CMark \\
-Noise crossover vs that controller & \XMark & \XMark & \CMark \\
+Crossover vs that controller & \XMark & \XMark & \CMark \\
     Monte Carlo (100 scenarios) & \XMark & \XMark & \CMark \\
     Interactive workstation & \XMark & \XMark & \CMark \\
     \bottomrule
@@ -589,16 +589,27 @@ Noise crossover vs that controller & \XMark & \XMark & \CMark \\
     \vspace{0.1em}
     \begin{alertblock}{The claim}
     \scriptsize
-    Inside a perfect digital twin the learned policy and the model-based controller are comparable:
-    the policy is ahead on the physical metrics and behind on the breakage, and the gap the reward does
-    show is partly the artifact of how the reward pays for a rate. The advantage of the learned policy
-    appears where the controller's information advantage disappears, and the regime map on the next
-    frames puts a number on it: the crossover is at \alert{about 2\% of the wear measurement's range}.
-    The sensitivity of the comparison to the reward is published with the result.
+    Inside a perfect digital twin the two methods are comparable: the policy is ahead on the physical
+    metrics and behind on the breakage, and the gap the reward does show is partly the artifact of how
+    the reward pays for a rate. The advantage appears where the controller's information advantage
+    disappears, and the two sweeps of the regime map put a number on it: the learned policy is the better
+    operator whenever the setup's model of the machine is wrong by more than \alert{about 2\%}.
     \end{alertblock}
 \end{frame}
 
-\begin{frame}{The Regime Map: How Noisy the Wear Measurement Has to Be}
+\begin{frame}{The Regime Map: Two Sweeps, One Statement}
+    \centering
+    \includegraphics[width=0.84\textwidth]{regime_map.png}
+
+    \vspace{0.2em}
+    {\footnotesize
+    Mean episode reward over the same 100 randomized scenarios at $w_2 = 0.4$. Left: the measurement
+    noise on the flank wear and the remaining stock, as a percent of their range. Right: the
+    miscalibration of the material model. \alert{The two sweeps are one statement: the learned policy
+    is the better operator whenever the setup's model of the machine is wrong by more than about 2\%.}}
+\end{frame}
+
+\begin{frame}{Regime Map, First Sweep: How Noisy the Wear Measurement Has to Be}
     \scriptsize
     \centering
     \begin{tabular}{@{}rrrrr@{}}
@@ -622,49 +633,84 @@ Noise crossover vs that controller & \XMark & \XMark & \CMark \\
     general policy's reward minus the controller's.}
 
     \vspace{0.3em}
-    \begin{alertblock}{The crossover is at about 2\% of the range of the wear measurement}
-    \small
-    Below it the classical controller is the better operator, above it the learned policy is. A plant
-    that can measure the flank wear to better than 2\% of its range has the better controller; one that
-    cannot has the better policy.
-    \end{alertblock}
-\end{frame}
-
-\begin{frame}{The Regime Map: Where the Crossover Sits}
-    \centering
-    \includegraphics[width=\textwidth,height=0.72\textheight,keepaspectratio]{regime_map.png}
-
-    \vspace{0.1em}
-    {\scriptsize
-    The controller's curve falls away and the policy's is nearly flat: the two cross at about
-    \alert{2\%} of the wear measurement's range, and the gap reaches 50.6 reward points at 10\% noise.}
-\end{frame}
-
-\begin{frame}{The Regime Map: How to Read It}
-    \scriptsize
     \begin{enumerate}
         \item \textbf{The crossover is at about 2\% of the range of the wear measurement.} Below it the
         classical controller is the better operator, above it the learned policy is. That is the
-        actionable form of the whole result.
+        actionable form of the result.
         \item \textbf{The two degrade differently.} The controller falls from 248.9 to 171.5, a 31\% loss,
         because a noisy wear reading makes its plan violate the limits and break tools. The policy falls
-        from 233.6 to 222.0, a 5\% loss, because a perturbed observation perturbs its action slightly.
-        A model-based controller has a cliff, a learned policy has a slope.
-        \item \textbf{Training for the noise does not pay.} The policy trained with the noise is below the
-        general policy at every noise level, including the 5\% it was trained for, where it scores 213.6
-        against 226.8. Its robustness comes from training across a distribution of scenarios.
+        from 233.6 to 222.0, a 5\% loss. A model-based controller has a cliff, a learned policy has a slope.
+        \item \textbf{Training for the noise does not pay.} The noise-trained policy is below the general
+        policy at every noise level, including the 5\% it was trained for, 213.6 against 226.8. Its
+        robustness comes from training across a distribution of scenarios.
     \end{enumerate}
+\end{frame}
 
-    \vspace{0.2em}
-    \begin{alertblock}{The fairness decisions}
+\begin{frame}{Regime Map, Second Sweep: How Miscalibrated the Material Model}
     \scriptsize
-    Both arms of the headline comparison are the general ones, neither is trained for the noise. The
-    noise is tilted against the policy: the controller gets a noisy reading of the flank wear, the
-    measurement it depends on, while the policy gets the noise on the flank wear \emph{and} on the
-    remaining stock. The noise-trained policy is a third, clearly labelled arm and not the headline,
-    because a controller can also be prepared for a noisy instrument by widening its safety margin, and
-    that is a design choice rather than a training one. Of the two degraded regimes the noise test is
-    the fairer one, because the noise is a property of the instrumentation and not of the method.
+    \centering
+    \begin{tabular}{@{}rrrrr@{}}
+    \toprule
+    \makecell{\textbf{Model}\\\textbf{error}} & \makecell{\textbf{Receding-}\\\textbf{horizon}} & \textbf{PPO} & \makecell{\textbf{PPO trained}\\\textbf{for the noise}} & \makecell{\textbf{PPO}\\\textbf{ahead by}} \\
+    \midrule
+    0\%  & \alert{248.9} & 233.6 & 219.6 & $-15.3$ \\
+    5\%  & 201.5 & 232.8 & 219.6 & $+31.2$ \\
+    10\% & 136.0 & 237.8 & 219.6 & $+101.8$ \\
+    20\% & 35.7 & 201.5 & 219.6 & \alert{$+165.8$} \\
+    30\% & 32.5 & 116.7 & 219.6 & $+84.3$ \\
+    40\% & 39.3 & 117.0 & 219.6 & $+77.7$ \\
+    \bottomrule
+    \end{tabular}
+
+    \vspace{0.1em}
+    {\footnotesize
+    Mean episode reward over the same 100 randomized scenarios at $w_2 = 0.4$. The error is the
+    percentage by which the setup under-rates the wear and the roughness, which is the damaging
+    direction. The last column is the general policy's reward minus the controller's.}
+
+    \vspace{0.1em}
+    \begin{enumerate}
+        \item \textbf{The controller's tolerance of a wrong model is about 2\% to 3\%,} the same order as
+        its tolerance of a noisy measurement. A 5\% error costs it 47 points, a 10\% error 113 points,
+        and it collapses to 35.7 at 20\%.
+        \item \textbf{The policy is unaffected up to 20\%.} It scores 201.5 there, 13\% below its
+        no-error score, and at 5\% and 10\% it is marginally better than at zero error (232.8 and 237.8
+        against 233.6, inside the noise). It collapses at 30\% (116.7): the belief has then left the
+        distribution it was trained on, so its context feature is clipped at the edge of the band.
+        \item \textbf{A conservative policy is insensitive to a wrong model.} The policy trained for the
+        noise is flat at 219.6 across the whole range. It pays for that with the reward, and it is
+        below the general policy everywhere.
+        \item \textbf{So the two sweeps are one statement:} the learned policy is the better operator
+        whenever the setup's model of the machine is wrong by more than about 2\%, and the classical
+        controller is better below that.
+    \end{enumerate}
+\end{frame}
+
+\begin{frame}{The Regime Map: The Fairness Decisions and the Policy's Own Limit}
+    \scriptsize
+    \begin{block}{The fairness decisions, the same in both sweeps}
+    \begin{itemize}
+        \item Both arms of the headline comparison are the general ones, neither is trained for the
+        noise or for the model error.
+        \item The same belief goes to both arms, the controller as the model it solves with and the
+        policy as the material in its context, so neither is given information the other lacks.
+        \item The direction of the error is the damaging one: the setup under-rates the wear and the
+        roughness, because a setup that thinks its tool is better than it is will push it harder.
+        \item The noise-trained policy is a third, clearly labelled arm in both tables and not the
+        headline, because a controller can also be prepared for a noisy instrument by widening its
+        safety margin, and that is a design choice rather than a training one.
+        \item In the first sweep the noise is tilted against the policy as well: the controller gets a
+        noisy reading of the flank wear alone, the policy gets the noise on the flank wear and on the
+        remaining stock.
+    \end{itemize}
+    \end{block}
+
+    \vspace{0.1em}
+    \begin{alertblock}{The policy's own limit}
+    The policy is unaffected by a miscalibration up to 20\% and collapses at 30\%, where the belief has
+    left the distribution it was trained on. Its limit, around 20\% to 25\%, is a design parameter
+    rather than a property of the method: widen the randomization band of the training and the
+    tolerance widens with it.
     \end{alertblock}
 \end{frame}
 
@@ -822,13 +868,12 @@ Noise crossover vs that controller & \XMark & \XMark & \CMark \\
         \end{column}
     \end{columns}
 
-    \vspace{0.2em}
+    \vspace{0.1em}
     \begin{alertblock}{What the work claims}
     \scriptsize
-    Inside a perfect digital twin the learned policy and the model-based controller are comparable:
-    the policy is ahead on the physical metrics and behind on the breakage, and the gap the reward does
-    show is partly the reward's artifact. The regime map puts a number on the advantage: the crossover
-    is at \alert{about 2\% of the wear measurement's range}.
+    The policy and the model-based controller are comparable inside a perfect digital twin, and the gap
+    the reward shows is partly its artifact. The policy is the better operator whenever the setup's
+    model of the machine is wrong by more than about 2\%.
     \end{alertblock}
 \end{frame}
 
@@ -963,7 +1008,7 @@ Noise crossover vs that controller & \XMark & \XMark & \CMark \\
             \begin{itemize}
                 \item A receding-horizon controller that prices the whole reward is a fair and strong baseline (184.3 $\to$ 248.9)
                 \item Robustness: comparable inside a perfect twin, and the advantage appears where the controller's information runs out
-                \item The regime map puts a number on it: the crossover is at \alert{about 2\% of the wear measurement's range}
+                \item The regime map puts a number on it: the policy is the better operator when the setup's model of the machine is wrong by more than \alert{about 2\%}
                 \item Measuring the reward found the artifact a fair-looking comparison would have hidden: the credit grows with the number of passes
                 \item Batch context: 24\% fewer tool changes, 9.5\% less energy
             \end{itemize}
@@ -979,13 +1024,14 @@ Noise crossover vs that controller & \XMark & \XMark & \CMark \\
         \begin{column}{0.48\textwidth}
             \begin{alertblock}{Limitations}
             \begin{itemize}
-                \item Inside a perfect twin the two methods are comparable: 248.9 against 233.6, the gap is inside the noise and partly the reward's artifact
+                \item Inside a perfect twin the two are comparable: 248.9 against 233.6, the gap inside the noise
                 \item The learned policy is the better throughput operator, at twice the tool breakage
                 \item The crossover at 2\% is a property of this controller, this reward and this noise model
+                \item The policy has a limit of its own: at 20\% to 25\% of model error the belief leaves its training distribution
                 \item Initializing from the controller is now \alert{harmful}: 119.8 against 233.6
-                \item The reward pays a rate per pass, so the credit grows with the pass count: the bias is in the reward
+                \item The reward pays a rate per pass, so the credit grows with the pass count
                 \item The wear tool life varies by only a factor of a few across the envelope
-                \item Ablation: 150k steps per weight, so the frontier is a lower bound; sim-only, no real machine calibration yet
+                \item Ablation: 150k steps per weight, so the frontier is a lower bound; sim-only, no real calibration yet
             \end{itemize}
             \end{alertblock}
         \end{column}
@@ -996,6 +1042,7 @@ Noise crossover vs that controller & \XMark & \XMark & \CMark \\
                 \item Publish the sensitivity of any comparison to the reward form, as it is here
                 \item Compare against a restricted controller (is the gap an information gap?)
                 \item Measure the crossover under a controller prepared for a noisy instrument
+                \item Widen the randomization band of the training: the policy's own limit is set by that band
                 \item Sim-to-real calibration, true multi-objective RL, online $w_2$ adaptation, batch-level planning
             \end{itemize}
             \end{exampleblock}
@@ -1010,7 +1057,7 @@ Noise crossover vs that controller & \XMark & \XMark & \CMark \\
 
 \begin{frame}{Conclusion}
     \scriptsize
-    \setlength{\itemsep}{0pt}
+    \setlength{\itemsep}{-1pt}
     \setlength{\topsep}{0pt}
     \setlength{\parsep}{0pt}
     \begin{itemize}
@@ -1018,8 +1065,8 @@ Noise crossover vs that controller & \XMark & \XMark & \CMark \\
         \item \textbf{Two Gymnasium Environments} (the part, 11-D, the batch, 13-D) and \textbf{One Production Policy} (1M steps): the energy weight is a runtime query
         \item \textbf{Rigorous Evaluation}: Monte Carlo (100 scenarios, 95\% CIs), ablation frontier, weight sweep against the 21 policies
         \item \textbf{Baselines}: five classical policies on the same 50 episodes; the receding-horizon controller is the strongest at $+253.5$
-        \item \textbf{Robustness}: inside a perfect twin the two methods are comparable (248.9 against 233.6, the gap inside the noise and partly the reward's artifact); the controller collapses to 63.5 and 181.3, the policy holds at 226.9
-        \item \textbf{Regime map}: the crossover is at \alert{about 2\% of the wear measurement's range}, the actionable form of the result
+        \item \textbf{Robustness}: comparable inside a perfect twin (248.9 against 233.6, the gap inside the noise); the controller collapses to 63.5 and 181.3, the policy holds at 226.9
+        \item \textbf{Regime map}: two sweeps, one statement: the policy is the better operator whenever the setup's model of the machine is wrong by more than \alert{about 2\%}. Its own limit, 20\% to 25\% of model error, is set by its training band
         \item \textbf{Reward sensitivity}: the credit grows with the number of passes (27\% more for the controller)
         \item \textbf{Batch}: 24\% fewer tool changes and 9.5\% less energy; 207.5 s against 113.1 s for the batch
         \item \textbf{Controller Initialization}: the result reversed, the initialization is now harmful (119.8 against 233.6)
@@ -1027,10 +1074,10 @@ Noise crossover vs that controller & \XMark & \XMark & \CMark \\
         \item \textbf{Interactive Workstation} and \textbf{full reproducibility}: every result table from the committed artifacts by one script
     \end{itemize}
 
-    \vspace{-1ex}
+    \vspace{-2ex}
     \begin{alertblock}{Key Scientific Finding}
     \scriptsize
-    The speed-dependent specific cutting energy creates a \textbf{genuine energy/throughput trade-off}, and DRL learns to navigate it pass-by-pass: across the frontier the removal rate falls \alert{41\%} while the energy of the part falls \alert{17\%}. Against a model-based controller the claim is a \alert{boundary}, not an advantage: inside a perfect digital twin the two are comparable, and the learned policy is the better operator once the wear measurement is noisier than \alert{about 2\% of its range}.
+    The speed-dependent specific cutting energy creates a \textbf{genuine energy/throughput trade-off}, and DRL learns to navigate it pass-by-pass: across the frontier the removal rate falls \alert{41\%} while the energy of the part falls \alert{17\%}. Against a model-based controller the claim is a \alert{boundary}, not an advantage: inside a perfect digital twin the two are comparable, and the learned policy is the better operator whenever the setup's model of the machine is wrong by more than \alert{about 2\%}.
     \end{alertblock}
 \end{frame}
 % ========================================================================

@@ -226,8 +226,11 @@ comparison is therefore biased against the learned policy, and the defensible
 reading of it is that the two methods are comparable, with the policy ahead on
 the physical metrics and behind on the tool breakage. The regime map of
 `results/evaluation/regime_map.csv` puts the ideal case at the left end of a
-boundary: the crossover is at about 2% of the range of the wear measurement,
-and below it the classical controller is the better operator.
+boundary: the crossover is at about 2%, whether the wear measurement is
+noisier than 2% of its range or the material model is miscalibrated by more
+than 2%, and below it the classical controller is the better operator. The
+policy has a limit of its own at about 20% to 25%, where the belief leaves
+the distribution it was trained on.
 
 Three things were checked:
 
@@ -408,7 +411,7 @@ The classical rows are in `results/evaluation/baselines.csv`.
 | The controller initialization is measured against the controller it starts from | Met | `results/evaluation/controller_init_results.csv`; three arms on the same 100 randomized scenarios, and the initialized policy is worse than both the controller and the from-scratch policy |
 | The classical controller is a baseline for the same objective | Met | `MillingDT/baselines/receding_horizon.py`; it maximizes the expected episode reward the environment pays, over a full-part lookahead, with the breakage risk priced and a separate roughing and finishing feed |
 | The comparison against the controller is measured where it decides something | Met | `results/evaluation/robustness_results.csv`; three regimes, and the learned policy wins the two in which the controller's information advantage disappears |
-| The boundary between the two methods is measured | Met | `results/evaluation/regime_map.csv`; the crossover is at about 2% of the range of the wear measurement, below it the controller is the better operator and above it the learned policy is |
+| The boundary between the two methods is measured | Met | `results/evaluation/regime_map.csv`; two sweeps, a noisy wear measurement and a miscalibrated material model, and the crossover is at about 2% on both of them, below it the controller is the better operator and above it the learned policy is. The policy has a limit of its own at about 20% to 25%, where the belief leaves the distribution it was trained on |
 | The sensitivity of the comparison against the controller to the reward is measured | Met | `results/evaluation/reward_sensitivity.csv`; the reward credits the removal rate of every pass, and about nine of the fifteen points that separate the two arms in the ideal case are that artifact |
 | The batch objective is measured against the per-part objective | Met | `results/evaluation/batch_results.csv`; three arms over 30 batches of ten parts, with the tool change costed at 500 |
 
@@ -735,7 +738,7 @@ that the documentation quotes.
 | 8. Robustness experiment | `experiments/robustness_experiment.py` | `results/evaluation/robustness_results.csv` | Three regimes. Inside a perfect digital twin the controller scores 248.9 against the policy's 233.6, a gap inside the noise. With a wrong model of the material the controller falls to 63.5 and the policy holds at 226.9. With a noisy wear measurement the controller falls to 181.3 and the policy trained with the same noise keeps 213.6. Section 12. |
 | 9. Batch experiment | `MillingDT/env/milling_batch_env.py`, `experiments/batch_experiment.py` | `results/evaluation/batch_results.csv` | A batch of ten parts cut with one tool, over 30 batches. The batch context is worth 24% fewer tool changes and 9.5% less energy at the same completion, and the batch-aware policy cuts the batch in 113.1 s against the per-part controller's 207.5 s. Section 13. |
 | 10. Reward sensitivity | `experiments/reward_sensitivity.py` | `results/evaluation/reward_sensitivity.csv` | How much of the comparison against the controller the reward decides. The reward credits the removal rate of every pass, so the controller, which takes 5.85 passes against the policy's 4.00, collects 27% more objective credit for the same material, and about nine of the fifteen points between the two arms in the ideal case are that artifact. Part 1, section 5, and section 5.9 of Part 3. |
-| 11. Regime map | `experiments/regime_map.py` | `results/evaluation/regime_map.csv` | Where the boundary between the two methods is. The crossover is at about 2% of the range of the wear measurement: below it the classical controller is the better operator, above it the learned policy is. The controller falls 31% from 248.9 to 171.5 as the noise grows, the policy 5% from 233.6 to 222.0, and training for the noise does not pay. Section 12. |
+| 11. Regime map | `experiments/regime_map.py` | `results/evaluation/regime_map.csv` | Where the boundary between the two methods is, swept two ways: a noisy wear measurement and a miscalibrated material model. The crossover is at about 2% on both of them: below it the classical controller is the better operator, above it the learned policy is. The controller falls 31% from 248.9 to 171.5 as the noise grows, the policy 5% from 233.6 to 222.0, and training for the noise does not pay. The policy holds to a 20% model error and has a limit of its own at about 20% to 25%. Section 12. |
 
 Four results contradict what the plan expected, and they are reported as they
 came out.
@@ -870,14 +873,17 @@ controller falls to 63.5 and the policy holds at 226.9. With a noisy wear
 measurement the controller falls to 181.3 and the policy trained with the same
 noise keeps 213.6.
 
-#### The regime map: how noisy the wear measurement has to be
+#### The regime map: how wrong the setup's model of the machine has to be
 
 The robustness experiment compares two situations. The regime map measures the
-boundary between them, so the answer is a number a plant can act on.
-`experiments/regime_map.py` adds a Gaussian error of sigma to the measured
-flank wear and the measured remaining stock, sigma expressed as a fraction of
-their range. The controller solves the next pass from that reading; the policy
-reads the same noise on its observation.
+boundary between them, so the answer is a number a plant can act on. It has
+two sweeps, and together they are one statement.
+
+The first sweep degrades the measurement. `experiments/regime_map.py` adds a
+Gaussian error of sigma to the measured flank wear and the measured remaining
+stock, sigma expressed as a fraction of their range. The controller solves the
+next pass from that reading; the policy reads the same noise on its
+observation.
 
 Nothing is tilted towards the policy, and two points are deliberate. Both arms
 are the general ones, neither is trained for the noise. The policy that was
@@ -915,8 +921,54 @@ Three things to state:
    comes from being trained across a distribution of scenarios, and training
    against the noise only makes the policy more conservative.
 
+The second sweep degrades the model. The machine runs the material of the
+scenario, and the setup's belief about that material is off by a systematic
+fraction, optimistically: it under-rates the wear and the roughness by that
+fraction, which is the damaging direction, because a setup that thinks its
+tool is better than it is will push it harder. The same belief goes to both
+arms, the controller as the model it solves with and the policy as the
+material in its context.
+
+The policy trained for the noise is reported in the third column, and it is
+not the headline: it was trained for a noisy instrument and not for a wrong
+model, and it is not the general-purpose operator the comparison is about.
+
+| Model error | Receding-horizon | PPO | PPO trained for the noise | PPO ahead by |
+| ---: | ---: | ---: | ---: | ---: |
+| 0% | 248.9 | 233.6 | 219.6 | -15.3 |
+| 5% | 201.5 | 232.8 | 219.6 | +31.2 |
+| 10% | 136.0 | 237.8 | 219.6 | +101.8 |
+| 20% | 35.7 | 201.5 | 219.6 | +165.8 |
+| 30% | 32.5 | 116.7 | 219.6 | +84.3 |
+| 40% | 39.3 | 117.0 | 219.6 | +77.7 |
+
+Four things to state:
+
+1. The controller's tolerance of a wrong model is about 2% to 3%, the same
+   order as its tolerance of a noisy measurement. A 5% miscalibration costs it
+   47 points (248.9 to 201.5) and a 10% error costs it 113 points (to 136.0).
+   It collapses to 35.7 at 20%.
+2. The policy is unaffected up to 20%: 201.5 at a 20% error, which is 13%
+   below its own no-error score, and it is marginally better than at zero
+   error at 5% and 10% (232.8 and 237.8 against 233.6, a difference inside the
+   noise). It collapses at 30% (116.7), and the reason is that the belief has
+   then left the distribution the policy was trained on, so its context
+   feature is clipped at the edge of the band.
+3. A conservative policy is insensitive to a wrong model. The policy trained
+   for the noise is flat at 219.6 across the whole range, because it keeps the
+   tool away from its limit whatever it believes about the material. It pays
+   for that with the reward, and it is below the general policy everywhere.
+4. So the two sweeps are one statement. The learned policy is the better
+   operator whenever the setup's model of the machine is wrong by more than
+   about 2%, whether that is a wear measurement noisier than 2% of its range or
+   a material model miscalibrated by more than 2%. Below that the classical
+   controller is better. The policy's own limit, around 20% to 25%, is where
+   the belief leaves the distribution it was trained on, and that limit is a
+   design parameter: widen the randomization band of the training and the
+   tolerance widens with it.
+
 The artifact is `results/evaluation/regime_map.csv` and the figure is
-`results/plots/regime_map.png`.
+`results/plots/regime_map.png`, one panel per sweep.
 
 #### The claim
 
@@ -924,16 +976,20 @@ The claim is not that reinforcement learning beats a model-based controller on
 the objective inside a perfect digital twin. The two methods are comparable
 there, and the comparison is biased against the learned policy, because the
 reward pays the controller for the passes it takes. The claim is a boundary
-with a number on it: the learned policy is the better operator once the wear
-measurement is noisier than about 2% of its range, and the classical
-controller is the better operator below it. The learned policy is also the
-better throughput operator wherever the two compete. Of the two tests, the
-noise is the fairer one, because the noise is a property of the
-instrumentation and not of the method: the model error regime asks the
-controller to be wrong about a material, while the noise asks it to work with
-an imperfect instrument. The measurement of how much of the nominal gap the
-reward decides is section 5.9 of
-[Part 3, Literature Comparison](#part-3-literature-comparison).
+with a number on it: the learned policy is the better operator once the
+setup's model of the machine is wrong by more than about 2%, whether that is a
+wear measurement noisier than 2% of its range or a material model
+miscalibrated by more than 2%, and the classical controller is the better
+operator below it. The policy has a limit of its own at about 20% to 25%,
+where the belief leaves the distribution it was trained on, and that limit is
+set by the randomization band of the training. The learned policy is also the
+better throughput operator wherever the two compete. Of the three tests, the
+noise sweep and the model error sweep are the fairer ones, because they
+degrade one shared input instead of giving one method a different model of
+the machine, while the model error regime of the robustness experiment asks
+the controller to be wrong about a material and leaves the policy right. The
+measurement of how much of the nominal gap the reward decides is section 5.9
+of [Part 3, Literature Comparison](#part-3-literature-comparison).
 
 ---
 
@@ -1113,12 +1169,17 @@ can run out of.
    is biased against the learned policy by about nine of the fifteen points
    that separate the two arms.
 
-12. A regime map of the comparison against the controller. The noise on the
-    wear measurement is swept from 0% to 10% of its range, with the
-    controller, the general policy and the noise-trained policy measured at
-    every level. The crossover is measured at about 2%: below it the classical
-    controller is the better operator, above it the learned policy is. The
-    artifact is `results/evaluation/regime_map.csv`.
+12. A regime map of the comparison against the controller. Two sweeps, and
+    together they are one statement. The noise on the wear measurement is
+    swept from 0% to 10% of its range, and the error of the material model is
+    swept from 0% to 40%, with the controller, the general policy and the
+    noise-trained policy measured at every level. The crossover is measured
+    at about 2% on both of them: below it the classical controller is the
+    better operator, above it the learned policy is. The policy has a limit
+    of its own at about 20% to 25% of model error, where the belief leaves
+    the distribution it was trained on, and that limit is set by the
+    randomization band of the training. The artifact is
+    `results/evaluation/regime_map.csv`.
 
 **Does not add**
 
@@ -1438,16 +1499,19 @@ Four readings:
    the same noise keeps 213.6 and cuts the part in 12.0 s against the
    controller's 31.1 s.
 
-#### 5.7.1 How noisy the wear measurement has to be
+#### 5.7.1 How wrong the setup's model of the machine has to be
 
 Artifact: `results/evaluation/regime_map.csv`
-Figure: `results/plots/regime_map.png`
+Figure: `results/plots/regime_map.png`, one panel per sweep
 
 The robustness experiment compares two situations. The regime map measures the
-boundary between them. The flank wear and the remaining stock are measured
-with an instrument, and the reading carries a Gaussian error of sigma, a
-fraction of their range. The controller solves the next pass from that
-reading; the policy reads the same noise on its observation.
+boundary between them. It has two sweeps, and together they are one
+statement.
+
+The first sweep degrades the measurement. The flank wear and the remaining
+stock are measured with an instrument, and the reading carries a Gaussian
+error of sigma, a fraction of their range. The controller solves the next pass
+from that reading; the policy reads the same noise on its observation.
 
 Nothing is tilted towards the policy, and two points are deliberate. Both arms
 are the general ones, neither is trained for the noise. The policy trained
@@ -1469,6 +1533,8 @@ remaining stock.
 | 7.5% | 179.1 | 223.2 | 207.9 | +44.1 |
 | 10.0% | 171.5 | 222.0 | 206.5 | +50.6 |
 
+Three things to state:
+
 1. The crossover is at about 2% of the range of the wear measurement. Below it
    the classical controller is the better operator, above it the learned policy
    is. That is the actionable form of the whole result.
@@ -1483,19 +1549,70 @@ remaining stock.
    comes from being trained across a distribution of scenarios, and training
    against the noise only makes the policy more conservative.
 
+The second sweep degrades the model. The machine runs the material of the
+scenario, and the setup's belief about that material is off by a systematic
+fraction, optimistically: it under-rates the wear and the roughness by that
+fraction, which is the damaging direction, because a setup that thinks its
+tool is better than it is will push it harder. The same belief goes to both
+arms, the controller as the model it solves with and the policy as the
+material in its context.
+
+The policy trained for the noise is reported in the third column, and it is
+not the headline: it was trained for a noisy instrument and not for a wrong
+model, and it is not the general-purpose operator the comparison is about.
+
+| Model error | Receding-horizon | PPO | PPO trained for the noise | PPO ahead by |
+| ---: | ---: | ---: | ---: | ---: |
+| 0% | 248.9 | 233.6 | 219.6 | -15.3 |
+| 5% | 201.5 | 232.8 | 219.6 | +31.2 |
+| 10% | 136.0 | 237.8 | 219.6 | +101.8 |
+| 20% | 35.7 | 201.5 | 219.6 | +165.8 |
+| 30% | 32.5 | 116.7 | 219.6 | +84.3 |
+| 40% | 39.3 | 117.0 | 219.6 | +77.7 |
+
+Four things to state:
+
+1. The controller's tolerance of a wrong model is about 2% to 3%, the same
+   order as its tolerance of a noisy measurement. A 5% miscalibration costs it
+   47 points (248.9 to 201.5) and a 10% error costs it 113 points (to 136.0).
+   It collapses to 35.7 at 20%.
+2. The policy is unaffected up to 20%: 201.5 at a 20% error, which is 13%
+   below its own no-error score, and it is marginally better than at zero
+   error at 5% and 10% (232.8 and 237.8 against 233.6, a difference inside the
+   noise). It collapses at 30% (116.7), and the reason is that the belief has
+   then left the distribution the policy was trained on, so its context
+   feature is clipped at the edge of the band.
+3. A conservative policy is insensitive to a wrong model. The policy trained
+   for the noise is flat at 219.6 across the whole range, because it keeps the
+   tool away from its limit whatever it believes about the material. It pays
+   for that with the reward, and it is below the general policy everywhere.
+4. So the two sweeps are one statement. The learned policy is the better
+   operator whenever the setup's model of the machine is wrong by more than
+   about 2%, whether that is a wear measurement noisier than 2% of its range or
+   a material model miscalibrated by more than 2%. Below that the classical
+   controller is better. The policy's own limit, around 20% to 25%, is where
+   the belief leaves the distribution it was trained on, and that limit is a
+   design parameter: widen the randomization band of the training and the
+   tolerance widens with it.
+
 The claim is not that reinforcement learning beats a model-based controller on
 the objective inside a perfect digital twin, because the controller computes
 the optimum of the same objective with strictly more information, and because
 the reward pays the controller for the passes it takes. In the ideal case the
 two methods are comparable, with the policy ahead on the physical metrics and
 behind on the tool breakage. The claim is a boundary with a number on it: the
-learned policy is the better operator once the wear measurement is noisier
-than about 2% of its range, and the classical controller is the better
-operator below it. The learned policy is also the better throughput operator
-wherever the two compete. Of the two tests, the noise is the fairer one,
-because the noise is a property of the instrumentation and not of the method:
-the model error regime asks the controller to be wrong about a material, while
-the noise asks it to work with an imperfect instrument.
+learned policy is the better operator once the setup's model of the machine is
+wrong by more than about 2%, whether that is a wear measurement noisier than
+2% of its range or a material model miscalibrated by more than 2%, and the
+classical controller is the better operator below it. The policy has a limit
+of its own at about 20% to 25%, where the belief leaves the distribution it
+was trained on, and that limit is set by the randomization band of the
+training. The learned policy is also the better throughput operator wherever
+the two compete. Of the three tests, the noise sweep and the model error
+sweep are the fairer ones, because they degrade one shared input instead of
+giving one method a different model of the machine, while the model error
+regime of section 5.7 asks the controller to be wrong about a material and
+leaves the policy right.
 
 #### 5.8 The batch against the part
 
@@ -1542,8 +1659,11 @@ comparison is therefore biased against the learned policy, and the defensible
 reading of it is that the two methods are comparable, with the policy ahead on
 the physical metrics and behind on the tool breakage. The regime map of
 `results/evaluation/regime_map.csv` puts the ideal case at the left end of a
-boundary: the crossover is at about 2% of the range of the wear measurement,
-and below it the classical controller is the better operator.
+boundary: the crossover is at about 2%, whether the wear measurement is
+noisier than 2% of its range or the material model is miscalibrated by more
+than 2%, and below it the classical controller is the better operator. The
+policy has a limit of its own at about 20% to 25%, where the belief leaves
+the distribution it was trained on.
 
 Three things were checked:
 
@@ -1604,7 +1724,7 @@ python -m experiments.controller_experiment 1000000 2000
 # Robustness against the classical controller, in three regimes
 python -m experiments.robustness_experiment
 
-# The regime map: how noisy the wear measurement has to be
+# The regime map: how wrong the setup's model of the machine has to be
 python -m experiments.regime_map
 
 # The batch-aware policy
@@ -1648,12 +1768,20 @@ python -m experiments.summarize_results
 5. Measure the wear measurement noise of a real machine, and cost the
    controller's alternative against the same boundary. The regime map answers
    the question for a synthetic instrument error, and the crossover sits at
-   about 2% of the range of the wear measurement. A real machine has to be
-   measured the same way, and the alternative to a learned policy, which is a
-   wider safety margin on the controller, has to be priced against the same
-   boundary rather than assumed. The regime map also has to be extended to the
-   other imperfect measurements, the roughness reading in particular, since
-   the reward constrains the finishing pass on the roughness.
+   about 2% of the range of the wear measurement, or at a material model
+   miscalibrated by more than 2%. A real machine has to be measured the same
+   way, and the alternative to a learned policy, which is a wider safety
+   margin on the controller, has to be priced against the same boundary
+   rather than assumed. The regime map also has to be extended to the other
+   imperfect measurements, the roughness reading in particular, since the
+   reward constrains the finishing pass on the roughness.
+
+   The tolerance of the policy is a design parameter rather than a property
+   of the method, and the randomization band of the training is the practical
+   lever a plant has over it. The policy's own limit is at about 20% to 25%
+   of model error, where the belief leaves the distribution it was trained
+   on; widen the band and the tolerance widens with it. How wide the band
+   should be for a given machine is part of the same question.
 
 ---
 

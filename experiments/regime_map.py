@@ -56,7 +56,6 @@ from experiments.robustness_experiment import (
 )
 from MillingDT.config import (
     EVALUATION_DIR,
-    PLOTS_DIR,
     PRIMARY_RUN,
     run_models,
 )
@@ -206,7 +205,6 @@ def plot_regime_map(summary):
 
     set_style()
     fig, axes = plt.subplots(1, 2, figsize=(15, 6))
-
     for ax, sweep, column, title, xlabel in (
             (axes[0], "measurement noise", 'noise',
              "The wear measurement is noisy by",
@@ -244,9 +242,9 @@ def plot_regime_map(summary):
                  fontsize=14, fontweight="bold", y=1.03)
     plt.tight_layout()
 
-    from MillingDT.config import PLOTS_DIR
-    PLOTS_DIR.mkdir(parents=True, exist_ok=True)
-    out = PLOTS_DIR / "regime_map.png"
+    from MillingDT.config import PLOTS_DIR as plots_dir
+    plots_dir.mkdir(parents=True, exist_ok=True)
+    out = plots_dir / "regime_map.png"
     plt.savefig(out, dpi=300, bbox_inches="tight")
     plt.close()
     print(f"\nRegime map saved to {out}")
