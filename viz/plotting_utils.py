@@ -24,6 +24,86 @@ def set_style():
         'figure.dpi': 300
     })
 
+
+# The colours of the arms, shared by every figure that compares them.
+ARM_COLORS = {
+    "Receding-horizon controller": "#64748b",
+    "Receding-horizon, per part": "#64748b",
+    "PPO": "#1f77b4",
+    "PPO, per part": "#1f77b4",
+    "PPO from scratch": "#1f77b4",
+    "PPO from controller": "#ea580c",
+    "PPO trained for the noise": "#0d9488",
+    "PPO, batch aware": "#0d9488",
+    "PPO, batch aware ": "#0d9488",
+}
+
+
+def grouped_bar_panel(ax, categories, series, title, ylabel, fmt="{:.1f}",
+                      label_size=10, value_size=10, ylim=None, legend=False,
+                      category_colors=None):
+    """One panel of grouped bars, one group per category.
+
+    Every series is a dict with a name, the values, the colour and an
+    optional error to draw as a whisker. The value is written above the bar,
+    and above the whisker when there is one, so the two never overprint.
+
+    With one series and a category_colors list, every bar takes the colour
+    of its own category, which is what a comparison of arms needs.
+    """
+    n_series = len(series)
+    group_width = 0.78
+    bar_width = group_width / max(n_series, 1)
+    positions = np.arange(len(categories))
+
+    for index, item in enumerate(series):
+        values = np.asarray(item['values'], dtype=float)
+        errors = item.get('error')
+        offset = positions - group_width / 2 + bar_width * (index + 0.5)
+        if category_colors is not None:
+            colors = [category_colors[i % len(category_colors)]
+                      for i in range(len(values))]
+        else:
+            colors = item.get('color', '#1f77b4')
+        bars = ax.bar(offset, values, width=bar_width * 0.92,
+                      color=colors, label=item.get('name'),
+                      zorder=3, edgecolor="white")
+        if errors is not None:
+            errors = np.asarray(errors, dtype=float)
+            ax.errorbar(offset, values, yerr=errors, fmt="none", ecolor="#334155",
+                        elinewidth=1.4, capsize=3, zorder=4)
+            tops = values + errors
+        else:
+            tops = values
+        # The label carries the value, and it sits above the whisker when
+        # there is one, so the two never overprint.
+        for bar, value, top in zip(bars, values, tops):
+            ax.annotate(fmt.format(value), (bar.get_x() + bar.get_width() / 2, top),
+                        textcoords="offset points", xytext=(0, 4), ha="center",
+                        fontsize=value_size, color="#334155", fontweight="bold")
+
+    ax.set_xticks(positions)
+    ax.set_xticklabels(categories, fontsize=label_size)
+    ax.set_title(title, fontweight="bold")
+    ax.set_ylabel(ylabel)
+    ax.grid(axis="y", linestyle="--", alpha=0.45, zorder=0)
+    ax.set_axisbelow(True)
+    if ylim is not None:
+        ax.set_ylim(*ylim)
+    if legend:
+        ax.legend(loc="best", framealpha=0.92)
+
+
+def save_figure(fig, path, title=None, subtitle=None):
+    """Save a figure with the project's title block and clean up."""
+    if title:
+        heading = title if not subtitle else f"{title}\n{subtitle}"
+        fig.suptitle(heading, fontsize=15, fontweight="bold", y=1.02)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    plt.savefig(path, dpi=300, bbox_inches="tight")
+    plt.close()
+    print(f"Saved {path}")
+
 def plot_kde_distribution(data, title, xlabel, ylabel="Density", color="blue", limit=None, limit_label=None, safety_limit=None, safety_limit_label=None, filename=None):
     """
     Plot KDE distribution with mean, median, and constraint limit overlays.

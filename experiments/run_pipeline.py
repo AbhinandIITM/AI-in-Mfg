@@ -111,6 +111,9 @@ def main():
     run_cmd("python -m viz.plot_eval")
     run_cmd("python -m viz.plot_baselines_comparison")
     run_cmd("python -m viz.plot_controller_comparison")
+    run_cmd("python -m viz.plot_robustness")
+    run_cmd("python -m viz.plot_batch_comparison")
+    run_cmd("python -m viz.plot_reward_sensitivity")
 
     # 11. Rebuild the result tables quoted in the documentation
     run_cmd("python -m experiments.summarize_results")

@@ -217,11 +217,11 @@ def main():
     # believes. The controller solves with the nominal coefficients, the
     # policy is told the harder material.
     records.append(summarize(
-        "Receding-horizon controller", "model error, controller believes nominal",
+        "Receding-horizon controller", "model error",
         evaluate_controller(scenarios, belief=NOMINAL_MATERIAL,
                             material=HARDER_MATERIAL)))
     records.append(summarize(
-        "PPO", "model error, policy told the material",
+        "PPO, told the material", "model error",
         evaluate_policy(model, vec_norm_path, scenarios,
                         material=HARDER_MATERIAL)))
 
@@ -229,7 +229,7 @@ def main():
     # wrong about the material, and the question is which one degrades
     # gracefully.
     records.append(summarize(
-        "PPO", "model error, policy believes nominal",
+        "PPO", "model error",
         evaluate_policy(model, vec_norm_path, scenarios,
                         material=HARDER_MATERIAL, belief=NOMINAL_MATERIAL)))
 
@@ -242,6 +242,9 @@ def main():
             "Receding-horizon controller", "noisy wear measurement",
             evaluate_controller(scenarios, obs_noise=NOISE,
                                 noise_rng=np.random.default_rng(7))))
+        records.append(summarize(
+            "PPO", "noisy wear measurement",
+            evaluate_policy(model, vec_norm_path, scenarios, obs_noise=NOISE)))
         records.append(summarize(
             "PPO trained with the noise", "noisy wear measurement",
             evaluate_policy(noisy_model, noisy_dir / "vecnormalize.pkl", scenarios,

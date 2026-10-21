@@ -330,6 +330,16 @@ def figures_table():
         ("results/plots/regime_map.png",
          "How noisy the wear measurement has to be before the learned policy is "
          "the better operator"),
+        ("results/plots/robustness_vs_controller.png",
+         "The three regimes of the comparison against the classical controller, "
+         "across the reward, the throughput, the energy, the cycle time and the "
+         "reliability"),
+        ("results/plots/batch_vs_ppo.png",
+         "The batch against the part: the batch reward, the tool changes, the "
+         "batch time and the batch energy of the three arms"),
+        ("results/plots/reward_sensitivity.png",
+         "How much of the comparison is decided by the reward: the reward of both "
+         "arms as the objective scale is swept, under the two accountings"),
         ("results/run_PPO_seed42/plots/monte_carlo_failure_landscape.png",
          "The operating envelope of the production policy: flank wear against "
          "roughness over the 100 scenarios"),
