@@ -274,32 +274,6 @@ def test_context_carries_the_material():
     harder.close()
 
 
-def test_the_context_follows_the_belief_not_the_truth():
-    """A setup that believes in the wrong material must see the belief.
-
-    The physics always run on the truth. Only the context the policy reads
-    follows the belief, which is what the model error experiment needs: a
-    machine that cuts a harder material than the setup believes it does.
-    """
-    nominal_c_wear = ALL_CONSTANTS['tool_wear']['C_wear']
-    nominal_k1 = ALL_CONSTANTS['surface_roughness']['k1']
-
-    # The machine cuts a harder material than the setup believes.
-    env_inst = env.MillingDTEnv(C_wear=nominal_c_wear * 1.4, k1=nominal_k1 * 1.2,
-                                 belief={'C_wear': nominal_c_wear,
-                                         'k1': nominal_k1})
-    obs, _ = env_inst.reset(seed=5)
-
-    # The context reports the belief, which is the nominal material.
-    assert obs[9] == pytest.approx(0.5)
-    assert obs[10] == pytest.approx(0.5)
-
-    # The physics still run on the truth.
-    assert env_inst.tool_wear_cfg['C_wear'] == pytest.approx(nominal_c_wear * 1.4)
-    assert env_inst.roughness_cfg['k1'] == pytest.approx(nominal_k1 * 1.2)
-    env_inst.close()
-
-
 def test_the_observation_noise_is_on_the_measured_state_only():
     """A noisy measurement moves the wear and the stock, and nothing else.
 

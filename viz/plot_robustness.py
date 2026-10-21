@@ -1,12 +1,12 @@
 """
 viz/plot_robustness.py
 
-The three regimes of the comparison against the classical controller, in the
+The two regimes of the comparison against the classical controller, in the
 same visual language as the controller comparison figure.
 
-The regimes are the nominal machine, a machine whose material the controller
-has no model for, and a machine whose wear measurement is noisy. Every arm is
-measured on the same 100 randomized scenarios at the same energy weight.
+The regimes are the nominal machine and a machine whose wear measurement is
+noisy. Every arm is measured on the same 100 randomized scenarios at the same
+energy weight.
 
 Output:
     results/plots/robustness_vs_controller.png
@@ -32,7 +32,6 @@ from viz.plotting_utils import (
 # The regimes, in the order they are told, with the label of the axis.
 REGIMES = [
     ("nominal", "Nominal\nmachine"),
-    ("model error", "Wrong model\nof the material"),
     ("noisy wear measurement", "Noisy wear\nmeasurement"),
 ]
 
@@ -153,7 +152,7 @@ def main():
     save_figure(
         fig, PLOTS_DIR / "robustness_vs_controller.png",
         title="Where the learned policy overtakes the classical controller",
-        subtitle=("Three regimes, the same 100 randomized scenarios, the same "
+        subtitle=("Two regimes, the same 100 randomized scenarios, the same "
                   "energy weight w2 = 0.4"))
 
 

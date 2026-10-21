@@ -154,11 +154,6 @@ class MillingDTEnv(gym.Env):
         self.obs_noise = float(kwargs.get('obs_noise', 0.0))
         self.obs_noise_rng = np.random.default_rng(kwargs.get('obs_noise_seed', 0))
 
-        # What the setup believes the material is, when that differs from
-        # what it is. The physics always run on the truth; only the context
-        # the policy reads follows the belief.
-        self.belief = dict(kwargs.get('belief', {}) or {})
-
         # State: [VB_norm, kappa_norm, n_norm, f_norm, ap_norm, MRR_norm,
         # Ra_norm, is_broken] followed by the conditioning context:
         # [w2, C_wear, k1].
@@ -257,28 +252,15 @@ class MillingDTEnv(gym.Env):
 
         The energy weight, the wear coefficient and the roughness coefficient
         of the material, each over the range the scenarios span.
-
-        The material coefficients are what the setup BELIEVES the material is.
-        A plant that does not know the material it is cutting can pass a
-        belief that differs from the truth, and the physics still run on the
-        truth. That separation is what the model error experiment uses.
         """
         wear_band = SCENARIO_BANDS['C_wear']
         roughness_band = SCENARIO_BANDS['k1']
         nominal_wear = ALL_CONSTANTS['tool_wear']['C_wear']
         nominal_k1 = ALL_CONSTANTS['surface_roughness']['k1']
 
-        believed_wear = self.tool_wear_cfg['C_wear']
-        believed_k1 = self.roughness_cfg['k1']
-        if self.belief:
-            if 'C_wear' in self.belief:
-                believed_wear = float(self.belief['C_wear'])
-            if 'k1' in self.belief:
-                believed_k1 = float(self.belief['k1'])
-
-        c_wear = ((believed_wear / nominal_wear - wear_band[0])
+        c_wear = ((self.tool_wear_cfg['C_wear'] / nominal_wear - wear_band[0])
                   / (wear_band[1] - wear_band[0]))
-        k1 = ((believed_k1 / nominal_k1 - roughness_band[0])
+        k1 = ((self.roughness_cfg['k1'] / nominal_k1 - roughness_band[0])
               / (roughness_band[1] - roughness_band[0]))
 
         return [

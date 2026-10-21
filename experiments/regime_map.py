@@ -11,8 +11,10 @@ of two cases.
 The setup: the machine runs a material and cuts it with a tool whose flank
 wear is measured with an instrument, not exactly. The reading carries a
 Gaussian error of sigma, a fraction of the range of the wear and of the
-remaining stock. The controller solves the next pass from that reading. The
-policy reads the same noise on its observation.
+remaining stock. The controller solves the next pass from that reading, so a
+wrong reading becomes a wrong plan. The policy reads the same noise on its
+observation, and a perturbed observation perturbs its action rather than
+invalidating its plan.
 
 Nothing is tilted towards the policy, and two points are deliberate:
 
@@ -64,48 +66,22 @@ from MillingDT.utils.seeding import set_seed
 
 SCENARIOS = 100
 NOISES = [0.0, 0.01, 0.02, 0.03, 0.05, 0.075, 0.10]
-MODEL_ERRORS = [0.0, 0.05, 0.10, 0.20, 0.30, 0.40]
 
 
-def miscalibrated_beliefs(scenarios, error):
-    """What the setup believes about each material, off by a systematic fraction.
-
-    The belief is optimistic: it under-rates the wear and the roughness of
-    the material by the fraction. That is the damaging direction, because a
-    setup that thinks its tool is better than it is will push it harder. The
-    same belief goes to both arms, the controller as the model it solves with
-    and the policy as the material in its context.
-    """
-    if error == 0.0:
-        return None
-    beliefs = {}
-    for name, scenario in scenarios.items():
-        belief = {}
-        for key in ('C_wear', 'k1', 'k2', 'k3'):
-            if key in scenario:
-                belief[key] = float(scenario[key]) * (1.0 - error)
-        beliefs[name] = belief
-    return beliefs
-
-
-def evaluate_arms(model, vec_norm_path, scenarios, noise, noisy_model=None,
-                  model_error=0.0):
-    """The arms on the same scenarios, with the same belief and the same noise.
+def evaluate_arms(model, vec_norm_path, scenarios, noise, noisy_model=None):
+    """The arms on the same scenarios, with the same measurement noise.
 
     The controller is given a noisy reading of the flank wear. The policy
     gets the noise on its observation, which covers the wear and the
-    remaining stock. Both get the same belief about the material.
+    remaining stock.
     """
-    beliefs = miscalibrated_beliefs(scenarios, model_error)
-
     controller_rows = evaluate_controller(
-        scenarios, seed=42, weight=WEIGHT, belief=None, beliefs=beliefs,
-        obs_noise=noise, noise_rng=np.random.default_rng(7))
+        scenarios, seed=42, weight=WEIGHT, obs_noise=noise,
+        noise_rng=np.random.default_rng(7))
     controller = summarize("Receding-horizon controller", "nominal", controller_rows)
 
     policy_rows = evaluate_policy(
-        model, vec_norm_path, scenarios, seed=42, weight=WEIGHT,
-        belief=None, beliefs=beliefs, obs_noise=noise)
+        model, vec_norm_path, scenarios, seed=42, weight=WEIGHT, obs_noise=noise)
     policy = summarize("PPO", "nominal", policy_rows)
 
     arms = [("Receding-horizon controller", controller), ("PPO", policy)]
@@ -140,7 +116,6 @@ def main():
         for arm, row in arms:
             records.append({
                 'sweep': 'measurement noise',
-                'model_error': 0.0,
                 'noise': noise,
                 'arm': arm,
                 'mean_reward': row['mean_reward'],
@@ -156,30 +131,6 @@ def main():
         line = ", ".join(f"{arm} {row['mean_reward']:.1f}" for arm, row in arms)
         print(f"  noise {noise:5.1%}: {line}")
 
-    # The model error sweep. The setup's belief about the material is off by
-    # a systematic fraction, and the same belief goes to both arms.
-    for error in MODEL_ERRORS:
-        arms = evaluate_arms(model, vec_norm_path, scenarios, 0.0, noisy_model,
-                             model_error=error)
-        for arm, row in arms:
-            records.append({
-                'sweep': 'model error',
-                'model_error': error,
-                'noise': 0.0,
-                'arm': arm,
-                'mean_reward': row['mean_reward'],
-                'reward_std': row['reward_std'],
-                'MRR_mean': row['MRR_mean'],
-                'Energy_per_part': row['Energy_per_part'],
-                'Cycle_time': row['Cycle_time'],
-                'Ra_violation_worst_pass': row['Ra_violation_worst_pass'],
-                'Ra_violation_finished_surface': row['Ra_violation_finished_surface'],
-                'Broken': row['Broken'],
-                'Success': row['Success'],
-            })
-        line = ", ".join(f"{arm} {row['mean_reward']:.1f}" for arm, row in arms)
-        print(f"  model error {error:5.0%}: {line}")
-
     summary = pd.DataFrame(records)
     EVALUATION_DIR.mkdir(parents=True, exist_ok=True)
     out = EVALUATION_DIR / "regime_map.csv"
@@ -188,13 +139,9 @@ def main():
     plot_regime_map(summary)
 
     print("\nThe boundary:")
-    for sweep, column in (("measurement noise", 'noise'),
-                          ("model error", 'model_error')):
-        part = summary[summary['sweep'] == sweep]
-        pivot = part.pivot(index=column, columns='arm', values='mean_reward')
-        pivot['PPO ahead by'] = pivot['PPO'] - pivot['Receding-horizon controller']
-        print(f"\n{sweep}:")
-        print(pivot.round(2).to_string())
+    pivot = summary.pivot(index='noise', columns='arm', values='mean_reward')
+    pivot['PPO ahead by'] = pivot['PPO'] - pivot['Receding-horizon controller']
+    print(pivot.round(2).to_string())
 
     print(f"\nSaved to {out}")
 
@@ -204,44 +151,34 @@ def plot_regime_map(summary):
     from viz.plotting_utils import set_style
 
     set_style()
-    fig, axes = plt.subplots(1, 2, figsize=(15, 6))
-    for ax, sweep, column, title, xlabel in (
-            (axes[0], "measurement noise", 'noise',
-             "The wear measurement is noisy by",
-             "Noise on the wear and the remaining stock, percent of their range"),
-            (axes[1], "model error", 'model_error',
-             "The material model is miscalibrated by",
-             "The belief about the material, percent below the truth")):
-        part = summary[summary['sweep'] == sweep]
-        pivot = part.pivot(index=column, columns='arm', values='mean_reward')
-        x = pivot.index * 100
+    fig, ax = plt.subplots(figsize=(10, 6))
 
-        ax.plot(x, pivot['Receding-horizon controller'],
-                marker='o', color="#64748b", linewidth=2.4,
-                label="Receding-horizon controller")
-        ax.plot(x, pivot['PPO'],
-                marker='s', color="#ea580c", linewidth=2.4, label="PPO")
-        if 'PPO trained for the noise' in pivot.columns:
-            ax.plot(x, pivot['PPO trained for the noise'],
-                    marker='^', color="#0d9488", linewidth=2.0, linestyle="--",
-                    label="PPO trained for the noise")
-        ax.fill_between(x, pivot['Receding-horizon controller'], pivot['PPO'],
-                        where=(pivot['PPO'] >= pivot['Receding-horizon controller']),
-                        color="#ea580c", alpha=0.13, interpolate=True,
-                        label="the learned policy is ahead")
+    pivot = summary.pivot(index='noise', columns='arm', values='mean_reward')
+    x = pivot.index * 100
 
-        ax.set_title(title, fontweight="bold")
-        ax.set_xlabel(xlabel)
-        ax.set_ylabel("Mean episode reward over 100 scenarios")
-        ax.grid(True, linestyle="--", alpha=0.45)
-        ax.legend(loc="best", framealpha=0.92)
+    ax.plot(x, pivot['Receding-horizon controller'],
+            marker='o', color="#64748b", linewidth=2.4,
+            label="Receding-horizon controller")
+    ax.plot(x, pivot['PPO'],
+            marker='s', color="#ea580c", linewidth=2.4, label="PPO")
+    if 'PPO trained for the noise' in pivot.columns:
+        ax.plot(x, pivot['PPO trained for the noise'],
+                marker='^', color="#0d9488", linewidth=2.0, linestyle="--",
+                label="PPO trained for the noise")
+    ax.fill_between(x, pivot['Receding-horizon controller'], pivot['PPO'],
+                    where=(pivot['PPO'] >= pivot['Receding-horizon controller']),
+                    color="#ea580c", alpha=0.13, interpolate=True,
+                    label="the learned policy is ahead")
 
-    fig.suptitle("Where the learned policy overtakes the classical controller\n"
-                 "Both arms are the general ones and both get the same belief "
-                 "and the same noise",
-                 fontsize=14, fontweight="bold", y=1.03)
+    ax.set_title("How noisy the wear measurement has to be before the learned\n"
+                 "policy is the better operator", fontweight="bold")
+    ax.set_xlabel("Measurement noise on the wear and the remaining stock, "
+                  "as a percent of their range")
+    ax.set_ylabel("Mean episode reward over 100 scenarios")
+    ax.grid(True, linestyle="--", alpha=0.45)
+    ax.legend(loc="best", framealpha=0.92)
+
     plt.tight_layout()
-
     from MillingDT.config import PLOTS_DIR as plots_dir
     plots_dir.mkdir(parents=True, exist_ok=True)
     out = plots_dir / "regime_map.png"

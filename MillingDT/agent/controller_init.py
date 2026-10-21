@@ -45,16 +45,13 @@ def current_scenario(unwrapped):
     }
 
 
-def controller_action(unwrapped, belief=None, vb=None):
+def controller_action(unwrapped, vb=None):
     """The next pass the controller chooses for the current state.
 
-    The belief is what the controller thinks the material is. It is None for
-    a controller that knows the material, and a set of coefficients for one
-    that runs on a model of the machine that does not.
-
-    The vb is the flank wear the controller measures. It is the true wear by
-    default, and a noisy reading of it when the machine measures the wear
-    with an instrument.
+    The wear the controller plans from is the wear of the environment, and
+    the material it plans for is the material in play. The vb is the flank
+    wear the controller measures: the true wear by default, and a noisy
+    reading of it when the machine measures the wear with an instrument.
     """
     n, f_r, a_p = solve_next_pass(
         VB=unwrapped.VB if vb is None else float(vb),
@@ -66,7 +63,7 @@ def controller_action(unwrapped, belief=None, vb=None):
         MRR_max=unwrapped.MRR_max,
         E_ref=unwrapped.E_ref,
         machine_cfg=unwrapped.machine_cfg,
-        scenario=belief if belief else current_scenario(unwrapped),
+        scenario=current_scenario(unwrapped),
     )
     return normalized_action(n, f_r, a_p)
 

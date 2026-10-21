@@ -1,23 +1,31 @@
 """
 experiments/robustness_experiment.py
 
-Where a learned policy can beat a model-based controller.
+Where the learned policy and the classical controller separate.
 
-The controller solves every pass with the exact model and the exact state, so
-inside a perfect digital twin it owns the throughput and the energy: it
-computes the greedy optimum of the same objective the policy is learning.
-There are three regimes where that advantage does not hold, and this script
-measures all three on the same scenarios.
+The controller solves every pass with the exact model, the exact state and the
+material in its hand. The learned policy reads the material in its context and
+was trained across a distribution of scenarios. Two situations break the
+controller's advantage, and this script measures both.
 
-1. The nominal machine. The reference comparison.
+1. The nominal machine. The reference comparison, where the controller has
+   every advantage.
 
-2. Model error. The machine runs a harder material than the controller was
-   built for. The controller solves with the coefficients it believes, the
-   policy reads the material it is told about, and the two are compared both
-   when the policy is told the truth and when it is not.
+2. A noisy measurement of the wear. The flank wear and the remaining stock are
+   measured with an instrument, not exactly, and the reading carries a
+   Gaussian error of sigma, a fraction of their range. The controller solves
+   the next pass from that reading, so a wrong reading becomes a wrong plan.
+   The policy reads the same noise on its observation, and a perturbed
+   observation perturbs its action rather than invalidating its plan.
 
-3. A noisy measurement of the wear. The controller trusts the wear it is
-   given, the policy is trained with the same noise on its observation.
+Nothing is tilted towards the policy, and two points are deliberate. Both arms
+are the general ones, neither is trained for the noise, and the policy that was
+trained with the noise is reported as a third and clearly labelled arm, because
+a controller can also be prepared for a noisy instrument by widening its
+safety margin, and that would be a design choice rather than a training one.
+And the noise is tilted against the policy: the controller is given a noisy
+reading of the flank wear, the measurement it depends on, while the policy
+receives noise on the flank wear AND on the remaining stock.
 
 Outputs:
     results/evaluation/robustness_results.csv
@@ -37,7 +45,6 @@ from stable_baselines3 import PPO
 from MillingDT.agent.controller_init import controller_action
 from experiments.evaluate import evaluate_policy_on_scenarios
 from MillingDT.config import (
-    ALL_CONSTANTS,
     EVALUATION_DIR,
     PRIMARY_RUN,
     run_models,
@@ -48,51 +55,23 @@ from MillingDT.utils.seeding import set_seed
 WEIGHT = 0.4
 SCENARIOS = 100
 
-# The measurement noise on the wear and the remaining stock, as a fraction
-# of their range. The policy that faces it is trained with the same noise.
+# The measurement noise on the wear and the remaining stock, as a fraction of
+# their range.
 NOISE = 0.05
 NOISY_RUN = "PPO_noisystate_seed42"
 
-# The machine runs a material that is harder than the controller's model.
-# The wear rate is 30% higher and the roughness coefficients are higher, so
-# a controller that believes the nominal material pushes the tool past its
-# limits.
-HARDER_MATERIAL = {
-    'C_wear': ALL_CONSTANTS['tool_wear']['C_wear'] * 1.30,
-    'k1': ALL_CONSTANTS['surface_roughness']['k1'] * 1.15,
-    'k2': ALL_CONSTANTS['surface_roughness']['k2'] * 1.20,
-    'k3': ALL_CONSTANTS['surface_roughness']['k3'] * 1.10,
-}
 
-# The nominal coefficients, which is what the controller believes.
-NOMINAL_MATERIAL = {
-    'C_wear': ALL_CONSTANTS['tool_wear']['C_wear'],
-    'k1': ALL_CONSTANTS['surface_roughness']['k1'],
-    'k2': ALL_CONSTANTS['surface_roughness']['k2'],
-    'k3': ALL_CONSTANTS['surface_roughness']['k3'],
-}
-
-
-def evaluate_controller(scenarios, seed=42, weight=WEIGHT, belief=None,
-                        beliefs=None, material=None, obs_noise=0.0, noise_rng=None):
-    """Roll the controller out, with the material and the belief it works with.
-
-    The belief is what the controller thinks the material is. The material
-    is what the machine actually cuts, and the physics always run on it.
-    The beliefs argument carries one belief per scenario, which is what a
-    setup with a miscalibrated material model has.
+def evaluate_controller(scenarios, seed=42, weight=WEIGHT, obs_noise=0.0,
+                        noise_rng=None):
+    """Roll the controller out, with the same measurement noise the policy sees.
 
     With obs_noise the controller is given a noisy reading of the flank wear,
-    the same measurement noise the policy sees on its observation.
+    the measurement it depends on. The remaining stock it knows exactly.
     """
     rows = []
     for idx, (name, scenario) in enumerate(scenarios.items()):
-        env_kwargs = dict(scenario)
-        if material:
-            env_kwargs.update(material)
-
         eval_env = gym.make("MillingDTEnv-v1", w2=weight, obs_noise=obs_noise,
-                            **env_kwargs)
+                            **scenario)
         eval_env.reset(seed=seed + idx)
         unwrapped = eval_env.unwrapped
 
@@ -102,14 +81,11 @@ def evaluate_controller(scenarios, seed=42, weight=WEIGHT, belief=None,
         ep_n, ep_f, ep_ap = [], [], []
         info = {}
         total_reward = 0.0
-        scenario_belief = belief
-        if beliefs and name in beliefs:
-            scenario_belief = beliefs[name]
         while not done:
             measured_vb = unwrapped.VB
             if obs_noise and noise_rng is not None:
                 measured_vb += noise_rng.normal(0.0, obs_noise * unwrapped.VB_max)
-            action = controller_action(unwrapped, belief=scenario_belief, vb=measured_vb)
+            action = controller_action(unwrapped, vb=measured_vb)
             obs, reward, terminated, truncated, info = eval_env.step(action)
             done = terminated or truncated
             total_reward += float(reward)
@@ -147,27 +123,15 @@ def evaluate_controller(scenarios, seed=42, weight=WEIGHT, belief=None,
 
 
 def evaluate_policy(model, vec_norm_path, scenarios, seed=42, weight=WEIGHT,
-                    material=None, belief=None, beliefs=None, obs_noise=0.0):
-    """The learned policy on the same scenarios, with the same material.
-
-    The belief is what the setup believes the material is, and it is what the
-    policy reads in its context. The beliefs argument carries one belief per
-    scenario, which is what a setup with a miscalibrated material model has.
-    """
+                    obs_noise=0.0):
+    """The learned policy on the same scenarios, with the same noise."""
     env_kwargs = {}
-    if material:
-        env_kwargs.update(material)
-    if belief is not None:
-        env_kwargs['belief'] = belief
     if obs_noise:
         env_kwargs['obs_noise'] = obs_noise
 
     configs = {}
     for name, scenario in scenarios.items():
-        per_scenario = dict(env_kwargs)
-        if beliefs and name in beliefs:
-            per_scenario['belief'] = beliefs[name]
-        configs[name] = {**scenario, **per_scenario}
+        configs[name] = {**scenario, **env_kwargs}
 
     return evaluate_policy_on_scenarios(
         model, vec_norm_path, configs, seed=seed,
@@ -203,9 +167,8 @@ def main():
 
     records = []
 
-    # 1. The nominal machine: the controller knows the material it cuts and
-    # the policy is told the material it cuts. This is the reference
-    # comparison, the one where the controller has every advantage.
+    # 1. The nominal machine. The controller knows the material, the policy is
+    # told the material, and the reference comparison.
     records.append(summarize(
         "Receding-horizon controller", "nominal",
         evaluate_controller(scenarios)))
@@ -213,28 +176,8 @@ def main():
         "PPO", "nominal",
         evaluate_policy(model, vec_norm_path, scenarios)))
 
-    # 2. Model error. The machine cuts a harder material than the controller
-    # believes. The controller solves with the nominal coefficients, the
-    # policy is told the harder material.
-    records.append(summarize(
-        "Receding-horizon controller", "model error",
-        evaluate_controller(scenarios, belief=NOMINAL_MATERIAL,
-                            material=HARDER_MATERIAL)))
-    records.append(summarize(
-        "PPO, told the material", "model error",
-        evaluate_policy(model, vec_norm_path, scenarios,
-                        material=HARDER_MATERIAL)))
-
-    # 3. The same error, but the policy is not told either. Now both are
-    # wrong about the material, and the question is which one degrades
-    # gracefully.
-    records.append(summarize(
-        "PPO", "model error",
-        evaluate_policy(model, vec_norm_path, scenarios,
-                        material=HARDER_MATERIAL, belief=NOMINAL_MATERIAL)))
-
-    # 4. A noisy measurement of the wear. The controller trusts the reading
-    # it gets, the policy was trained with the same noise.
+    # 2. A noisy measurement of the wear. The controller trusts the reading
+    # it gets, the policy reads the same noise on its observation.
     noisy_dir = run_models(NOISY_RUN)
     if (noisy_dir / "final_model.zip").exists():
         noisy_model = PPO.load(str(noisy_dir / "final_model.zip"), device="cpu")
@@ -242,13 +185,16 @@ def main():
             "Receding-horizon controller", "noisy wear measurement",
             evaluate_controller(scenarios, obs_noise=NOISE,
                                 noise_rng=np.random.default_rng(7))))
+        # The general policy faces the same noise. It is the headline arm of
+        # this regime, because it is the one that was not prepared for the
+        # noise; the policy that was trained for it is reported next to it.
         records.append(summarize(
             "PPO", "noisy wear measurement",
             evaluate_policy(model, vec_norm_path, scenarios, obs_noise=NOISE)))
         records.append(summarize(
             "PPO trained with the noise", "noisy wear measurement",
-            evaluate_policy(noisy_model, noisy_dir / "vecnormalize.pkl", scenarios,
-                            obs_noise=NOISE)))
+            evaluate_policy(noisy_model, noisy_dir / "vecnormalize.pkl",
+                            scenarios, obs_noise=NOISE)))
     else:
         print(f"No policy trained with the noise at {noisy_dir}, skipping that regime.")
 
@@ -259,8 +205,7 @@ def main():
 
     print("\nRobustness experiment:")
     print(summary[['regime', 'arm', 'mean_reward', 'reward_std', 'MRR_mean',
-                   'Energy_per_part', 'Cycle_time', 'Ra_violation_worst_pass',
-                   'Broken', 'Success']].round(3).to_string(index=False))
+                   'Energy_per_part', 'Cycle_time', 'Broken', 'Success']].round(3).to_string(index=False))
     print(f"\nSaved to {out}")
 
 
