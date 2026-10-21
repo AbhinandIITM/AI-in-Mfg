@@ -8,21 +8,21 @@ Artifact: `results/run_PPO_seed42/metrics/monte_carlo.csv`
 
 | Metric | Mean | Std | 95% CI |
 | :--- | ---: | ---: | :--- |
-| Material removal rate (mm3/min) | 1205.15 | 585.65 | [1088.94, 1321.35] |
-| Energy per part (kJ) | 68.35 | 48.26 | [58.77, 77.92] |
-| Cycle time per part (s) | 20.25 | 17.06 | [16.86, 23.63] |
-| Max surface roughness (um) | 1.379 | 0.350 | [1.309, 1.448] |
-| Max flank wear (mm) | 0.1244 | 0.0679 | [0.1109, 0.1378] |
-| Roughness violations, worst pass | 38.0% | | [28.5%, 47.5%] |
-| Roughness violations, finished surface | 0.0% | | [0.0%, 0.0%] |
-| Roughness above the safety limit, worst pass | 56.0% | | [46.3%, 65.7%] |
-| Roughness above the safety limit, finished surface | 0.0% | | [0.0%, 0.0%] |
+| Material removal rate (mm3/min) | 1608.49 | 550.69 | [1499.22, 1717.76] |
+| Energy per part (kJ) | 66.40 | 48.03 | [56.87, 75.93] |
+| Cycle time per part (s) | 11.43 | 6.93 | [10.06, 12.81] |
+| Max surface roughness (um) | 1.610 | 0.178 | [1.575, 1.645] |
+| Max flank wear (mm) | 0.1407 | 0.0672 | [0.1274, 0.1540] |
+| Roughness violations, worst pass | 55.0% | | [45.2%, 64.8%] |
+| Roughness violations, finished surface | 4.0% | | [0.2%, 7.8%] |
+| Roughness above the safety limit, worst pass | 87.0% | | [80.4%, 93.6%] |
+| Roughness above the safety limit, finished surface | 4.0% | | [0.2%, 7.8%] |
 | Flank wear violations (VB > 0.3 mm) | 0.0% | | [0.0%, 0.0%] |
-| Tool breakage | 1.0% | | [0.0%, 3.0%] |
-| Parts completed within spec | 99.0% | | |
+| Tool breakage | 6.0% | | [1.3%, 10.7%] |
+| Parts completed within spec | 94.0% | | |
 | Scenarios | 100 | | |
 
-Mean operating point across the 100 scenarios: 7199 RPM, 0.247 mm/r, 2.11 mm depth of cut, 4.0 passes per part.
+Mean operating point across the 100 scenarios: 7907 RPM, 0.318 mm/r, 2.07 mm depth of cut, 4.0 passes per part.
 
 ## Energy weight ablation
 
@@ -30,13 +30,13 @@ Artifact: `results/evaluation/ablation_summary.csv`
 
 | w2 (energy weight) | MRR (mm3/min) | Energy per part (kJ) | Cycle time (s) | Spindle (RPM) | Feed (mm/r) | On the frontier |
 | ---: | ---: | ---: | ---: | ---: | ---: | :--- |
-| 0.0 | 946.3 +/- 63.4 | 82.9 +/- 1.4 | 44.8 +/- 2.4 | 7094 | 0.166 | dominated |
-| 0.2 | 1007.8 +/- 22.7 | 77.1 +/- 1.1 | 31.3 +/- 1.3 | 7471 | 0.184 | dominated |
-| 0.4 | 1038.0 +/- 67.6 | 72.7 +/- 0.5 | 24.8 +/- 1.8 | 7256 | 0.203 | yes |
-| 0.5 | 1035.8 +/- 43.8 | 70.3 +/- 1.2 | 22.0 +/- 0.5 | 7080 | 0.214 | yes |
-| 0.6 | 1023.9 +/- 27.4 | 70.8 +/- 0.6 | 22.1 +/- 0.5 | 7148 | 0.209 | dominated |
-| 0.8 | 971.1 +/- 43.2 | 66.8 +/- 1.2 | 21.9 +/- 0.7 | 6538 | 0.228 | yes |
-| 1.0 | 951.3 +/- 54.7 | 65.8 +/- 0.6 | 20.9 +/- 0.6 | 6490 | 0.229 | yes |
+| 0.0 | 1397.1 +/- 14.8 | 70.4 +/- 0.1 | 14.8 +/- 0.3 | 7998 | 0.299 | dominated |
+| 0.2 | 1456.9 +/- 14.6 | 70.0 +/- 0.1 | 13.8 +/- 0.2 | 7992 | 0.299 | dominated |
+| 0.4 | 1524.9 +/- 40.2 | 69.3 +/- 0.2 | 13.0 +/- 0.3 | 7896 | 0.296 | dominated |
+| 0.5 | 1556.6 +/- 9.7 | 69.1 +/- 0.2 | 12.7 +/- 0.1 | 7859 | 0.296 | yes |
+| 0.6 | 1519.8 +/- 36.4 | 68.3 +/- 0.4 | 13.1 +/- 0.4 | 7638 | 0.296 | yes |
+| 0.8 | 1224.4 +/- 11.3 | 63.0 +/- 0.2 | 15.4 +/- 0.1 | 6573 | 0.292 | yes |
+| 1.0 | 918.5 +/- 14.9 | 57.2 +/- 0.2 | 20.1 +/- 0.4 | 5382 | 0.292 | yes |
 
 ## Production policy, weight swept at runtime
 
@@ -46,25 +46,25 @@ Artifact: `results/run_PPO_seed42/metrics/weight_sweep.csv`
 
 | w2 (energy weight) | MRR (mm3/min) | Energy per part (kJ) | Cycle time (s) | Spindle (RPM) | Feed (mm/r) | Ra violation rate |
 | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| 0.0 | 1213.6 | 69.6 | 19.0 | 7513 | 0.238 | 34.0% |
-| 0.2 | 1215.3 | 69.0 | 19.5 | 7379 | 0.243 | 36.0% |
-| 0.4 | 1205.1 | 68.3 | 20.2 | 7199 | 0.247 | 38.0% |
-| 0.5 | 1191.0 | 68.0 | 20.9 | 7081 | 0.249 | 38.0% |
-| 0.6 | 1169.3 | 67.6 | 21.5 | 6953 | 0.250 | 39.0% |
-| 0.8 | 1130.8 | 67.1 | 23.0 | 6710 | 0.251 | 39.0% |
-| 1.0 | 1096.0 | 67.1 | 24.8 | 6475 | 0.249 | 39.0% |
+| 0.0 | 1475.9 | 68.4 | 13.1 | 8000 | 0.323 | 56.0% |
+| 0.2 | 1518.0 | 65.8 | 11.8 | 7997 | 0.323 | 56.0% |
+| 0.4 | 1608.5 | 66.4 | 11.4 | 7907 | 0.318 | 55.0% |
+| 0.5 | 1630.3 | 66.0 | 11.4 | 7798 | 0.317 | 54.0% |
+| 0.6 | 1540.7 | 65.5 | 12.4 | 7433 | 0.317 | 55.0% |
+| 0.8 | 1114.5 | 57.9 | 17.4 | 5841 | 0.316 | 56.0% |
+| 1.0 | 720.4 | 51.7 | 26.1 | 4111 | 0.315 | 56.0% |
 
 ### One policy against 21 policies, one per weight
 
 | w2 (energy weight) | MRR, one policy | MRR, per-weight | MRR gap | Energy, one policy | Energy, per-weight | Energy gap |
 | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| 0.0 | 1213.6 | 946.3 | +28.2% | 69.6 | 82.9 | -16.0% |
-| 0.2 | 1215.3 | 1007.8 | +20.6% | 69.0 | 77.1 | -10.5% |
-| 0.4 | 1205.1 | 1038.0 | +16.1% | 68.3 | 72.7 | -6.0% |
-| 0.5 | 1191.0 | 1035.8 | +15.0% | 68.0 | 70.3 | -3.3% |
-| 0.6 | 1169.3 | 1023.9 | +14.2% | 67.6 | 70.8 | -4.5% |
-| 0.8 | 1130.8 | 971.1 | +16.4% | 67.1 | 66.8 | +0.5% |
-| 1.0 | 1096.0 | 951.3 | +15.2% | 67.1 | 65.8 | +2.1% |
+| 0.0 | 1475.9 | 1397.1 | +5.6% | 68.4 | 70.4 | -2.9% |
+| 0.2 | 1518.0 | 1456.9 | +4.2% | 65.8 | 70.0 | -6.1% |
+| 0.4 | 1608.5 | 1524.9 | +5.5% | 66.4 | 69.3 | -4.2% |
+| 0.5 | 1630.3 | 1556.6 | +4.7% | 66.0 | 69.1 | -4.4% |
+| 0.6 | 1540.7 | 1519.8 | +1.4% | 65.5 | 68.3 | -4.0% |
+| 0.8 | 1114.5 | 1224.4 | -9.0% | 57.9 | 63.0 | -8.0% |
+| 1.0 | 720.4 | 918.5 | -21.6% | 51.7 | 57.2 | -9.7% |
 
 ## Classical baselines
 
@@ -72,11 +72,11 @@ Artifact: `results/evaluation/baselines.csv`
 
 | Policy | MRR (mm3/min) | Energy per part (kJ) | Cycle time (s) | Mean reward | Ra violation rate |
 | :--- | ---: | ---: | ---: | ---: | ---: |
-| Constant high | 1099.6 | 17.8 | 4.3 | -46.1 | 0.0% |
-| Constant safe | 1.6 | 1506.8 | 3000.0 | -139.3 | 0.0% |
-| NSGA-II static | 732.9 | 18.8 | 6.4 | -46.4 | 0.0% |
-| Receding-horizon | 981.7 | 18.0 | 4.8 | 203.5 | 0.0% |
-| Rule based | 719.8 | 18.7 | 6.6 | -46.5 | 0.0% |
+| Constant high | 1099.6 | 17.8 | 4.3 | 10.0 | 0.0% |
+| Constant safe | 1.6 | 385.7 | 768.0 | -1882.9 | 0.0% |
+| NSGA-II static | 732.9 | 18.8 | 6.4 | 5.1 | 0.0% |
+| Receding-horizon | 725.5 | 19.0 | 6.7 | 253.5 | 0.0% |
+| Rule based | 719.8 | 18.7 | 6.6 | 3.3 | 0.0% |
 
 ## Starting the policy from the receding-horizon controller
 
@@ -84,9 +84,9 @@ Artifact: `results/evaluation/controller_init_results.csv`
 
 | Arm | Mean episode reward | Reward std | MRR (mm3/min) | Energy per part (kJ) | Cycle time (s) | Ra violation, finished surface | Parts completed |
 | :--- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| Receding-horizon controller | 188.0 | 65.9 | 1560.6 | 68.0 | 13.5 | 0.0% | 95.0% |
-| PPO from scratch | 198.6 | 30.0 | 1205.1 | 68.3 | 20.2 | 0.0% | 99.0% |
-| PPO initialized from the controller | 199.3 | 3.4 | 1126.1 | 77.2 | 32.3 | 0.0% | 100.0% |
+| Receding-horizon controller | 248.9 | 79.5 | 1318.2 | 68.9 | 17.1 | 2.0% | 96.0% |
+| PPO from scratch | 233.6 | 79.7 | 1608.5 | 66.4 | 11.4 | 4.0% | 94.0% |
+| PPO initialized from the controller | 119.8 | 178.7 | 1274.9 | 81.5 | 42.6 | 4.0% | 87.0% |
 
 All three arms are measured on the same 100 randomized scenarios at the same energy weight. The reward std is the spread of the episode reward over those scenarios.
 
@@ -96,12 +96,40 @@ Artifact: `results/evaluation/transfer_results.csv`
 
 | Arm | Mean episode reward | Ra violation, worst pass | Ra violation, finished surface | Parts completed |
 | :--- | ---: | ---: | ---: | ---: |
-| Source policy, zero shot | 182.5 | 100.0% | 3.3% | 93.3% |
-| Source policy, fine tuned | 196.6 | 0.0% | 0.0% | 100.0% |
-| Trained on the target from scratch | 196.6 | 0.0% | 0.0% | 100.0% |
-| Production policy, zero shot | 200.3 | 60.0% | 0.0% | 100.0% |
+| Source policy, zero shot | 168.5 | 100.0% | 6.7% | 86.7% |
+| Source policy, fine tuned | 101.9 | 26.7% | 0.0% | 86.7% |
+| Trained on the target from scratch | 101.9 | 26.7% | 0.0% | 86.7% |
+| Production policy, zero shot | 190.1 | 100.0% | 10.0% | 90.0% |
 
 Source policy: 300,000 steps on the nominal material. Adaptation budget: 50,000 steps on the target.
+
+## Robustness against the classical controller
+
+Artifact: `results/evaluation/robustness_results.csv`
+
+| Regime | Arm | Mean reward | Reward std | MRR (mm3/min) | Energy per part (kJ) | Cycle time (s) | Ra violation, worst pass | Ra violation, finished surface | Tools broken | Parts completed |
+| :--- | :--- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| nominal | Receding-horizon controller | 248.9 | 79.5 | 1318.2 | 68.9 | 17.1 | 55.0% | 2.0% | 3.0% | 96.0% |
+| nominal | PPO | 233.6 | 79.7 | 1608.5 | 66.4 | 11.4 | 55.0% | 4.0% | 6.0% | 94.0% |
+| model error, controller believes nominal | Receding-horizon controller | 63.5 | 117.1 | 1306.9 | 71.0 | 23.3 | 99.0% | 2.0% | 2.0% | 95.0% |
+| model error, policy told the material | PPO | 215.1 | 94.2 | 1548.7 | 66.8 | 12.2 | 100.0% | 7.0% | 6.0% | 94.0% |
+| model error, policy believes nominal | PPO | 226.9 | 88.3 | 1604.2 | 66.3 | 11.5 | 100.0% | 4.0% | 6.0% | 94.0% |
+| noisy wear measurement | Receding-horizon controller | 181.3 | 185.9 | 1300.4 | 74.2 | 31.1 | 54.0% | 3.0% | 4.0% | 91.0% |
+| noisy wear measurement | PPO trained with the noise | 213.6 | 87.3 | 1554.2 | 66.9 | 12.0 | 52.0% | 2.0% | 6.0% | 94.0% |
+
+All the arms are measured on the same 100 randomized scenarios at the same energy weight. The model error regime runs a harder material than the controller was built for.
+
+## The batch against the part
+
+Artifact: `results/evaluation/batch_results.csv`
+
+| Arm | Batch reward | Std | Mean reward per part | Tool changes per batch | Parts cut | Batch time (s) | Batch energy (kJ) |
+| :--- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| PPO, batch aware | 1772.3 | 358.3 | 169.0 | 0.77 | 10.0 | 113.8 | 632.7 |
+| PPO, per part | 1694.6 | 352.3 | 171.7 | 0.83 | 10.0 | 110.8 | 655.7 |
+| Receding-horizon controller, per part | 1859.9 | 328.8 | 173.7 | 0.83 | 10.0 | 207.5 | 692.0 |
+
+A batch is ten parts cut with one tool. The tool is replaced when it breaks or reaches its wear limit, and the replacement costs 500 reward units against the 200 a finished part is worth.
 
 ## Figures
 

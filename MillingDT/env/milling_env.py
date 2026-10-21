@@ -126,16 +126,38 @@ class MillingDTEnv(gym.Env):
         # Apply the pinned scenario and compute the scales that depend on it.
         self._apply_scenario(self.fixed_scenario)
 
-        # Reward shaping scales. The objective term (throughput and energy) is
+        # Reward shaping scales, read from the configuration so that the
+        # environment, the classical controller and the experiments all use
+        # the same numbers. The objective term (throughput and energy) is
         # multiplied by objective_scale and the progress bonus by
-        # progress_scale, so that the two objectives decide the operating point
-        # and the shaping only decides whether the agent makes progress at all.
-        # The constraint penalties and the completion bonus are an order of
-        # magnitude larger on purpose: breaking a constraint must never be
-        # worth a throughput or energy gain.
-        self.objective_scale = 5.0
-        self.progress_scale = 2.0
-        self.hv_scale = 5.0
+        # progress_scale, so that the two objectives decide the operating
+        # point and the shaping only decides whether the agent makes progress
+        # at all. The constraint penalties and the completion bonus are
+        # larger on purpose: breaking a constraint must never be worth a
+        # throughput or energy gain.
+        reward_cfg = self.reward_cfg
+        self.objective_scale = float(reward_cfg.get('objective_scale', 100.0))
+        self.progress_scale = float(reward_cfg.get('progress_scale', 20.0))
+        self.step_penalty = float(reward_cfg.get('step_penalty', 0.05))
+        self.wear_penalty = float(reward_cfg.get('wear_penalty', 50.0))
+        self.breakage_penalty = float(reward_cfg.get('breakage_penalty', 100.0))
+        self.roughness_penalty = float(reward_cfg.get('roughness_penalty', 50.0))
+        self.completion_bonus = float(reward_cfg.get('completion_bonus', 200.0))
+        self.hv_scale = float(reward_cfg.get('hv_scale', 5.0))
+        self.tool_cost = float(reward_cfg.get('tool_cost', 0.0))
+
+        # Optional noise on the measured state. A real machine measures the
+        # flank wear and the remaining stock with an instrument, not exactly.
+        # The noise is on the observation only, never on the physics, and it
+        # is a fraction of the range of the measured feature: 0.05 on the
+        # wear is 0.015 mm of flank wear.
+        self.obs_noise = float(kwargs.get('obs_noise', 0.0))
+        self.obs_noise_rng = np.random.default_rng(kwargs.get('obs_noise_seed', 0))
+
+        # What the setup believes the material is, when that differs from
+        # what it is. The physics always run on the truth; only the context
+        # the policy reads follows the belief.
+        self.belief = dict(kwargs.get('belief', {}) or {})
 
         # State: [VB_norm, kappa_norm, n_norm, f_norm, ap_norm, MRR_norm,
         # Ra_norm, is_broken] followed by the conditioning context:
@@ -235,15 +257,28 @@ class MillingDTEnv(gym.Env):
 
         The energy weight, the wear coefficient and the roughness coefficient
         of the material, each over the range the scenarios span.
+
+        The material coefficients are what the setup BELIEVES the material is.
+        A plant that does not know the material it is cutting can pass a
+        belief that differs from the truth, and the physics still run on the
+        truth. That separation is what the model error experiment uses.
         """
         wear_band = SCENARIO_BANDS['C_wear']
         roughness_band = SCENARIO_BANDS['k1']
         nominal_wear = ALL_CONSTANTS['tool_wear']['C_wear']
         nominal_k1 = ALL_CONSTANTS['surface_roughness']['k1']
 
-        c_wear = ((self.tool_wear_cfg['C_wear'] / nominal_wear - wear_band[0])
+        believed_wear = self.tool_wear_cfg['C_wear']
+        believed_k1 = self.roughness_cfg['k1']
+        if self.belief:
+            if 'C_wear' in self.belief:
+                believed_wear = float(self.belief['C_wear'])
+            if 'k1' in self.belief:
+                believed_k1 = float(self.belief['k1'])
+
+        c_wear = ((believed_wear / nominal_wear - wear_band[0])
                   / (wear_band[1] - wear_band[0]))
-        k1 = ((self.roughness_cfg['k1'] / nominal_k1 - roughness_band[0])
+        k1 = ((believed_k1 / nominal_k1 - roughness_band[0])
               / (roughness_band[1] - roughness_band[0]))
 
         return [
@@ -264,7 +299,15 @@ class MillingDTEnv(gym.Env):
             1.0 if self.broken else 0.0
         ]
         obs.extend(self._context_features())
-        return np.array(obs, dtype=np.float32)
+        observation = np.array(obs, dtype=np.float32)
+        if self.obs_noise > 0.0:
+            # Only the two measured state features carry the noise: the flank
+            # wear and the remaining stock. The previous cutting parameters
+            # come from the machine's own control system and the previous
+            # removal rate and roughness are computed, so they are exact.
+            noise = self.obs_noise_rng.normal(0.0, self.obs_noise, size=2)
+            observation[:2] = np.clip(observation[:2] + noise, 0.0, 1.0)
+        return observation
 
     def step(self, action: np.ndarray):
         # 1. Explicit Action Clipping & Scaling. The action space is the
@@ -342,18 +385,22 @@ class MillingDTEnv(gym.Env):
         self.last_kappa_progress = kappa_used_ratio
 
         # Constraint Penalties
-        r_VB = -50.0 if self.VB > self.VB_safe else 0.0
-        r_B = -100.0 if self.broken else 0.0
+        r_VB = -self.wear_penalty if self.VB > self.VB_safe else 0.0
+        r_B = -self.breakage_penalty if self.broken else 0.0
         r_Ra = 0.0
         if is_finishing:
-            r_Ra = -50.0 if Ra > self.Ra_safe else 0.0 # Penalty for finishing outside safe spec
+            r_Ra = -self.roughness_penalty if Ra > self.Ra_safe else 0.0
 
-        step_penalty = -0.05
-        reward = r_step + progress_bonus + r_VB + r_B + r_Ra + step_penalty
+        step_penalty = -self.step_penalty
+        # The cost of the tool life this pass consumed. The wear is the
+        # resource that is shared across the parts of a batch, so charging
+        # for it makes the objective span the part.
+        r_tool = -self.tool_cost * delta_VB
+        reward = r_step + progress_bonus + r_VB + r_B + r_Ra + step_penalty + r_tool
 
         # Hypervolume / Success Bonus
         if is_finishing and not self.broken and not terminated_by_wear and Ra <= self.Ra_safe:
-            reward += 200.0 # Large completion bonus
+            reward += self.completion_bonus # Large completion bonus
 
             # Additional Pareto efficiency reward: the margin left below the
             # roughness limit and below the reference cycle time. This is a

@@ -88,7 +88,7 @@ class ProgressQueueCallback(BaseCallback):
 def train(algo="PPO", timesteps=1_000_000, seed=42, queue=None, device="auto", progress_bar=None,
           env_kwargs=None, run_name=None, randomize=False,
           randomize_weight=False, w2=None, policy=None, env_id=ENV_ID, init_weights=None,
-          init_from_controller=False, controller_episodes=2000):
+          init_from_controller=False, controller_episodes=2000, obs_noise=0.0):
     """Train a PPO policy and save the policy plus its VecNormalize statistics.
 
     Args:
@@ -107,6 +107,9 @@ def train(algo="PPO", timesteps=1_000_000, seed=42, queue=None, device="auto", p
             supervised actor on those trajectories.
         controller_episodes: how many controller episodes to record for the
             initialization.
+        obs_noise: standard deviation of the measurement noise on the wear
+            and the remaining stock, as a fraction of their range. Zero
+            means the policy is trained on an exactly measured state.
     """
     # Set seed
     set_seed(seed)
@@ -118,6 +121,8 @@ def train(algo="PPO", timesteps=1_000_000, seed=42, queue=None, device="auto", p
         env_kwargs['randomize_weight'] = True
     if w2 is not None:
         env_kwargs['w2'] = float(w2)
+    if obs_noise:
+        env_kwargs['obs_noise'] = float(obs_noise)
 
     run_name = run_name or f"PPO_seed{seed}"
     models_dir = run_models(run_name)
@@ -232,9 +237,15 @@ if __name__ == "__main__":
                         help="start the actor from the receding-horizon controller")
     parser.add_argument("--controller-episodes", type=int, default=2000,
                         help="controller episodes recorded for the initialization")
+    parser.add_argument("--obs-noise", type=float, default=0.0,
+                        help="measurement noise on the wear and the remaining stock, "
+                             "as a fraction of their range")
+    parser.add_argument("--env-id", type=str, default=ENV_ID,
+                        help="the environment registration to train against")
     args = parser.parse_args()
 
     train(algo=args.algo, timesteps=args.steps, seed=args.seed, device=args.device,
           randomize=args.randomize, randomize_weight=args.randomize_weight, w2=args.w2,
           run_name=args.run_name, init_from_controller=args.init_from_controller,
-          controller_episodes=args.controller_episodes)
+          controller_episodes=args.controller_episodes, obs_noise=args.obs_noise,
+          env_id=args.env_id)

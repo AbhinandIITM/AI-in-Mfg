@@ -4,12 +4,30 @@
 # use comes from this file. The equations that consume them live in
 # config/physics.py, and the paths live in config/paths.yaml.
 
-# Tool wear, Taylor-expanded model
+# Tool wear, Taylor-Expanded Model
+#
+# The coefficient is anchored on the tool life, not on a wear equation taken
+# from a paper: none of the three reference papers carries a Taylor wear
+# model. Mo et al. (J. Manuf. Processes 156, 2025) put the wear limit at
+# 300 um for finishing and change the tool inside a part, and Wang et al.
+# (J. Manuf. Syst. 78, 2025) cut 40 parts with 5 identical tools, which is
+# about 8 parts per tool. At the reference cutting condition this
+# coefficient gives 10 parts per tool, so the tool life is a resource a
+# batch can run out of. The previous value of 1.1e-4 gave a tool life of
+# about 870 parts, which made the wear constraint inert inside a part and
+# the tool life irrelevant to a batch.
+#
+# The exponents are the exponents of the wear RATE, not the Taylor tool life
+# exponents, so the tool life varies by only a factor of a few across the
+# machine envelope. That is a known weakness of the model: a faster cut
+# barely shortens the tool life. The classical tool life equation would
+# give (4.0, 0.8, 3.2), and with them the tool life spans six orders of
+# magnitude over the envelope, which is not a usable envelope either.
 tool_wear:
-  C_wear: 1.1e-4        # Wear coefficient
-  alpha: 0.3            # Cutting speed exponent
-  beta: 0.2             # Feed rate exponent
-  gamma_wear: 0.15       # Depth of cut exponent
+  C_wear: 1.0e-2        # Wear coefficient
+  alpha: 0.3            # Cutting speed exponent of the wear rate
+  beta: 0.2             # Feed rate exponent of the wear rate
+  gamma_wear: 0.15      # Depth of cut exponent of the wear rate
 
 # Surface roughness, empirical regression
 surface_roughness:
@@ -53,10 +71,29 @@ workpiece:
 batch:
   batch_size: 50        # Parts per batch
 
-# Reward weighting
+# Reward weighting and shaping.
+#
+# The magnitudes matter as much as the weights. The objective term (the
+# throughput against the energy) is what decides the operating point, so it
+# has to be worth a sensible fraction of the value of a finished part. With
+# the objective scale at 5 the whole throughput and energy trade-off of a
+# part was worth about one point of reward against a completion bonus of
+# 200, and the policy learned to finish every part at any cost. At 100 the
+# trade-off is worth about fifty points, which is a quarter of a part, and
+# the completion bonus still dominates the decision to finish.
 reward:
-  w1: 0.6               # MRR weight (throughput)
-  w2: 0.4               # Energy weight (green manufacturing, tunable)
+  w1: 0.6                 # MRR weight (throughput)
+  w2: 0.4                 # Energy weight (green manufacturing, tunable)
+
+  objective_scale: 100.0  # weight of the throughput and energy term
+  progress_scale: 20.0    # weight of the anti-stall progress bonus
+  step_penalty: 0.05      # per pass
+  wear_penalty: 50.0      # a pass that ends above the wear safety limit
+  breakage_penalty: 100.0 # a broken tool
+  roughness_penalty: 50.0 # a finishing pass outside the roughness safety limit
+  completion_bonus: 200.0 # a part finished within spec
+  hv_scale: 5.0           # the Pareto margin bonus, at most this much
+  tool_cost: 0.0          # the cost of the tool life consumed, per mm of wear
 
 # The reference cutting condition. A pass cut under it draws the calibrated
 # specific cutting energy k_c, and it is the anchor of the reward scales.

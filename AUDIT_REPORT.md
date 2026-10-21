@@ -402,20 +402,21 @@ No code paths allow bypassing these constraints.
 1. **The one open item:** the two parallel execution strategies. Either merge
    them or document why both exist, in the same way the heartbeat callback
    now documents why it exists.
-2. **The learned policy still does not beat the classical controller.** The
-   question that was open at the last revision, whether starting the policy
-   from the controller and fine-tuning from there would beat the expert, has
-   been measured and the answer is no. On the same 100 randomized scenarios at
-   the same energy weight, the controller scores 187.96 with a reward spread
-   of 65.92, the policy trained from scratch scores 198.57 with a spread of
-   30.03, and the policy initialized from the controller scores 199.35 with a
-   spread of 3.35. The initialization makes the policy an order of magnitude
-   more consistent and removes the tool breakage, but it gives up 6.6% of the
-   removal rate and pays 12.9% more energy for it, and the 0.8 gap in mean
-   reward over the from-scratch policy is inside the noise. The controller
-   still removes 38% more material per minute. This is a finding about the
-   work, not about the code, and it is recorded in `README.md`,
-   `PROJECT.md` and `results/RESULTS.md`.
+2. **The comparison against the classical controller, redone.** The original
+   comparison was not a fair test, and three things were wrong with it. The
+   reward did not count throughput: the objective term was worth about one
+   point of reward per part against a completion bonus of 200, so the policy
+   was rewarded for finishing a part at any cost. The controller was not a
+   real baseline: it maximized only the objective term per pass, ignored the
+   breakage probability, and committed to one feed for the whole part while
+   the reward penalizes only the finishing pass. And the wear coefficient
+   gave a tool life of about 870 parts, which left the wear constraint inert
+   inside a part and the tool life irrelevant to a batch.
+   All three are fixed. The reward scales now live in the configuration, the
+   controller maximizes the expected episode reward over a full-part
+   lookahead with a separate roughing and finishing feed, and the wear
+   coefficient is anchored on the tool life that Wang et al. report.
+   The measured outcome is in section 14.
 
 ---
 
@@ -485,6 +486,87 @@ python -m experiments.evaluate
 # the controller initialization experiment
 python -m experiments.controller_experiment 1000000 2000
 ```
+
+---
+
+## 14. The comparison against the classical controller, redone
+
+The audit did not cover this comparison, and the review of it found three
+defects, each of which had to be fixed before the comparison could mean
+anything. The measurements below are on the same 100 randomized scenarios at
+the same energy weight, w2 = 0.4, and they are in
+`results/evaluation/robustness_results.csv`.
+
+### 14.1 The reward did not count throughput
+
+The reward was decomposed term by term over 30 scenarios. The objective term,
+the throughput against the energy, was worth **1.2 points of reward per part**
+for the controller and **-1.3** for the learned policy, against a completion
+bonus of **200**. The whole trade-off the project is about was a rounding
+error in the reward, and a policy that finished every part at any cost scored
+well. The scales now live in `MillingDT/config/physics_constants.yaml` and the
+objective term is worth about fifty points per part, a quarter of the value of
+a part. That is a design decision and it is stated as one.
+
+### 14.2 The classical controller was not a baseline
+
+The controller maximized the objective term per pass and nothing else. It
+ignored the breakage probability, the step penalty, the completion bonus and
+the Pareto margin, it held the wear to `VB_max` where the reward penalizes
+any pass above `VB_safe`, and it committed to one feed for the whole part
+while the reward penalizes only the finishing pass. It is now a part-level
+maximizer of the expected episode reward, with a separate roughing and
+finishing feed and with the breakage risk priced. On the same scenarios it
+went from 184.3 to 248.9.
+
+### 14.3 The wear calibration was inert
+
+`C_wear = 1.1e-4` gave a tool life of about 870 parts, so the wear
+constraint did nothing inside a part and the tool life was irrelevant to a
+batch. None of the three reference papers carries a Taylor wear model, so the
+coefficient was never calibrated against one. It is now anchored on the tool
+life that Wang et al. report, 40 parts cut with 5 identical tools, and gives
+about 9 parts per tool.
+
+### 14.4 What the comparison now says
+
+| Regime | Arm | Reward | Std | MRR (mm3/min) | Energy (kJ) | Cycle (s) | Broken | Completed |
+| :--- | :--- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| The controller has every advantage | Receding-horizon | 248.9 | 79.5 | 1318.2 | 68.9 | 17.1 | 3% | 96% |
+| The controller has every advantage | PPO | 233.6 | 79.7 | 1608.5 | 66.4 | 11.4 | 6% | 94% |
+| The controller's material model is wrong | Receding-horizon | 63.5 | 117.1 | 1306.9 | 71.0 | 23.3 | 2% | 95% |
+| The controller's material model is wrong | PPO | 226.9 | 88.3 | 1604.2 | 66.3 | 11.5 | 6% | 94% |
+| The wear measurement is noisy | Receding-horizon | 181.3 | 185.9 | 1300.4 | 74.2 | 31.1 | 4% | 91% |
+| The wear measurement is noisy | PPO trained with the noise | 213.6 | 87.3 | 1554.2 | 66.9 | 12.0 | 6% | 94% |
+
+1. **Inside a perfect digital twin there is no reinforcement learning
+   advantage.** The controller computes the per-pass optimum of the same
+   objective with the exact model, the exact state and the material in its
+   hand, and it scores 248.9 against the policy's 233.6. The gap is inside
+   the noise: the standard error of the mean is about 8 for both arms, so a
+   difference of 15 has a t of about 1.4.
+2. **The learned policy is the better throughput operator.** It removes 22%
+   more material per minute (1608 against 1318), finishes a part in a third
+   less time (11.4 against 17.1 s) and spends 3.7% less energy. It pays for
+   that with twice the tool breakage, 6% against 3%, and 4% of its finished
+   surfaces above the roughness limit against 2%.
+3. **The advantage appears where a plant actually is.** With a material the
+   controller does not have a model for, its reward collapses by three
+   quarters, from 248.9 to 63.5, because it does not slow down and its
+   finished surfaces go out of specification. The learned policy holds at
+   226.9, and it holds whether it is told the material (215.1) or not.
+4. **The same holds for a noisy measurement.** With a 5% noise on the wear and
+   the remaining stock the controller's reward falls to 181.3 and its spread
+   more than doubles, to 185.9 against the policy's 87.3. The policy trained
+   with the same noise keeps 213.6 and cuts the batch in 12.0 s against the
+   controller's 31.1 s.
+
+So the honest conclusion is not that reinforcement learning beats a model
+based controller. It is that the advantage of the learned policy appears in
+the two places where the controller's information advantage disappears, and
+that the reward's scale decides how the ideal case is scored.
+
+---
 
 ---
 

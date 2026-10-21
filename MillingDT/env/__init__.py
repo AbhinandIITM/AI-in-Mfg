@@ -34,6 +34,29 @@ register(
     kwargs=dict(BASE_KWARGS)
 )
 
-from MillingDT.env.milling_env import MillingDTEnv
+# The batch environment. One episode is a batch of parts cut with one tool,
+# so the tool life is the resource the parts share.
+#
+# The base kwargs are not pinned here: the batch draws the scenario of every
+# part at every reset, and pinning the geometry would take the geometry out
+# of the draw. The machine limits and the engineering limits come from the
+# same configuration the per-part environment reads.
+#
+# The episode ends when the last part of the batch is cut, which the
+# environment decides itself, and the pass limit of the per-part environment
+# bounds the passes of every part, so there is no episode limit to set.
+BATCH_ENV_ID = "MillingDTBatchEnv-v1"
 
-__all__ = ["MillingDTEnv", "ENV_ID"]
+register(
+    id=BATCH_ENV_ID,
+    entry_point="MillingDT.env.milling_batch_env:MillingDTBatchEnv",
+    # The batch draws a new scenario for the parts at every reset, so the
+    # episode is only reproducible when it is seeded.
+    nondeterministic=True,
+    max_episode_steps=None,
+)
+
+from MillingDT.env.milling_env import MillingDTEnv
+from MillingDT.env.milling_batch_env import MillingDTBatchEnv
+
+__all__ = ["MillingDTEnv", "MillingDTBatchEnv", "ENV_ID", "BATCH_ENV_ID"]

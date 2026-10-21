@@ -410,14 +410,19 @@ def test_reward_matches_an_independent_calculation(w2):
     # the physics values, so the order of the operations is part of the value.
     MRR_hat = MRR / env_inst.MRR_max
     E_hat = energy / env_inst.E_ref
-    objective = 5.0 * (w1 * MRR_hat - w2 * E_hat)
-    progress = 2.0 * (a_p / env_inst.kappa_total)
-    step_penalty = -0.05
+    objective = env_inst.objective_scale * (w1 * MRR_hat - w2 * E_hat)
+    progress = env_inst.progress_scale * (a_p / env_inst.kappa_total)
+    step_penalty = -env_inst.step_penalty
+    # The tool cost is charged on the wear this pass consumed.
+    from MillingDT.config.physics import flank_wear_rate
+    delta_VB = flank_wear_rate(v_c, f_r, a_p, env_inst.L_cut / (n * f_r),
+                               env_inst.tool_wear_cfg)
+    tool_cost = -env_inst.tool_cost * delta_VB
     # The part is not finished by this pass, so the roughness penalty and the
     # completion bonus do not apply.
     assert not info['is_finishing']
 
-    assert reward == pytest.approx(objective + progress + step_penalty, rel=1e-9)
+    assert reward == pytest.approx(objective + progress + step_penalty + tool_cost, rel=1e-9)
     env_inst.close()
 
 

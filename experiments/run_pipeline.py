@@ -8,9 +8,12 @@ Executes the full pipeline sequentially:
 3. Runtime Weight Sweep (the production policy asked for every weight)
 4. Ablation Study (Trains Pareto Frontier Models)
 5. Classical Baselines
-6. Viz Generation (Training Curves, MC Distributions, Baseline Comparison)
-7. Result Tables (rebuilds results/RESULTS.md)
-8. Controller Initialization Experiment
+6. Transfer to a harder material
+7. Controller Initialization Experiment
+8. Robustness Experiment (model error and a noisy wear measurement)
+9. Batch Experiment (the tool life shared across the parts)
+10. Viz Generation (Training Curves, MC Distributions, Baseline Comparison)
+11. Result Tables (rebuilds results/RESULTS.md)
 
 Design note: this script drives the *pipeline stages* through subprocess calls
 (python -m experiments.train_rl, python -m experiments.run_baselines, etc.).
@@ -93,13 +96,23 @@ def main():
     run_cmd(f"python -m experiments.controller_experiment {args.steps} "
             f"{args.controller_episodes}")
 
-    # 8. Generate all Visualizations
+    # 8. The robustness experiment: the same two arms on a machine the
+    # controller has the wrong model of, and with a noisy wear measurement.
+    run_cmd("python -m experiments.robustness_experiment")
+
+    # 9. The batch experiment: the tool life is shared across the parts.
+    run_cmd(f"python -m experiments.train_rl --env-id MillingDTBatchEnv-v1 "
+            f"--steps {args.steps} --seed 42 --randomize "
+            f"--run-name PPO_batch_seed42")
+    run_cmd("python -m experiments.batch_experiment")
+
+    # 10. Generate all Visualizations
     run_cmd("python -m viz.plot_results")
     run_cmd("python -m viz.plot_eval")
     run_cmd("python -m viz.plot_baselines_comparison")
     run_cmd("python -m viz.plot_controller_comparison")
 
-    # 9. Rebuild the result tables quoted in the documentation
+    # 11. Rebuild the result tables quoted in the documentation
     run_cmd("python -m experiments.summarize_results")
 
     print("="*80)

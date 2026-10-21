@@ -15,6 +15,8 @@
 ## Project Commands
 - Run tests: `pytest tests/ -v`
 - Train the production policy: `python -m experiments.train_rl --steps 1000000 --seed 42 --randomize --randomize-weight`
+- Train a policy that faces a noisy wear measurement: `python -m experiments.train_rl --steps 1000000 --seed 42 --randomize --randomize-weight --obs-noise 0.05 --run-name PPO_noisystate_seed42`
+- Train a policy on the batch environment: `python -m experiments.train_rl --env-id MillingDTBatchEnv-v1 --steps 1000000 --seed 42 --randomize --run-name PPO_batch_seed42`
 - Run the Monte Carlo sweep: `python -m experiments.evaluate --scenarios 100`
 - Run the runtime weight sweep: `python -m experiments.evaluate --sweep-weight --scenarios 100`
 - Compare the one policy against the per-weight policies: `python -m experiments.evaluate --compare-only`
@@ -22,10 +24,18 @@
 - Run the classical baselines: `python -m experiments.run_baselines`
 - Run the transfer experiment: `python -m experiments.transfer_experiment 300000 50000`
 - Run the controller initialization experiment: `python -m experiments.controller_experiment 1000000 2000`
+- Run the robustness experiment (model error, noisy wear): `python -m experiments.robustness_experiment`
+- Run the batch experiment (the tool life shared across the parts): `python -m experiments.batch_experiment`
 - Rebuild the result tables: `python -m experiments.summarize_results`
 - Build the figures: `python -m viz.plot_results`, `python -m viz.plot_eval`, `python -m viz.plot_baselines_comparison`, `python -m viz.plot_controller_comparison`
 - Run the full pipeline: `python -m experiments.run_pipeline --steps 1000000 --ablation_steps 150000`
 - Launch the interactive Digital Twin simulator: `streamlit run app.py`
+
+## The reward and the comparison
+- The reward scales live in `MillingDT/config/physics_constants.yaml`, section `reward`. The objective term has to be worth a sensible fraction of the completion bonus, or the reward says "finish the part" and does not care how fast it is done. It stands at 100 against a completion bonus of 200.
+- The classical controller in `MillingDT/baselines/receding_horizon.py` maximizes the expected episode reward over a full-part lookahead, and it plans a roughing feed and a finishing feed separately, because the reward penalizes only the finishing pass. It is the baseline the learned policy has to beat, so it must not be handicapped.
+- The controller's `scenario` argument is its BELIEF about the material. The robustness experiment hands it the nominal coefficients while the machine runs a harder material, which is the model error regime.
+- The wear coefficient is anchored on a tool life of about ten parts, from Wang et al. (J. Manuf. Syst. 78, 2025), who cut 40 parts with 5 tools. The previous value gave a tool life of about 870 parts and left the wear constraint inert.
 
 ## Documentation
 - `README.md`: overview, method, and the measured findings
