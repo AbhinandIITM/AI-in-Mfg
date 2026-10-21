@@ -481,21 +481,16 @@ runs = [
     "1️⃣ Production policy: 1M steps, seed 42",
     "    --randomize --randomize-weight",
     "    → results/run_PPO_seed42/",
-    "",
     "2️⃣ Ablation grid: 7 weights × 3 seeds = 21 policies",
     "    w₂ ∈ {0.0, 0.2, 0.4, 0.5, 0.6, 0.8, 1.0}",
     "    seeds {42, 43, 44}, 150k steps each",
-    "    weight PINNED at training, evaluated at that",
-    "    same weight",
-    "",
+    "    weight PINNED at training and at evaluation",
     "3️⃣ Batch-aware policy: 1M steps on MillingDTBatchEnv-v1",
-    "",
     "4️⃣ Noisy-measurement policy: 1M steps, --obs-noise 0.05",
-    "",
     "Heartbeat callback: queue signal every 1000 steps",
     "→ stall detection in run_experiments.py",
 ]
-add_bullet_list(slide, Inches(7.3), Inches(2.2), Inches(5.2), Inches(4.5), runs, font_size=15, color=DARK_GRAY)
+add_bullet_list(slide, Inches(7.3), Inches(2.2), Inches(5.2), Inches(4.5), runs, font_size=14, color=DARK_GRAY, spacing=Pt(4))
 
 # ============================================================
 # SLIDE 8: Monte Carlo Results
