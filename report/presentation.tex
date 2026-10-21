@@ -563,10 +563,13 @@
 \begin{frame}{Robustness: How to Read It}
     \scriptsize
     \begin{enumerate}
-        \item \textbf{Inside a perfect digital twin there is no reinforcement learning advantage.}
-        The controller computes the per-pass optimum of the same objective with the exact model and
-        the exact state, and it scores 248.9 against the policy's 233.6. The gap is inside the noise:
-        the standard error of the mean is about 8 for both arms, so a difference of 15 has a $t$ of about 1.4.
+        \item \textbf{Inside a perfect digital twin the two methods are comparable, and the measured
+        gap is partly an artifact of the reward.} The controller computes the optimum of the same
+        objective at every pass with the exact model and the exact state, and it scores 248.9
+        against the policy's 233.6. The gap is inside the noise: the standard error of the mean is
+        about 8 for both arms, so a difference of 15 has a $t$ of about 1.4. And about nine of those
+        fifteen points are the reward: the controller cuts the part in 5.85 passes against the
+        policy's 4.00 and is paid for every pass.
         \item \textbf{The learned policy is the better throughput operator.} It removes \alert{22\% more
         material per minute} (1608 against 1318), finishes a part in \alert{a third less time} (11.4
         against 17.1 s) and spends 3.7\% less energy. It pays with twice the tool breakage (6\% against 3\%).
@@ -581,10 +584,76 @@
     \vspace{0.1em}
     \begin{alertblock}{The claim}
     \scriptsize
-    The learned policy does not beat a model-based controller inside a perfect digital twin, because
-    the controller computes the optimum of the same objective with strictly more information. It
-    beats it where that information advantage disappears. The scale of the reward decides how the
-    ideal case is scored.
+    Inside a perfect digital twin the learned policy and the model-based controller are comparable:
+    the policy is ahead on the physical metrics and behind on the breakage, and the gap the reward does
+    show is partly the artifact of how the reward pays for a rate. The advantage of the learned policy
+    appears where the controller's information advantage disappears. The sensitivity of the comparison
+    to the reward is published with the result.
+    \end{alertblock}
+\end{frame}
+
+\begin{frame}{Reward Sensitivity: How the Reward Pays for a Rate}
+    \small
+    The reward pays the removal rate of every pass, the standard way to express a rate in a reward
+    that is paid per pass. The total credit therefore grows with the number of passes a plan takes,
+    so a plan that cuts the same part in more, shallower passes is paid more for it.
+
+    \vspace{0.1em}
+    On the same 100 randomized scenarios at $w_2 = 0.4$, measured by
+    \texttt{experiments/reward\_sensitivity.py}: the controller takes \alert{5.85 passes} against the
+    policy's \alert{4.00} and collects \alert{27\% more objective credit} ($+0.413$ against $+0.326$)
+    for the same material.
+
+    \vspace{0.1em}
+    \centering
+    \scriptsize
+    \renewcommand{\arraystretch}{0.9}
+    \begin{tabular}{@{}lrrrrrrr@{}}
+    \toprule
+    & \multicolumn{3}{c}{\makecell[c]{\textbf{Shipped form}\\\textbf{(sum of the per-pass rates)}}} & \multicolumn{3}{c}{\makecell[c]{\textbf{Alternative form}\\\textbf{(material against energy)}}} \\
+    \cmidrule(lr){2-4}\cmidrule(lr){5-7}
+    \textbf{Objective scale} & \textbf{Controller} & \textbf{Policy} & \textbf{Gap} & \textbf{Controller} & \textbf{Policy} & \textbf{Gap} \\
+    \midrule
+    5    & 209.7 & 202.6 & $+7.1$  & 208.2 & 201.6 & $+6.5$ \\
+    20   & 215.9 & 207.5 & $+8.3$  & 209.7 & 203.4 & $+6.3$ \\
+    50   & 228.3 & 217.3 & $+10.9$ & 212.9 & 207.1 & $+5.8$ \\
+    100  & \alert{248.9} & 233.6 & $+15.3$ & 218.2 & 213.2 & $+5.0$ \\
+    200  & 290.1 & 266.2 & $+23.9$ & 228.7 & 225.3 & $+3.4$ \\
+    400  & 372.7 & 331.5 & $+41.2$ & 249.9 & 249.6 & $+0.2$ \\
+    1000 & 620.2 & 527.2 & $+93.0$ & 313.2 & 322.6 & $-9.4$ \\
+    4000 & 1857.9 & 1506.0 & $+352.0$ & 630.1 & 687.4 & $-57.4$ \\
+    \bottomrule
+    \end{tabular}
+
+    \vspace{0.2em}
+    {\footnotesize
+    Mean reward of each arm on the same 100 scenarios, under two objective forms and eight objective
+    scales. The gap is the controller's mean reward minus the policy's.}
+\end{frame}
+
+\begin{frame}{Reward Sensitivity: Three Checks and the Consequence}
+    \footnotesize
+    \begin{enumerate}
+        \item \textbf{The objective scale is not the lever:} the controller leads at every scale from 5
+        to 4000 and the gap only grows with it, 7.1 points at 5 and 352.0 at 4000, so the sign never flips.
+        \item \textbf{The part level alternative was implemented and rejected:} it removes the pass count
+        from the accounting, so the arms are much closer (5.0 points at the scale of 100, against 15.3)
+        and the policy is ahead at the large scales (9.4 points at 1000, 57.4 at 4000). But the material a
+        part gives up is fixed by its stock, so the throughput weight would be inert and the weight sweep
+        would stop measuring what it claims to measure.
+        \item \textbf{What a correct form would need:} a rate cannot be accumulated over a part without
+        becoming a volume, so a reward has to either price the cycle time directly or compare the part's
+        average rate to a reference at the end of the part. Both change the meaning of the weights, and the
+        second makes the objective sparse and the credit assignment poor.
+    \end{enumerate}
+
+    \vspace{0.1em}
+    \begin{alertblock}{The consequence}
+    \footnotesize
+    The ideal case reads as a \alert{tie, not a win}: the policy is ahead on the physical metrics (22\%
+    more material removed, a third less cycle time, 3.7\% less energy) and behind on the tool breakage
+    (6\% against 3\%), and the gap the reward does show is partly the reward's artifact. The reward as
+    shipped carries it, documented rather than hidden.
     \end{alertblock}
 \end{frame}
 
@@ -595,9 +664,9 @@
     \toprule
     \textbf{Arm} & \textbf{Batch reward} & \textbf{Std} & \makecell{\textbf{Reward}\\\textbf{per part}} & \makecell{\textbf{Tool}\\\textbf{changes}} & \makecell{\textbf{Batch}\\\textbf{time (s)}} & \makecell{\textbf{Batch}\\\textbf{energy (kJ)}} \\
     \midrule
-    PPO, batch aware & 1772.3 & 358.3 & 169.0 & \alert{0.767} & \alert{113.8} & \alert{632.7} \\
-    PPO, per part & 1694.6 & 352.3 & 171.7 & 0.833 & 110.8 & 655.7 \\
-    Receding-horizon, per part & \alert{1859.9} & 328.8 & 173.7 & 0.833 & 207.5 & 692.0 \\
+    PPO, batch aware & 1817.0 & 477.8 & 166.8 & \alert{0.63} & \alert{113.1} & \alert{610.4} \\
+    PPO, per part & 1709.9 & 366.1 & 169.4 & 0.83 & 114.7 & 674.3 \\
+    Receding-horizon, per part & \alert{1859.9} & 328.8 & 173.7 & 0.83 & 207.5 & 692.0 \\
     \bottomrule
     \end{tabular}
     \end{center}
@@ -608,12 +677,14 @@
         \item A batch is ten parts cut with one tool; the tool is replaced when it breaks or reaches
         its wear limit, and the replacement costs \alert{500 reward units against the 200 a finished
         part is worth}. The observation carries the tool life left and the fraction of the batch left.
-        \item \alert{The batch context is worth 8\% fewer tool changes and 3.5\% less energy at the
+        \item \alert{The batch context is worth 24\% fewer tool changes and 9.5\% less energy at the
         same completion}: the policy that sees the tool life and the batch that is left replaces the
-        tool 0.767 times per batch against 0.833, and uses 632.7 kJ against 655.7 kJ.
+        tool 0.63 times per batch against 0.83, and uses 610.4 kJ against 674.3 kJ. It also collects
+        more batch reward, 1817.0 against 1709.9.
         \item The per-part controller gets the highest batch reward, 1859.9, and buys it with the
-        machine time: \alert{207.5 s for the batch against the batch-aware policy's 113.8 s}. It
-        solves one part at a time, so it cannot price a tool change against the parts that follow it.
+        machine time: \alert{207.5 s for the batch against the batch-aware policy's 113.1 s}, about 1.8
+        times the machine time for a batch reward that is 2.4\% higher. It solves one part at a time,
+        so it cannot price a tool change against the parts that follow it.
     \end{itemize}
 \end{frame}
 
@@ -678,9 +749,10 @@
     \vspace{0.2em}
     \begin{alertblock}{What the work claims}
     \scriptsize
-    The learned policy does not beat a model-based controller on the objective inside a perfect
-    digital twin. It is the better throughput operator, and its advantage appears where the
-    controller's information advantage disappears.
+    Inside a perfect digital twin the learned policy and the model-based controller are comparable:
+    the policy is ahead on the physical metrics and behind on the breakage, and the gap the reward does
+    show is partly the reward's artifact. Its advantage appears where the controller's information
+    advantage disappears.
     \end{alertblock}
 \end{frame}
 
@@ -766,7 +838,7 @@
             \textbf{Module Structure}
             \begin{itemize}
                 \item \texttt{MillingDT/}: config, env (part + batch), agent (controller init), baselines, sim, utils
-                \item \texttt{experiments/}: train, eval, ablation, baselines, transfer, controller, robustness, batch, pipeline
+                \item \texttt{experiments/}: train, eval, ablation, baselines, transfer, controller, robustness, batch, reward sensitivity, pipeline
                 \item \texttt{viz/}: shared plotting utilities
                 \item \texttt{results/}: one directory per run
             \end{itemize}
@@ -794,43 +866,55 @@
 % ========================================================================
 \section{Discussion}
 
-\begin{frame}{Discussion}
-    \scriptsize
+\begin{frame}{Discussion: What Worked}
+    \small
     \begin{columns}[T]
-        \begin{column}{0.33\textwidth}
+        \begin{column}{0.48\textwidth}
             \begin{block}{What Worked}
             \begin{itemize}
-                \item Speed-dependent $k_c$ creates genuine trade-off
+                \item Speed-dependent $k_c$ creates a genuine trade-off
                 \item The \alert{scale of the reward} decides the operating point: 50 points per part against 200 for a part
                 \item Domain randomization $\to$ 94\% completion
                 \item One policy covers the range, ahead over $w_2 = 0.0$ to 0.6
-                \item Training across materials makes adaptation unnecessary
-                \item Receding-horizon = strong, fair baseline (184.3 $\to$ 248.9 once it prices the whole reward)
-                \item Robustness: the advantage appears where the controller's information runs out
+                \item Training across materials makes the adaptation unnecessary
             \end{itemize}
             \end{block}
         \end{column}
-        \begin{column}{0.33\textwidth}
+        \begin{column}{0.48\textwidth}
+            \begin{block}{What Worked (continued)}
+            \begin{itemize}
+                \item A receding-horizon controller that prices the whole reward is a fair and strong baseline (184.3 $\to$ 248.9)
+                \item Robustness: comparable inside a perfect twin, and the advantage appears where the controller's information runs out
+                \item Measuring the reward found the artifact a fair-looking comparison would have hidden: the credit grows with the number of passes
+                \item Batch context: 24\% fewer tool changes, 9.5\% less energy
+            \end{itemize}
+            \end{block}
+        \end{column}
+    \end{columns}
+\end{frame}
+
+\begin{frame}{Discussion: Limitations and Future Work}
+    \scriptsize
+    \begin{columns}[T]
+        \begin{column}{0.48\textwidth}
             \begin{alertblock}{Limitations}
             \begin{itemize}
-                \item Inside a perfect twin the controller is ahead: 248.9 against 233.6, and the gap is inside the noise
+                \item Inside a perfect twin the two methods are comparable: 248.9 against 233.6, the gap is inside the noise, and about nine of those points are the reward's artifact
                 \item The learned policy is the better throughput operator, at twice the tool breakage
                 \item Initializing from the controller is now \alert{harmful}: 119.8 against 233.6
-                \item The reward scale is a design decision, and the comparison is sensitive to it
+                \item The reward pays a rate per pass, so the credit grows with the number of passes: the bias is in the reward, and the scale is not the lever
                 \item The wear tool life varies by only a factor of a few across the envelope
-                \item Ablation: 150k steps/weight; sim-only, no real calibration yet
+                \item Ablation: 150k steps per weight, so the frontier is a lower bound; sim-only, no real machine calibration yet
             \end{itemize}
             \end{alertblock}
         \end{column}
-        \begin{column}{0.33\textwidth}
+        \begin{column}{0.48\textwidth}
             \begin{exampleblock}{Future Work}
             \begin{itemize}
-                \item \alert{Sensitivity of the comparison to the reward scale}
+                \item \alert{A reward that pays a rate correctly}: price the cycle time directly, or compare the part's average rate to a reference at the end of the part
+                \item Publish the sensitivity of any comparison to the reward form, as it is here
                 \item Compare against a restricted controller (is the gap an information gap?)
-                \item Sim-to-real: calibrate, add noise/delay
-                \item True multi-objective RL (Pareto, hypervolume)
-                \item Online $w_2$ adaptation for energy budget
-                \item Batch-level planning
+                \item Sim-to-real calibration, true multi-objective RL, online $w_2$ adaptation, batch-level planning
             \end{itemize}
             \end{exampleblock}
         \end{column}
@@ -844,23 +928,24 @@
 
 \begin{frame}{Conclusion}
     \scriptsize
+    \setlength{\itemsep}{0pt}
     \begin{itemize}
         \item \textbf{Digital Twin} with speed-dependent cutting energy, tool wear, roughness, breakage; the wear coefficient is anchored on a published tool life
-        \item \textbf{Two Gymnasium Environments}: the part (11-D) and the batch (13-D), both with the context in the observation
-        \item \textbf{One Production Policy} (1M steps): the energy weight is a runtime query, not a retrain
+        \item \textbf{Two Gymnasium Environments} (the part, 11-D, and the batch, 13-D) and \textbf{One Production Policy} (1M steps): the energy weight is a runtime query, not a retrain
         \item \textbf{Rigorous Evaluation}: Monte Carlo (100 scenarios, 95\% CIs), ablation frontier, weight sweep against the 21 per-weight policies
         \item \textbf{Baselines}: five classical policies on the same 50 episodes; the receding-horizon controller is the strongest at $+253.5$
-        \item \textbf{Robustness}: the controller leads inside a perfect twin (248.9 against 233.6) and collapses to 63.5 and 181.3 under a wrong model or a noisy measurement, while the policy holds at 226.9 and 213.6
-        \item \textbf{Batch}: the batch context is worth 8\% fewer tool changes and 3.5\% less energy; the per-part controller needs 207.5 s against 113.8 s
+        \item \textbf{Robustness}: inside a perfect twin the two methods are comparable (248.9 against 233.6, the gap inside the noise and partly the reward's artifact); the controller collapses to 63.5 and 181.3, the policy holds at 226.9 and 213.6
+        \item \textbf{Reward sensitivity}: the reward pays the rate of every pass, so the credit grows with the pass count; the controller collects 27\% more credit for the same material
+        \item \textbf{Batch}: the batch context is worth 24\% fewer tool changes and 9.5\% less energy; the per-part controller needs 207.5 s against 113.1 s
         \item \textbf{Controller Initialization}: the result reversed, the initialization is now harmful (119.8 against 233.6)
         \item \textbf{Transfer Experiment}: the production policy needs no adaptation; the nominal-trained one does
-        \item \textbf{Interactive Workstation} and \textbf{full reproducibility}: every result table from committed artifacts by one script
+        \item \textbf{Interactive Workstation} and \textbf{full reproducibility}: every result table from the committed artifacts by one script
     \end{itemize}
 
-    \vspace{0em}
+    \vspace{-1ex}
     \begin{alertblock}{Key Scientific Finding}
     \scriptsize
-    The speed-dependent specific cutting energy creates a \textbf{genuine energy/throughput trade-off}, and DRL learns to navigate it pass-by-pass under the quality and tool life constraints. Across the frontier the removal rate falls \alert{41\%} while the energy of the part falls \alert{17\%}. Against a model-based controller the claim is narrow: inside a perfect digital twin the controller wins on the reward, the learned policy wins on throughput, and its advantage appears where the controller's information runs out.
+    The speed-dependent specific cutting energy creates a \textbf{genuine energy/throughput trade-off}, and DRL learns to navigate it pass-by-pass. Across the frontier the removal rate falls \alert{41\%} while the energy of the part falls \alert{17\%}. Against a model-based controller the claim is narrow: a tie, not a win.
     \end{alertblock}
 \end{frame}
 % ========================================================================
@@ -889,6 +974,7 @@
     Controller init & \texttt{experiments.controller\_experiment 1000000 2000} \\
     Robustness & \texttt{experiments.robustness\_experiment} \\
     Batch & \texttt{experiments.batch\_experiment} \\
+    Reward sensitivity & \texttt{experiments.reward\_sensitivity} \\
     Results & \texttt{experiments.summarize\_results} \\
     Workstation & \texttt{streamlit run app.py} \\
     Full pipeline & \texttt{experiments.run\_pipeline --steps 1000000 --ablation\_steps 150000} \\

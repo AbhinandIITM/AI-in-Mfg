@@ -156,6 +156,21 @@ def add_figure_slide(title, image_name, note_title, note):
         note, font_size=14, color=DARK_GRAY)
     return slide
 
+def style_header_row(table, row_idx, ncols, font_size=13):
+    """Blue header band for one row, skipping the cells covered by a merge."""
+    for j in range(ncols):
+        cell = table.cell(row_idx, j)
+        if cell.is_spanned:
+            continue
+        cell.fill.solid()
+        cell.fill.fore_color.rgb = IIT_BLUE
+        for p in cell.text_frame.paragraphs:
+            p.font.size = Pt(font_size)
+            p.font.name = 'Calibri'
+            p.font.bold = True
+            p.font.color.rgb = WHITE
+            p.alignment = PP_ALIGN.CENTER
+
 # ============================================================
 # SLIDE 1: Title Slide
 # ============================================================
@@ -246,6 +261,7 @@ contents = [
         "5 classical baselines (incl. receding-horizon)",
         "Robustness: 3 regimes against the controller",
         "Batch: one tool cuts ten parts",
+        "Reward sensitivity: the objective form and scale",
         "Transfer experiment",
         "Full reproducibility",
     ],
@@ -731,18 +747,74 @@ for j in range(9):
     rob_table.cell(4, j).fill.solid()
     rob_table.cell(4, j).fill.fore_color.rgb = RGBColor(255, 248, 220)
 
-add_text_box(slide, Inches(0.5), Inches(4.45), Inches(12.3), Inches(0.5),
+add_text_box(slide, Inches(0.5), Inches(4.4), Inches(12.3), Inches(0.5),
     "Same 100 randomized scenarios at w₂ = 0.4 in every row. The regime changes what the CONTROLLER is given, "
     "not what the policy is given.", font_size=15, bold=True, color=IIT_BLUE)
 
-add_shape(slide, Inches(0.5), Inches(4.95), Inches(12.3), Inches(2.15), fill_color=RGBColor(255, 248, 220), line_color=IIT_GOLD, line_width=Pt(2))
-add_text_box(slide, Inches(0.8), Inches(5.05), Inches(11.7), Inches(0.4), "🎯 The central result of the work", font_size=20, bold=True, color=IIT_GOLD)
+add_shape(slide, Inches(0.5), Inches(4.85), Inches(12.3), Inches(2.35), fill_color=RGBColor(255, 248, 220), line_color=IIT_GOLD, line_width=Pt(2))
+add_text_box(slide, Inches(0.8), Inches(4.95), Inches(11.7), Inches(0.4), "🎯 The central result of the work", font_size=20, bold=True, color=IIT_GOLD)
 rob_notes = [
-    "• Inside a perfect digital twin the controller wins on the reward (248.9 against 233.6) and the gap of 15 is inside the noise: the standard error of the mean is about 8 for both arms",
+    "• Inside a perfect digital twin the two methods are comparable: 248.9 against 233.6, and the gap of 15 is inside the noise (the standard error of the mean is about 8 for both arms)",
     "• The learned policy is the better throughput operator: 22% more material per minute, a third less time, 3.7% less energy, at twice the tool breakage",
     "• The advantage appears where the controller's information advantage disappears: a wrong model of the material (63.5 against 226.9) and a noisy wear measurement (181.3 against 213.6)",
+    "• About nine of those fifteen points are the reward's artifact: the controller cuts the part in 5.85 passes against 4.00 and is paid for every pass",
 ]
-add_bullet_list(slide, Inches(0.8), Inches(5.55), Inches(11.7), Inches(1.5), rob_notes, font_size=13, color=DARK_GRAY, spacing=Pt(4))
+add_bullet_list(slide, Inches(0.8), Inches(5.45), Inches(11.7), Inches(1.7), rob_notes, font_size=13, color=DARK_GRAY, spacing=Pt(4))
+
+# ============================================================
+# SLIDE 15: Reward Sensitivity
+# ============================================================
+slide = prs.slides.add_slide(prs.slide_layouts[6])
+add_background(slide, WHITE)
+add_shape(slide, Inches(0), Inches(0), Inches(13.333), Inches(1.1), fill_color=IIT_BLUE)
+add_text_box(slide, Inches(0.5), Inches(0.2), Inches(12), Inches(0.7),
+    "Reward Sensitivity: How the Reward Pays for a Rate", font_size=30, bold=True, color=WHITE)
+
+add_text_box(slide, Inches(0.5), Inches(1.2), Inches(12.3), Inches(0.85),
+    "The reward pays the removal rate of every pass, so the total credit grows with the number of passes a plan takes: a plan that "
+    "cuts the same part in more, shallower passes is paid more for it. On the same 100 scenarios at w₂ = 0.4, measured by "
+    "experiments/reward_sensitivity.py, the controller takes 5.85 passes against the policy's 4.00 and collects 27% more objective "
+    "credit (+0.413 against +0.326) for the same material.",
+    font_size=14, color=DARK_GRAY)
+
+rs_rows = [
+    ("5", "209.7", "202.6", "+7.1", "208.2", "201.6", "+6.5"),
+    ("20", "215.9", "207.5", "+8.3", "209.7", "203.4", "+6.3"),
+    ("50", "228.3", "217.3", "+10.9", "212.9", "207.1", "+5.8"),
+    ("100", "248.9", "233.6", "+15.3", "218.2", "213.2", "+5.0"),
+    ("200", "290.1", "266.2", "+23.9", "228.7", "225.3", "+3.4"),
+    ("400", "372.7", "331.5", "+41.2", "249.9", "249.6", "+0.2"),
+    ("1000", "620.2", "527.2", "+93.0", "313.2", "322.6", "-9.4"),
+    ("4000", "1857.9", "1506.0", "+352.0", "630.1", "687.4", "-57.4"),
+]
+
+rs_table = slide.shapes.add_table(10, 7, Inches(0.6), Inches(2.05), Inches(12.1), Inches(2.8)).table
+for j, w in enumerate([2.0, 1.7, 1.5, 1.3, 1.7, 1.5, 1.3]):
+    rs_table.columns[j].width = Inches(w)
+
+rs_table.cell(0, 0).text = "Objective scale"
+rs_table.cell(0, 1).merge(rs_table.cell(0, 3))
+rs_table.cell(0, 1).text = "Shipped form (sum of the per-pass rates)"
+rs_table.cell(0, 4).merge(rs_table.cell(0, 6))
+rs_table.cell(0, 4).text = "Alternative form (material against energy)"
+for j, val in enumerate(["Controller", "Policy", "Gap", "Controller", "Policy", "Gap"]):
+    rs_table.cell(1, j + 1).text = val
+for i, row in enumerate(rs_rows):
+    for j, val in enumerate(row):
+        rs_table.cell(i + 2, j).text = val
+style_table(rs_table, header_rows=0, font_size=11, highlight_rows=(5,))
+style_header_row(rs_table, 0, 7, font_size=11)
+style_header_row(rs_table, 1, 7, font_size=11)
+
+add_shape(slide, Inches(0.5), Inches(5.05), Inches(12.3), Inches(2.15), fill_color=RGBColor(255, 248, 220), line_color=IIT_GOLD, line_width=Pt(2))
+add_text_box(slide, Inches(0.8), Inches(5.12), Inches(11.7), Inches(0.4), "Three checks and the consequence", font_size=19, bold=True, color=IIT_GOLD)
+rs_notes = [
+    "• The objective scale is not the lever: the controller leads at every scale from 5 to 4000 and the gap grows from 7.1 to 352.0 points, so the sign never flips",
+    "• The part level alternative was implemented and rejected: it removes the pass count from the accounting (5.0 points at the scale of 100 against 15.3, and the policy ahead by 9.4 at 1000 and 57.4 at 4000), but the material a part gives up is fixed by its stock, so the throughput weight would be inert",
+    "• A correct form is not obvious: a rate cannot be accumulated over a part without becoming a volume, so a reward has to price the cycle time directly or compare the part's average rate to a reference at the end of the part",
+    "• Consequence: the ideal case reads as a tie, not a win. The policy is ahead on the physical metrics and behind on the breakage, and the reward as shipped carries the artifact, documented rather than hidden",
+]
+add_bullet_list(slide, Inches(0.8), Inches(5.58), Inches(11.7), Inches(1.55), rs_notes, font_size=12, color=DARK_GRAY, spacing=Pt(3))
 
 # ============================================================
 # SLIDE 15: Batch Against the Part
@@ -755,9 +827,9 @@ add_text_box(slide, Inches(0.5), Inches(0.2), Inches(12), Inches(0.7),
 
 batch_data = [
     ("Arm", "Batch reward", "Std", "Reward/part", "Tool changes", "Batch time (s)", "Batch energy (kJ)"),
-    ("PPO, batch aware", "1772.3", "358.3", "169.0", "0.767", "113.8", "632.7"),
-    ("PPO, per part", "1694.6", "352.3", "171.7", "0.833", "110.8", "655.7"),
-    ("Receding-horizon, per part", "1859.9", "328.8", "173.7", "0.833", "207.5", "692.0"),
+    ("PPO, batch aware", "1817.0", "477.8", "166.8", "0.63", "113.1", "610.4"),
+    ("PPO, per part", "1709.9", "366.1", "169.4", "0.83", "114.7", "674.3"),
+    ("Receding-horizon, per part", "1859.9", "328.8", "173.7", "0.83", "207.5", "692.0"),
 ]
 
 batch_table = slide.shapes.add_table(4, 7, Inches(0.5), Inches(1.4), Inches(12.3), Inches(1.7)).table
@@ -773,8 +845,8 @@ add_text_box(slide, Inches(0.8), Inches(3.55), Inches(11.7), Inches(0.4), "How t
 batch_notes = [
     "• A batch is ten parts cut with one tool. The tool is replaced when it breaks or reaches its wear limit, and the replacement costs 500 reward units against the 200 a finished part is worth",
     "• The observation is the eleven features of the part plus the tool life left and the fraction of the batch still to cut (MillingDTBatchEnv-v1, 13-D)",
-    "• The batch context is worth 8% fewer tool changes and 3.5% less energy at the same completion: 0.767 tool changes against 0.833, and 632.7 kJ against 655.7 kJ",
-    "• The per-part controller gets the highest batch reward, 1859.9, and buys it with the machine time: 207.5 s for the batch against the batch-aware policy's 113.8 s",
+    "• The batch context is worth 24% fewer tool changes and 9.5% less energy at the same completion: 0.63 tool changes against 0.83, and 610.4 kJ against 674.3 kJ. It also collects more batch reward, 1817.0 against 1709.9",
+    "• The per-part controller gets the highest batch reward, 1859.9, and buys it with the machine time: 207.5 s for the batch against the batch-aware policy's 113.1 s, about 1.8 times the machine time for a reward that is 2.4% higher",
     "• It solves one part at a time, so it cannot price a tool change against the parts that follow it",
 ]
 add_bullet_list(slide, Inches(0.8), Inches(4.1), Inches(11.7), Inches(2.6), batch_notes, font_size=15, color=DARK_GRAY, spacing=Pt(6))
@@ -877,7 +949,7 @@ add_bullet_list(slide, Inches(7.1), Inches(2.1), Inches(5.5), Inches(2.7), [
 add_shape(slide, Inches(0.5), Inches(5.2), Inches(12.35), Inches(1.6), fill_color=RGBColor(230, 240, 250), line_color=IIT_BLUE, line_width=Pt(1.5))
 add_text_box(slide, Inches(0.8), Inches(5.35), Inches(11.7), Inches(0.5), "What the work claims", font_size=20, bold=True, color=IIT_BLUE)
 add_bullet_list(slide, Inches(0.8), Inches(5.9), Inches(11.7), Inches(0.8), [
-    "The learned policy does not beat a model-based controller on the objective inside a perfect digital twin. It is the better throughput operator, and its advantage appears where the controller's information advantage disappears.",
+    "Inside a perfect digital twin the learned policy and the model-based controller are comparable: the policy is ahead on the physical metrics and behind on the breakage, and the gap the reward does show is partly the reward's artifact. Its advantage appears where the controller's information advantage disappears.",
 ], font_size=16, color=DARK_GRAY, spacing=Pt(4))
 
 # ============================================================
@@ -981,7 +1053,7 @@ left_items = [
     "                  (controller init), baselines, sim, utils",
     "  experiments/ →  train, eval, ablation, baselines,",
     "                  transfer, controller, robustness, batch,",
-    "                  pipeline",
+    "                  reward sensitivity, pipeline",
     "  viz/         →  shared plotting utilities",
     "  results/     →  one directory per run",
     "",
@@ -1034,26 +1106,26 @@ contents = [
         "One policy covers the range, ahead over w₂ = 0.0 to 0.6",
         "Training across materials makes the adaptation unnecessary",
         "Receding-horizon = strong, fair baseline (184.3 → 248.9)",
-        "Robustness: the advantage appears where the controller's information runs out",
-        "Batch context: 8% fewer tool changes, 3.5% less energy",
+        "Robustness: comparable inside a perfect twin, and the advantage appears where the controller's information runs out",
+        "Measuring the reward found the artifact: the credit grows with the number of passes",
+        "Batch context: 24% fewer tool changes, 9.5% less energy",
     ],
     [
-        "Inside a perfect twin the controller is ahead: 248.9 against 233.6, and the gap is inside the noise",
+        "Inside a perfect twin the two methods are comparable: 248.9 against 233.6, the gap inside the noise, and about nine of those points are the reward's artifact",
         "The learned policy is the better throughput operator, at twice the tool breakage",
         "Initializing from the controller is now harmful: 119.8 against 233.6",
-        "The reward scale is a design decision, and the comparison is sensitive to it",
+        "The reward pays a rate per pass, so the credit grows with the number of passes: the bias is in the reward, and the scale is not the lever",
         "The wear tool life varies by only a factor of a few across the envelope",
-        "Ablation uses 150k steps/weight (vs 1M production)",
-        "Sim-only, no real machine calibration yet",
+        "Ablation uses 150k steps/weight (vs 1M production); sim-only, no real calibration yet",
     ],
     [
-        "Sensitivity of the comparison to the reward scale",
+        "A reward that pays a rate correctly: price the cycle time directly, or compare the part's average rate to a reference at the end of the part",
+        "Publish the sensitivity of any comparison to the reward form, as it is here",
         "Compare against a restricted controller (is the gap an information gap?)",
         "Sim-to-real: calibrate on machine data, add noise/delay",
         "True multi-objective RL (Pareto-conditioned, hypervolume)",
         "Online adaptation: runtime w₂ optimizer for energy budget",
         "Batch-level planning: optimize the whole batch, not a part",
-        "Deploy on edge hardware for real-time control",
     ],
 ]
 
@@ -1061,7 +1133,7 @@ x = Inches(0.4)
 for title, items in zip(titles, contents):
     add_shape(slide, x, Inches(1.3), col_w, Inches(5.8), fill_color=LIGHT_GRAY, line_color=IIT_BLUE, line_width=Pt(1.5))
     add_text_box(slide, x + Inches(0.2), Inches(1.4), col_w - Inches(0.4), Inches(0.5), title, font_size=20, bold=True, color=IIT_BLUE)
-    add_bullet_list(slide, x + Inches(0.2), Inches(2.0), col_w - Inches(0.4), Inches(4.8), items, font_size=13, color=DARK_GRAY, spacing=Pt(4))
+    add_bullet_list(slide, x + Inches(0.2), Inches(2.0), col_w - Inches(0.4), Inches(4.9), items, font_size=12, color=DARK_GRAY, spacing=Pt(4))
     x += col_w + Inches(0.15)
 
 # ============================================================
@@ -1081,8 +1153,9 @@ conclusions = [
     "📊 One production policy (1M steps): the energy weight is a runtime query, not a retrain",
     "🔬 Monte Carlo (100 scenarios, 95% CIs), ablation frontier, sweep against the 21 per-weight policies",
     "⚔️ Five classical baselines on the same 50 episodes; the receding-horizon controller is the strongest at +253.5",
-    "🛡️ Robustness: the controller leads inside a perfect twin (248.9 against 233.6), and collapses to 63.5 and 181.3; the policy holds at 226.9 and 213.6",
-    "📦 Batch: the batch context is worth 8% fewer tool changes and 3.5% less energy; the per-part controller needs 207.5 s against 113.8 s",
+    "🛡️ Robustness: comparable inside a perfect twin (248.9 against 233.6, the gap inside the noise and partly the reward's artifact); the controller collapses to 63.5 and 181.3, the policy holds at 226.9 and 213.6",
+    "⚖️ Reward sensitivity: the reward pays a rate per pass, so the credit grows with the pass count; the controller collects 27% more credit for the same material",
+    "📦 Batch: the batch context is worth 24% fewer tool changes and 9.5% less energy; the per-part controller needs 207.5 s against 113.1 s",
     "🧬 Controller init: the result reversed, the initialization is now harmful (119.8 against 233.6)",
     "🔄 Transfer: the production policy needs no adaptation; the nominal-trained one does",
     "🖥️ Interactive workstation and full reproducibility: every result table from committed artifacts by one script",
@@ -1091,15 +1164,16 @@ conclusions = [
 y = Inches(1.85)
 for c in conclusions:
     add_text_box(slide, Inches(1), y, Inches(11.333), Inches(0.4), c, font_size=13, color=WHITE, alignment=PP_ALIGN.LEFT)
-    y += Inches(0.42)
+    # One line of room per line of text, so the items never overlap.
+    y += Inches(0.20 * (1 + len(c) // 140) + 0.07)
 
 add_shape(slide, Inches(1), Inches(6.2), Inches(11.333), Pt(4), fill_color=IIT_GOLD)
 add_text_box(slide, Inches(1), Inches(6.3), Inches(11.333), Inches(1.0),
     "Key Scientific Finding: The speed-dependent specific cutting energy creates a genuine energy/throughput trade-off. "
     "Across the frontier the removal rate falls 41% while the energy of the part falls 17%, and one conditioned policy "
     "reaches that whole frontier at runtime. Against a model-based controller the claim is narrow: inside a perfect "
-    "digital twin the controller wins on the reward, the learned policy wins on throughput, and its advantage appears "
-    "where the controller's information advantage disappears.",
+    "digital twin the two methods are comparable, a tie rather than a win, with the learned policy ahead on the physical "
+    "metrics and behind on the tool breakage.",
     font_size=13, bold=True, color=IIT_GOLD, alignment=PP_ALIGN.CENTER)
 
 # ============================================================
@@ -1127,6 +1201,7 @@ cmds = [
     ("Controller initialization", "python -m experiments.controller_experiment 1000000 2000"),
     ("Robustness experiment", "python -m experiments.robustness_experiment"),
     ("Batch experiment", "python -m experiments.batch_experiment"),
+    ("Reward sensitivity", "python -m experiments.reward_sensitivity"),
     ("Regenerate RESULTS.md", "python -m experiments.summarize_results"),
     ("Launch workstation", "streamlit run app.py"),
     ("Full pipeline", "python -m experiments.run_pipeline --steps 1000000 --ablation_steps 150000"),
@@ -1134,10 +1209,10 @@ cmds = [
 
 y = Inches(1.3)
 for idx, (name, cmd) in enumerate(cmds):
-    add_shape(slide, Inches(0.5), y, Inches(12.3), Inches(0.32), fill_color=LIGHT_GRAY if idx % 2 == 0 else WHITE)
+    add_shape(slide, Inches(0.5), y, Inches(12.3), Inches(0.31), fill_color=LIGHT_GRAY if idx % 2 == 0 else WHITE)
     add_text_box(slide, Inches(0.7), y + Inches(0.01), Inches(3.0), Inches(0.3), name, font_size=13, bold=True, color=IIT_BLUE)
     add_text_box(slide, Inches(3.8), y + Inches(0.01), Inches(8.9), Inches(0.3), cmd, font_size=11, color=DARK_GRAY, font_name='Consolas')
-    y += Inches(0.335)
+    y += Inches(0.325)
 
 # ============================================================
 # SLIDE 25: Thank You / Questions
