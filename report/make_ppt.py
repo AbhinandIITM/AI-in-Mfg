@@ -259,8 +259,8 @@ contents = [
         "100-scenario Monte Carlo with 95% CIs",
         "Ablation: 7 energy weights × 3 seeds, weight pinned",
         "5 classical baselines (incl. receding-horizon)",
-        "Robustness: 3 regimes against the controller",
-        "Regime map: two sweeps, the noise and the material model error, and the crossover between the two operators",
+        "Robustness: 2 regimes against the controller",
+        "Regime map: the noise sweep, and the crossover between the two operators",
         "Batch: one tool cuts ten parts",
         "Reward sensitivity: the objective form and scale",
         "Transfer experiment",
@@ -725,13 +725,12 @@ rob_data = [
     ("Regime", "Arm", "Reward", "Std", "MRR", "kJ", "s", "Broken", "Done"),
     ("Controller has every advantage", "Receding-horizon", "248.9", "79.5", "1318.2", "68.9", "17.1", "3%", "96%"),
     ("", "PPO", "233.6", "79.7", "1608.5", "66.4", "11.4", "6%", "94%"),
-    ("Material model is wrong", "Receding-horizon", "63.5", "117.1", "1306.9", "71.0", "23.3", "2%", "95%"),
-    ("", "PPO", "226.9", "88.3", "1604.2", "66.3", "11.5", "6%", "94%"),
     ("Wear measurement is noisy", "Receding-horizon", "181.3", "185.9", "1300.4", "74.2", "31.1", "4%", "91%"),
+    ("", "PPO", "226.8", "87.2", "1602.1", "66.3", "11.5", "7%", "93%"),
     ("", "PPO trained with noise", "213.6", "87.3", "1554.2", "66.9", "12.0", "6%", "94%"),
 ]
 
-rob_table = slide.shapes.add_table(7, 9, Inches(0.4), Inches(1.35), Inches(12.5), Inches(2.9)).table
+rob_table = slide.shapes.add_table(6, 9, Inches(0.4), Inches(1.35), Inches(12.5), Inches(2.6)).table
 for j, w in enumerate([2.6, 2.2, 1.1, 1.0, 1.2, 1.0, 1.0, 1.1, 1.0]):
     rob_table.columns[j].width = Inches(w)
 for i, row in enumerate(rob_data):
@@ -753,11 +752,23 @@ add_text_box(slide, Inches(0.8), Inches(4.98), Inches(11.7), Inches(0.4), "🎯 
 rob_notes = [
     "• Inside a perfect digital twin the two methods are comparable: 248.9 against 233.6, and the gap of 15 is inside the noise (the standard error of the mean is about 8 for both arms)",
     "• The learned policy is the better throughput operator: 22% more material per minute, a third less time, 3.7% less energy, at twice the tool breakage",
-    "• The advantage appears where the controller's information advantage disappears: a wrong model of the material (63.5 against 226.9) and a noisy wear measurement (181.3 against 213.6). The regime map on the next slides puts a number on it",
+    "• The advantage appears where the controller's information advantage disappears: a noisy wear measurement (181.3 against 226.8). The regime map on the next slides puts a number on it",
     "• About nine of those fifteen points are the reward's artifact: the controller cuts the part in 5.85 passes against 4.00 and is paid for every pass",
     "• Fairness: both arms are the general ones, neither is trained for the noise, and the noise is tilted against the policy, which reads it on both measured quantities while the controller reads it on the wear alone",
 ]
 add_bullet_list(slide, Inches(0.8), Inches(5.45), Inches(11.7), Inches(1.9), rob_notes, font_size=12, color=DARK_GRAY, spacing=Pt(4))
+
+# ============================================================
+# SLIDE: Robustness, the two regimes across six measures (figure)
+# ============================================================
+add_figure_slide(
+    "Robustness: The Two Regimes Across Six Measures",
+    "robustness_vs_controller.png",
+    "How to read this",
+    "Six panels: the reward, its spread, the removal rate, the energy, the cycle time and the "
+    "reliability. The values are in the table. Level on the reward in the nominal regime (248.9 "
+    "against 233.6) and ahead on the throughput, the energy and the cycle time; in the noisy regime "
+    "the controller falls to 181.3 and its spread doubles to 185.9, the policy holds at 226.8 with 87.2.")
 
 # ============================================================
 # SLIDE: The Regime Map, the figure and the statement
@@ -766,33 +777,33 @@ slide = prs.slides.add_slide(prs.slide_layouts[6])
 add_background(slide, WHITE)
 add_shape(slide, Inches(0), Inches(0), Inches(13.333), Inches(1.1), fill_color=IIT_BLUE)
 add_text_box(slide, Inches(0.5), Inches(0.2), Inches(12), Inches(0.7),
-    "The Regime Map: Two Sweeps, One Statement",
+    "The Regime Map: One Sweep, One Statement",
     font_size=30, bold=True, color=WHITE)
 
 add_picture_fit(slide, figure_path("regime_map.png"),
                 Inches(0.5), Inches(1.25), Inches(12.33), Inches(4.2))
 
 add_text_box(slide, Inches(0.5), Inches(5.55), Inches(12.3), Inches(0.5),
-    "Mean episode reward over the same 100 randomized scenarios at w₂ = 0.4. Left: the measurement noise "
-    "on the flank wear and the remaining stock. Right: the miscalibration of the material model.",
+    "Mean episode reward over the same 100 randomized scenarios at w₂ = 0.4, against the measurement "
+    "noise on the flank wear and the remaining stock, as a percent of their range.",
     font_size=13, color=MED_GRAY)
 
 add_shape(slide, Inches(0.5), Inches(6.1), Inches(12.3), Inches(1.15), fill_color=RGBColor(255, 248, 220), line_color=IIT_GOLD, line_width=Pt(2))
 add_text_box(slide, Inches(0.8), Inches(6.18), Inches(11.7), Inches(0.4),
-    "One statement, two sweeps",
+    "One statement, one sweep",
     font_size=20, bold=True, color=IIT_GOLD)
 add_bullet_list(slide, Inches(0.8), Inches(6.62), Inches(11.7), Inches(0.55), [
-    "• The learned policy is the better operator whenever the setup's model of the machine is wrong by more than about 2%, whether that is a wear measurement noisier than 2% of its range or a material model miscalibrated by more than 2%. Below that the classical controller is better.",
+    "• The learned policy is the better operator once the wear measurement is noisier than about 2% of its range. Below that the classical controller is better, inside a perfect digital twin.",
 ], font_size=13, color=DARK_GRAY, spacing=Pt(3))
 
 # ============================================================
-# SLIDE: The Regime Map, the first sweep
+# SLIDE: The Regime Map, the sweep
 # ============================================================
 slide = prs.slides.add_slide(prs.slide_layouts[6])
 add_background(slide, WHITE)
 add_shape(slide, Inches(0), Inches(0), Inches(13.333), Inches(1.1), fill_color=IIT_BLUE)
 add_text_box(slide, Inches(0.5), Inches(0.2), Inches(12), Inches(0.7),
-    "Regime Map, First Sweep: How Noisy the Wear Measurement Has to Be",
+    "Regime Map: How Noisy the Wear Measurement Has to Be",
     font_size=30, bold=True, color=WHITE)
 
 regime_data = [
@@ -838,62 +849,7 @@ add_text_box(slide, Inches(0.8), Inches(5.63), Inches(11.7), Inches(0.4),
     font_size=20, bold=True, color=IIT_GOLD)
 add_bullet_list(slide, Inches(0.8), Inches(6.1), Inches(11.7), Inches(1.0), [
     "• Below it the classical controller is the better operator, above it the learned policy is: a plant that can measure the flank wear to better than 2% of its range has the better controller, one that cannot has the better policy",
-    "• Of the two degraded regimes the noise test is the fairer one, because the noise is a property of the instrumentation and not of the method",
-], font_size=14, color=DARK_GRAY, spacing=Pt(4))
-
-# ============================================================
-# SLIDE: The Regime Map, the second sweep
-# ============================================================
-slide = prs.slides.add_slide(prs.slide_layouts[6])
-add_background(slide, WHITE)
-add_shape(slide, Inches(0), Inches(0), Inches(13.333), Inches(1.1), fill_color=IIT_BLUE)
-add_text_box(slide, Inches(0.5), Inches(0.2), Inches(12), Inches(0.7),
-    "Regime Map, Second Sweep: How Miscalibrated the Material Model",
-    font_size=30, bold=True, color=WHITE)
-
-model_data = [
-    ("Model\nerror", "Receding-\nhorizon", "PPO", "PPO trained\nfor the noise", "PPO\nahead by"),
-    ("0%", "248.9", "233.6", "219.6", "−15.3"),
-    ("5%", "201.5", "232.8", "219.6", "+31.2"),
-    ("10%", "136.0", "237.8", "219.6", "+101.8"),
-    ("20%", "35.7", "201.5", "219.6", "+165.8"),
-    ("30%", "32.5", "116.7", "219.6", "+84.3"),
-    ("40%", "39.3", "117.0", "219.6", "+77.7"),
-]
-
-model_table = slide.shapes.add_table(7, 5, Inches(0.4), Inches(1.35), Inches(6.0), Inches(2.5)).table
-for j, w in enumerate([1.5, 1.15, 0.85, 1.45, 1.05]):
-    model_table.columns[j].width = Inches(w)
-for i, row in enumerate(model_data):
-    for j, val in enumerate(row):
-        model_table.cell(i, j).text = val
-style_table(model_table, font_size=12)
-for j in range(5):
-    model_table.cell(4, j).fill.solid()
-    model_table.cell(4, j).fill.fore_color.rgb = RGBColor(255, 248, 220)
-
-add_text_box(slide, Inches(0.4), Inches(4.0), Inches(6.0), Inches(1.1),
-    "Mean episode reward over the same 100 randomized scenarios at w₂ = 0.4. The error is the percentage "
-    "by which the setup under-rates the wear and the roughness, which is the damaging direction. The last "
-    "column is the general policy's reward minus the controller's.",
-    font_size=12, color=MED_GRAY)
-
-add_shape(slide, Inches(6.7), Inches(1.35), Inches(6.15), Inches(3.95), fill_color=LIGHT_GRAY, line_color=IIT_BLUE, line_width=Pt(1.5))
-add_text_box(slide, Inches(6.95), Inches(1.45), Inches(5.7), Inches(0.4), "Four more readings", font_size=18, bold=True, color=IIT_BLUE)
-add_bullet_list(slide, Inches(6.95), Inches(1.95), Inches(5.7), Inches(3.2), [
-    "• The controller's tolerance of a wrong model is about 2% to 3%, the same order as its tolerance of a noisy measurement: a 5% error costs it 47 points, a 10% error 113 points, and it collapses to 35.7 at 20%.",
-    "• The policy is unaffected up to 20%: it scores 201.5 there, 13% below its no-error score. It collapses at 30% (116.7), because the belief has then left the distribution it was trained on.",
-    "• A conservative policy is insensitive to a wrong model: the policy trained for the noise is flat at 219.6 across the whole range, and it is below the general policy everywhere.",
-    "• The two sweeps are one statement: the learned policy is the better operator whenever the setup's model of the machine is wrong by more than about 2%.",
-], font_size=13, color=DARK_GRAY, spacing=Pt(5))
-
-add_shape(slide, Inches(0.5), Inches(5.55), Inches(12.3), Inches(1.65), fill_color=RGBColor(255, 248, 220), line_color=IIT_GOLD, line_width=Pt(2))
-add_text_box(slide, Inches(0.8), Inches(5.63), Inches(11.7), Inches(0.4),
-    "The policy's own limit",
-    font_size=20, bold=True, color=IIT_GOLD)
-add_bullet_list(slide, Inches(0.8), Inches(6.1), Inches(11.7), Inches(1.0), [
-    "• The policy is unaffected by a miscalibration up to 20% and collapses at 30%, where the belief has left the distribution it was trained on",
-    "• Its limit, around 20% to 25%, is a design parameter rather than a property of the method: widen the randomization band of the training and the tolerance widens with it",
+    "• The noise regime is the fair one, because the noise is a property of the instrumentation and not of the method: it changes only what the instrument reports, and it applies to both arms in the same way",
 ], font_size=14, color=DARK_GRAY, spacing=Pt(4))
 
 # ============================================================
@@ -908,21 +864,20 @@ add_text_box(slide, Inches(0.5), Inches(0.2), Inches(12), Inches(0.7),
 
 add_shape(slide, Inches(0.5), Inches(1.35), Inches(12.3), Inches(3.9), fill_color=LIGHT_GRAY, line_color=IIT_BLUE, line_width=Pt(1.5))
 add_text_box(slide, Inches(0.8), Inches(1.45), Inches(11.7), Inches(0.4),
-    "The fairness decisions, the same in both sweeps", font_size=20, bold=True, color=IIT_BLUE)
+    "The fairness decisions", font_size=20, bold=True, color=IIT_BLUE)
 add_bullet_list(slide, Inches(0.8), Inches(1.95), Inches(11.7), Inches(3.1), [
-    "• Both arms of the headline comparison are the general ones, neither is trained for the noise or for the model error.",
-    "• The same belief goes to both arms, the controller as the model it solves with and the policy as the material in its context, so neither is given information the other lacks.",
-    "• The direction of the error is the damaging one: the setup under-rates the wear and the roughness, because a setup that thinks its tool is better than it is will push it harder.",
-    "• The noise-trained policy is a third, clearly labelled arm in both tables and not the headline, because a controller can also be prepared for a noisy instrument by widening its safety margin, and that is a design choice rather than a training one.",
-    "• In the first sweep the noise is tilted against the policy as well: the controller gets a noisy reading of the flank wear alone, the policy gets the noise on the flank wear and on the remaining stock.",
+    "• Both arms of the headline comparison are the general ones, neither is trained for the noise.",
+    "• The noise is a property of the instrumentation and not of the method: it changes only what the instrument reports, and it applies to both arms in the same way.",
+    "• The noise is tilted against the policy: the controller gets a noisy reading of the flank wear alone, the policy gets the noise on the flank wear and on the remaining stock.",
+    "• The noise-trained policy is a third, clearly labelled arm in the table and in the sweep, and it is not the headline, because a controller can also be prepared for a noisy instrument by widening its safety margin, and that is a design choice rather than a training one.",
 ], font_size=15, color=DARK_GRAY, spacing=Pt(7))
 
 add_shape(slide, Inches(0.5), Inches(5.45), Inches(12.3), Inches(1.75), fill_color=RGBColor(255, 248, 220), line_color=IIT_GOLD, line_width=Pt(2))
 add_text_box(slide, Inches(0.8), Inches(5.53), Inches(11.7), Inches(0.4),
     "What the comparison claims", font_size=20, bold=True, color=IIT_GOLD)
 add_bullet_list(slide, Inches(0.8), Inches(6.0), Inches(11.7), Inches(1.1), [
-    "• The learned policy is the better operator whenever the setup's model of the machine is wrong by more than about 2%, and the classical controller is the better operator below that, inside a perfect digital twin",
-    "• Of the two degraded regimes the noise test is the fairer one, because the noise is a property of the instrumentation and not of the method",
+    "• The learned policy is the better operator once the wear measurement is noisier than about 2% of its range, and the classical controller is the better operator below that, inside a perfect digital twin",
+    "• The noise regime is the fair one, because the noise is a property of the instrumentation and not of the method",
 ], font_size=14, color=DARK_GRAY, spacing=Pt(4))
 
 # ============================================================
@@ -981,6 +936,18 @@ rs_notes = [
 add_bullet_list(slide, Inches(0.8), Inches(5.58), Inches(11.7), Inches(1.55), rs_notes, font_size=12, color=DARK_GRAY, spacing=Pt(3))
 
 # ============================================================
+# SLIDE: Reward Sensitivity, the figure
+# ============================================================
+add_figure_slide(
+    "Reward Sensitivity: How Much of the Comparison the Reward Decides",
+    "reward_sensitivity.png",
+    "How to read this",
+    "Three panels: the reward as the environment pays it, the part level alternative, and the gap "
+    "between the arms. The scale is not the lever: the controller leads at every scale and the gap "
+    "grows with it, 7.1 points at 5 to 352.0 at 4000. The accounting of a rate is: the arms close to "
+    "5.0 points at the scale of 100, and the policy overtakes by 9.4 at 1000 and 57.4 at 4000.")
+
+# ============================================================
 # SLIDE 15: Batch Against the Part
 # ============================================================
 slide = prs.slides.add_slide(prs.slide_layouts[6])
@@ -1014,6 +981,18 @@ batch_notes = [
     "• It solves one part at a time, so it cannot price a tool change against the parts that follow it",
 ]
 add_bullet_list(slide, Inches(0.8), Inches(4.1), Inches(11.7), Inches(2.6), batch_notes, font_size=15, color=DARK_GRAY, spacing=Pt(6))
+
+# ============================================================
+# SLIDE: Batch Against the Part, the figure
+# ============================================================
+add_figure_slide(
+    "Batch Against the Part: One Tool, Ten Parts",
+    "batch_vs_ppo.png",
+    "How to read this",
+    "Six panels: the batch reward, the reward per part, the tool changes, the parts cut, the batch "
+    "time and the batch energy. The values are in the table. The batch-aware policy replaces the tool "
+    "0.63 times per batch against 0.83, spends 610.4 kJ against 674.3 and 692.0, and cuts the batch in "
+    "113.1 s against 207.5 s for the per-part controller.")
 
 # ============================================================
 # SLIDE 16: Controller Initialization, Method and Result
@@ -1113,7 +1092,7 @@ add_bullet_list(slide, Inches(7.1), Inches(2.1), Inches(5.5), Inches(2.7), [
 add_shape(slide, Inches(0.5), Inches(5.2), Inches(12.35), Inches(2.0), fill_color=RGBColor(230, 240, 250), line_color=IIT_BLUE, line_width=Pt(1.5))
 add_text_box(slide, Inches(0.8), Inches(5.35), Inches(11.7), Inches(0.5), "What the work claims", font_size=20, bold=True, color=IIT_BLUE)
 add_bullet_list(slide, Inches(0.8), Inches(5.9), Inches(11.7), Inches(1.2), [
-    "Inside a perfect digital twin the learned policy and the model-based controller are comparable: the policy is ahead on the physical metrics and behind on the breakage, and the gap the reward does show is partly the reward's artifact. Its advantage appears where the controller's information advantage disappears: the learned policy is the better operator whenever the setup's model of the machine is wrong by more than about 2%.",
+    "Inside a perfect digital twin the learned policy and the model-based controller are comparable: the policy is ahead on the physical metrics and behind on the breakage, and the gap the reward does show is partly the reward's artifact. Its advantage appears where the controller's information advantage disappears: the learned policy is the better operator once the wear measurement is noisier than about 2% of its range.",
 ], font_size=16, color=DARK_GRAY, spacing=Pt(4))
 
 # ============================================================
@@ -1233,7 +1212,7 @@ right_items = [
     "  • 24 env tests: clipping, truncation, soft norm, 11-D",
     "    observation, constants, overrides, energy norm, Gym",
     "    checker, randomization, scenario scales, context",
-    "    (weight, material, belief), observation noise, speed",
+    "    (weight, material), observation noise, speed",
     "    dependence, energy minimum, reward golden values",
     "  • 11 batch env tests: the 13-D observation, the tool",
     "    life and the batch left, the wear carried over, the",
@@ -1271,7 +1250,7 @@ contents = [
         "Training across materials makes the adaptation unnecessary",
         "Receding-horizon = strong, fair baseline (184.3 → 248.9)",
         "Robustness: comparable inside a perfect twin, and the advantage appears where the controller's information runs out",
-        "The regime map puts a number on it: the two sweeps are one statement, the learned policy is the better operator whenever the setup's model of the machine is wrong by more than about 2%",
+        "The regime map puts a number on it: the learned policy is the better operator once the wear measurement is noisier than about 2% of its range",
         "Measuring the reward found the artifact: the credit grows with the number of passes",
         "Batch context: 24% fewer tool changes, 9.5% less energy",
     ],
@@ -1279,7 +1258,7 @@ contents = [
         "Inside a perfect twin the two methods are comparable: 248.9 against 233.6, the gap inside the noise, and about nine of those points are the reward's artifact",
         "The learned policy is the better throughput operator, at twice the tool breakage",
         "The crossover at 2% is a property of this controller, this reward and this noise model",
-        "The policy has a limit of its own: it collapses when the belief leaves the distribution it was trained on, at 20% to 25% of model error",
+        "The comparison is one noise model deep: one degraded regime, the noisy wear measurement, and the regime map sweeps that noise alone",
         "Initializing from the controller is now harmful: 119.8 against 233.6",
         "The reward pays a rate per pass, so the credit grows with the number of passes: the bias is in the reward, and the scale is not the lever",
         "The wear tool life varies by only a factor of a few across the envelope",
@@ -1290,7 +1269,6 @@ contents = [
         "Publish the sensitivity of any comparison to the reward form, as it is here",
         "Compare against a restricted controller (is the gap an information gap?)",
         "Measure the crossover under a controller prepared for a noisy instrument, and on the noise of a real instrument",
-        "Widen the randomization band of the training: the policy's own limit is set by the band it was trained on",
         "Sim-to-real: calibrate on machine data, add noise/delay",
         "True multi-objective RL (Pareto-conditioned, hypervolume)",
         "Online adaptation: runtime w₂ optimizer for energy budget",
@@ -1322,8 +1300,8 @@ conclusions = [
     "📊 One production policy (1M steps): the energy weight is a runtime query, not a retrain",
     "🔬 Monte Carlo (100 scenarios, 95% CIs), ablation frontier, sweep against the 21 per-weight policies",
     "⚔️ Five classical baselines on the same 50 episodes; the receding-horizon controller is the strongest at +253.5",
-    "🛡️ Robustness: comparable inside a perfect twin (248.9 against 233.6, the gap inside the noise and partly the reward's artifact); the controller collapses to 63.5 and 181.3, the policy holds at 226.9 and 213.6",
-    "🗺️ Regime map: two sweeps, one statement. The learned policy is the better operator whenever the setup's model of the machine is wrong by more than about 2%, and its own limit, 20% to 25% of model error, is set by the randomization band of its training",
+    "🛡️ Robustness: comparable inside a perfect twin (248.9 against 233.6, the gap inside the noise and partly the reward's artifact); with a noisy wear measurement the controller falls to 181.3, the policy holds at 226.8",
+    "🗺️ Regime map: one sweep, one number. The learned policy is the better operator once the wear measurement is noisier than about 2% of its range, and the classical controller is the better operator below that",
     "⚖️ Reward sensitivity: the reward pays a rate per pass, so the credit grows with the pass count; the controller collects 27% more credit for the same material",
     "📦 Batch: the batch context is worth 24% fewer tool changes and 9.5% less energy; the per-part controller needs 207.5 s against 113.1 s",
     "🧬 Controller init: the result reversed, the initialization is now harmful (119.8 against 233.6)",
@@ -1342,9 +1320,8 @@ add_text_box(slide, Inches(1), Inches(6.3), Inches(11.333), Inches(1.0),
     "Key Scientific Finding: The speed-dependent specific cutting energy creates a genuine energy/throughput trade-off. "
     "Across the frontier the removal rate falls 41% while the energy of the part falls 17%, and one conditioned policy "
     "reaches that whole frontier at runtime. Against a model-based controller the claim is a boundary, not an advantage: "
-    "inside a perfect digital twin the two methods are comparable, and the learned policy is the better operator whenever "
-    "the setup's model of the machine is wrong by more than about 2%. Its own limit, 20% to 25% of model error, is set by "
-    "the randomization band of its training.",
+    "inside a perfect digital twin the two methods are comparable, and the learned policy is the better operator once the "
+    "wear measurement is noisier than about 2% of its range.",
     font_size=13, bold=True, color=IIT_GOLD, alignment=PP_ALIGN.CENTER)
 
 # ============================================================
