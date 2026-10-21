@@ -564,10 +564,10 @@ Crossover vs that controller & \XMark & \XMark & \CMark \\
 
 \begin{frame}{Robustness: The Two Regimes Across Six Measures}
     \centering
-    \includegraphics[width=\textwidth,height=0.61\textheight,keepaspectratio]{robustness_vs_controller.png}
+    \includegraphics[width=\textwidth,height=0.75\textheight,keepaspectratio]{robustness_vs_controller.png}
 
-    \vspace{0.3em}
-    {\footnotesize
+    \vspace{0.2em}
+    {\scriptsize
     Six panels: the reward, its spread, the removal rate, the energy, the cycle time and the
     reliability. The values are in the table. Level on the reward in the nominal regime (248.9 against
     233.6) and ahead on the throughput, the energy and the cycle time; in the noisy regime the
@@ -720,10 +720,10 @@ Crossover vs that controller & \XMark & \XMark & \CMark \\
 
 \begin{frame}{Reward Sensitivity: How Much of the Comparison the Reward Decides}
     \centering
-    \includegraphics[width=\textwidth,height=0.66\textheight,keepaspectratio]{reward_sensitivity.png}
+    \includegraphics[width=\textwidth,height=0.72\textheight,keepaspectratio]{reward_sensitivity.png}
 
-    \vspace{0.3em}
-    {\footnotesize
+    \vspace{0.2em}
+    {\scriptsize
     Three panels: the reward as the environment pays it, the part level alternative, and the gap
     between the arms. \alert{The scale is not the lever}: the controller leads at every scale and the
     gap grows with it, 7.1 points at 5 and 352.0 at 4000. \alert{The accounting of a rate is}: under
@@ -996,6 +996,7 @@ Crossover vs that controller & \XMark & \XMark & \CMark \\
             \begin{block}{What Worked (continued)}
             \footnotesize
             \begin{itemize}
+            \setlength{\itemsep}{0pt}
                 \item A receding-horizon controller that prices the whole reward is a fair and strong baseline (184.3 $\to$ 248.9)
                 \item Robustness: comparable inside a perfect twin, and the advantage appears where the controller's information runs out
                 \item The regime map puts a number on it: the policy is the better operator once the wear measurement is noisier than \alert{about 2\% of its range}
@@ -1014,6 +1015,7 @@ Crossover vs that controller & \XMark & \XMark & \CMark \\
         \begin{column}{0.48\textwidth}
             \begin{alertblock}{Limitations}
             \begin{itemize}
+            \setlength{\itemsep}{0pt}
                 \item Inside a perfect twin the two are comparable: 248.9 against 233.6, the gap inside the noise
                 \item The learned policy is the better throughput operator, at twice the tool breakage
                 \item The crossover at 2\% is a property of this controller, this reward and this noise model
@@ -1028,6 +1030,7 @@ Crossover vs that controller & \XMark & \XMark & \CMark \\
         \begin{column}{0.48\textwidth}
             \begin{exampleblock}{Future Work}
             \begin{itemize}
+            \setlength{\itemsep}{0pt}
                 \item \alert{A reward that pays a rate correctly}: price the cycle time directly, or compare the part's average rate to a reference
                 \item Publish the sensitivity of any comparison to the reward form, as it is here
                 \item Compare against a restricted controller (is the gap an information gap?)
