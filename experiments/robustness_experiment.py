@@ -61,12 +61,16 @@ NOISE = 0.05
 NOISY_RUN = "PPO_noisystate_seed42"
 
 
-def evaluate_controller(scenarios, seed=42, weight=WEIGHT, obs_noise=0.0,
-                        noise_rng=None):
+def evaluate_controller(scenarios, seed=42, weight=WEIGHT, belief=None,
+                        beliefs=None, obs_noise=0.0, noise_rng=None):
     """Roll the controller out, with the same measurement noise the policy sees.
 
     With obs_noise the controller is given a noisy reading of the flank wear,
     the measurement it depends on. The remaining stock it knows exactly.
+
+    The belief is what the controller thinks the material is. The beliefs
+    argument carries one belief per scenario, which is what a setup with a
+    miscalibrated material model has.
     """
     rows = []
     for idx, (name, scenario) in enumerate(scenarios.items()):
@@ -81,11 +85,15 @@ def evaluate_controller(scenarios, seed=42, weight=WEIGHT, obs_noise=0.0,
         ep_n, ep_f, ep_ap = [], [], []
         info = {}
         total_reward = 0.0
+        scenario_belief = belief
+        if beliefs and name in beliefs:
+            scenario_belief = beliefs[name]
         while not done:
             measured_vb = unwrapped.VB
             if obs_noise and noise_rng is not None:
                 measured_vb += noise_rng.normal(0.0, obs_noise * unwrapped.VB_max)
-            action = controller_action(unwrapped, vb=measured_vb)
+            action = controller_action(unwrapped, belief=scenario_belief,
+                                      vb=measured_vb)
             obs, reward, terminated, truncated, info = eval_env.step(action)
             done = terminated or truncated
             total_reward += float(reward)
@@ -123,15 +131,25 @@ def evaluate_controller(scenarios, seed=42, weight=WEIGHT, obs_noise=0.0,
 
 
 def evaluate_policy(model, vec_norm_path, scenarios, seed=42, weight=WEIGHT,
-                    obs_noise=0.0):
-    """The learned policy on the same scenarios, with the same noise."""
+                    belief=None, beliefs=None, obs_noise=0.0):
+    """The learned policy on the same scenarios, with the same noise.
+
+    The belief is what the setup believes the material is, and it is what the
+    policy reads in its context. The beliefs argument carries one belief per
+    scenario.
+    """
     env_kwargs = {}
+    if belief is not None:
+        env_kwargs['belief'] = belief
     if obs_noise:
         env_kwargs['obs_noise'] = obs_noise
 
     configs = {}
     for name, scenario in scenarios.items():
-        configs[name] = {**scenario, **env_kwargs}
+        per_scenario = dict(env_kwargs)
+        if beliefs and name in beliefs:
+            per_scenario['belief'] = beliefs[name]
+        configs[name] = {**scenario, **per_scenario}
 
     return evaluate_policy_on_scenarios(
         model, vec_norm_path, configs, seed=seed,

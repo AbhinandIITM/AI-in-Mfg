@@ -121,7 +121,9 @@ All the arms are measured on the same 100 randomized scenarios at the same energ
 
 Artifact: `results/evaluation/regime_map.csv`
 
-| Measurement noise | Receding-horizon | PPO | PPO trained for the noise | PPO ahead by |
+### Measurement noise
+
+| Setup error | Receding-horizon | PPO | PPO trained for the noise | PPO ahead by |
 | ---: | ---: | ---: | ---: | ---: |
 | 0.0% | 248.9 | 233.6 | 219.6 | -15.3 |
 | 1.0% | 242.3 | 233.4 | 216.9 | -8.9 |
@@ -131,7 +133,20 @@ Artifact: `results/evaluation/regime_map.csv`
 | 7.5% | 179.1 | 223.2 | 207.9 | +44.1 |
 | 10.0% | 171.5 | 222.0 | 206.5 | +50.6 |
 
-The noise is a fraction of the range of the flank wear and of the remaining stock. Both arms are the general ones, neither is trained for the noise, and the noise is tilted against the policy, which receives it on both measured quantities while the controller receives it on the wear alone.
+The setup error is a fraction of the range of the wear and the stock. Both arms are the general ones, neither is trained for the noise, and the noise is tilted against the policy, which receives it on both measured quantities while the controller receives it on the wear alone.
+
+### Material model off by
+
+| Setup error | Receding-horizon | PPO | PPO trained for the noise | PPO ahead by |
+| ---: | ---: | ---: | ---: | ---: |
+| 0.0% | 248.9 | 233.6 | 219.6 | -15.3 |
+| 5.0% | 201.5 | 232.8 | 219.6 | +31.2 |
+| 10.0% | 136.0 | 237.8 | 219.6 | +101.8 |
+| 20.0% | 35.7 | 201.5 | 219.6 | +165.8 |
+| 30.0% | 32.5 | 116.7 | 219.6 | +84.3 |
+| 40.0% | 39.3 | 117.0 | 219.6 | +77.7 |
+
+The setup error is the belief about the material, below the truth. Both arms are the general ones, neither is trained for the noise, and the noise is tilted against the policy, which receives it on both measured quantities while the controller receives it on the wear alone.
 
 ## The batch against the part
 

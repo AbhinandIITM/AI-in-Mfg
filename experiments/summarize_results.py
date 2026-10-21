@@ -287,31 +287,43 @@ def regime_map_table():
         return None
 
     df = pd.read_csv(path)
-    lines = [
-        "| Measurement noise | Receding-horizon | PPO | PPO trained for the noise | PPO ahead by |",
-        "| ---: | ---: | ---: | ---: | ---: |",
-    ]
-    for noise, group in df.groupby('noise'):
-        arms = {row['arm']: row for _, row in group.iterrows()}
-        controller = arms.get('Receding-horizon controller')
-        policy = arms.get('PPO')
-        prepared = arms.get('PPO trained for the noise')
-        difference = (policy['mean_reward'] - controller['mean_reward']
-                      if controller is not None and policy is not None else 0.0)
-        lines.append(
-            f"| {noise*100:.1f}% | {controller['mean_reward']:.1f} | "
-            f"{policy['mean_reward']:.1f} | "
-            f"{prepared['mean_reward']:.1f} | {difference:+.1f} |"
-        )
-    lines += [
-        "",
-        "The noise is a fraction of the range of the flank wear and of the "
-        "remaining stock. Both arms are the general ones, neither is trained "
-        "for the noise, and the noise is tilted against the policy, which "
-        "receives it on both measured quantities while the controller receives "
-        "it on the wear alone.",
-    ]
-    return "\n".join(lines)
+    blocks = []
+
+    for sweep, column, heading, unit in (
+            ("measurement noise", 'noise',
+             "Measurement noise", "a fraction of the range of the wear and the stock"),
+            ("model error", 'model_error',
+             "Material model off by", "the belief about the material, below the truth")):
+        part = df[df['sweep'] == sweep]
+        if not len(part):
+            continue
+        lines = [
+            f"### {heading}\n",
+            "| Setup error | Receding-horizon | PPO | PPO trained for the noise | PPO ahead by |",
+            "| ---: | ---: | ---: | ---: | ---: |",
+        ]
+        for level, group in part.groupby(column):
+            arms = {row['arm']: row for _, row in group.iterrows()}
+            controller = arms.get('Receding-horizon controller')
+            policy = arms.get('PPO')
+            prepared = arms.get('PPO trained for the noise')
+            difference = (policy['mean_reward'] - controller['mean_reward']
+                          if controller is not None and policy is not None else 0.0)
+            lines.append(
+                f"| {level*100:.1f}% | {controller['mean_reward']:.1f} | "
+                f"{policy['mean_reward']:.1f} | "
+                f"{prepared['mean_reward']:.1f} | {difference:+.1f} |"
+            )
+        lines += [
+            "",
+            f"The setup error is {unit}. Both arms are the general ones, neither "
+            "is trained for the noise, and the noise is tilted against the "
+            "policy, which receives it on both measured quantities while the "
+            "controller receives it on the wear alone.",
+        ]
+        blocks.append("\n".join(lines))
+
+    return "\n\n".join(blocks)
 
 
 def figures_table():
