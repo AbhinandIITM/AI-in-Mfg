@@ -147,8 +147,13 @@ def evaluate_controller(scenarios, seed=42, weight=WEIGHT, belief=None,
 
 
 def evaluate_policy(model, vec_norm_path, scenarios, seed=42, weight=WEIGHT,
-                    material=None, belief=None, obs_noise=0.0):
-    """The learned policy on the same scenarios, with the same material."""
+                    material=None, belief=None, beliefs=None, obs_noise=0.0):
+    """The learned policy on the same scenarios, with the same material.
+
+    The belief is what the setup believes the material is, and it is what the
+    policy reads in its context. The beliefs argument carries one belief per
+    scenario, which is what a setup with a miscalibrated material model has.
+    """
     env_kwargs = {}
     if material:
         env_kwargs.update(material)
@@ -159,7 +164,10 @@ def evaluate_policy(model, vec_norm_path, scenarios, seed=42, weight=WEIGHT,
 
     configs = {}
     for name, scenario in scenarios.items():
-        configs[name] = {**scenario, **env_kwargs}
+        per_scenario = dict(env_kwargs)
+        if beliefs and name in beliefs:
+            per_scenario['belief'] = beliefs[name]
+        configs[name] = {**scenario, **per_scenario}
 
     return evaluate_policy_on_scenarios(
         model, vec_norm_path, configs, seed=seed,
