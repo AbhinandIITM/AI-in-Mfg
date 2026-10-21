@@ -175,9 +175,9 @@ def plot_comparison():
     # comparison that matters is the receding-horizon controller.
     fig.text(0.5, -0.02,
              "Three of the four static policies finish outside the roughness safety "
-             "limit, and the fourth takes 3000 s and 1507 kJ per part.\n"
+             "limit, and the fourth takes 768 s and 386 kJ per part.\n"
              "The receding-horizon controller and the learned policy finish every "
-             "part in spec; the controller removes more material per minute.",
+             "part in spec; the learned policy removes more material per minute.",
              ha="center", va="top", fontsize=11, color="#334155")
     plt.tight_layout()
 

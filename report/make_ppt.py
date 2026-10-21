@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 Generate PowerPoint presentation from the project content.
 Run: python make_ppt.py
@@ -229,14 +229,14 @@ titles = ["🏭 Digital Twin", "🤖 DRL Agent (PPO)", "🔬 Experimental Rigor"
 contents = [
     [
         "Speed-dependent cutting energy: k_c(v_c) = k_c0 (v_c/v_ref)^m",
-        "Extended Taylor tool wear model",
+        "Extended Taylor tool wear, anchored on a published tool life",
         "Empirical surface roughness regression",
         "Stochastic tool breakage",
         "Domain randomization per episode",
     ],
     [
-        "One Gymnasium environment (11-D obs, 3-D action)",
-        "Energy-aware reward: 5·(w₁·MRR − w₂·Energy) + progress − penalties",
+        "One Gymnasium environment for a part, one for a batch",
+        "Energy-aware reward: 100·(w₁·MRR − w₂·Energy) + progress − penalties",
         "Conditioned policy: one model covers the full frontier",
         "PPO with VecNormalize, 4 parallel envs, CPU training",
     ],
@@ -244,8 +244,10 @@ contents = [
         "100-scenario Monte Carlo with 95% CIs",
         "Ablation: 7 energy weights × 3 seeds, weight pinned",
         "5 classical baselines (incl. receding-horizon)",
-        "Transfer experiment: cross-material adaptation",
-        "Full reproducibility: RESULTS.md from artifacts",
+        "Robustness: 3 regimes against the controller",
+        "Batch: one tool cuts ten parts",
+        "Transfer experiment",
+        "Full reproducibility",
     ],
 ]
 
@@ -277,6 +279,7 @@ rel_data = [
     ("Conditioned policy", "✗", "✗", "✓"),
     ("Transfer experiment", "✗", "✗", "✓"),
     ("Receding-horizon baseline", "✗", "✗", "✓"),
+    ("Robustness vs a controller", "✗", "✗", "✓"),
     ("Monte Carlo (100 scenarios)", "✗", "✗", "✓"),
     ("Interactive workstation", "✗", "✗", "✓"),
 ]
@@ -300,7 +303,8 @@ add_text_box(slide, Inches(0.5), Inches(5.15), Inches(12.3), Inches(0.9),
 add_shape(slide, Inches(0.5), Inches(6.15), Inches(12.3), Inches(0.95), fill_color=RGBColor(255, 248, 220), line_color=IIT_GOLD, line_width=Pt(2))
 add_text_box(slide, Inches(0.8), Inches(6.25), Inches(11.7), Inches(0.75),
     "Key differentiator: neither reference treats energy as an objective. The speed-dependent k_c is what creates a genuine "
-    "energy/throughput trade-off, and one conditioned policy covers the whole frontier in a single run.",
+    "energy/throughput trade-off, and one conditioned policy covers the whole frontier in a single run. None of the three "
+    "carries a Taylor wear model, so the wear coefficient here is anchored on a published tool life.",
     font_size=15, bold=True, color=IIT_GOLD)
 
 # ============================================================
@@ -310,7 +314,7 @@ slide = prs.slides.add_slide(prs.slide_layouts[6])
 add_background(slide, WHITE)
 add_shape(slide, Inches(0), Inches(0), Inches(13.333), Inches(1.1), fill_color=IIT_BLUE)
 add_text_box(slide, Inches(0.5), Inches(0.2), Inches(12), Inches(0.7),
-    "Digital Twin Physics (MillingDT/config/physics.py, single source of truth)",
+    "Digital Twin Physics (MillingDT/config/physics.py)",
     font_size=30, bold=True, color=WHITE)
 
 equations = [
@@ -334,20 +338,21 @@ for name, eq in equations:
 add_shape(slide, Inches(7), Inches(1.4), Inches(5.8), Inches(5.2), fill_color=RGBColor(230, 240, 250), line_color=IIT_GOLD, line_width=Pt(2))
 add_text_box(slide, Inches(7.3), Inches(1.6), Inches(5.2), Inches(0.5), "💡 Key Insight", font_size=22, bold=True, color=IIT_GOLD)
 insight_items = [
-    "Without speed-dependence (m=0):",
-    "  Cutting energy ∝ volume removed (fixed)",
-    "  Idle energy ∝ 1/cycle_time",
-    "  Both objectives push to MAX speed → no trade-off",
-    "",
     "With m=0.6:",
     "  Cutting energy RISES with speed",
     "  Idle energy FALLS with speed",
     "  Part energy has INTERIOR MINIMUM",
-    "  Energy weight w₂ selects operating point on this curve",
+    "  Energy weight w₂ selects operating point",
     "",
-    "Validated by: test_part_energy_has_an_interior_minimum_in_speed",
+    "Without it (m=0): both objectives push to",
+    "  MAX speed → no trade-off at all",
+    "",
+    "Wear: C_wear = 1.0e-2, anchored on a",
+    "  published tool life (about 9 parts per tool)",
+    "",
+    "Validated by a unit test on the part energy",
 ]
-add_bullet_list(slide, Inches(7.3), Inches(2.2), Inches(5.2), Inches(4.2), insight_items, font_size=15, color=DARK_GRAY)
+add_bullet_list(slide, Inches(7.3), Inches(2.2), Inches(5.2), Inches(4.2), insight_items, font_size=14, color=DARK_GRAY, spacing=Pt(4))
 
 # ============================================================
 # SLIDE 6: Environment Design
@@ -361,8 +366,9 @@ add_text_box(slide, Inches(0.5), Inches(0.2), Inches(12), Inches(0.7),
 
 # Two columns
 left_items = [
-    "One registration:",
-    "  • MillingDTEnv-v1 (env.ENV_ID), 200-step limit",
+    "Two registrations:",
+    "  • MillingDTEnv-v1 (env.ENV_ID), 200-step limit, 11-D",
+    "  • MillingDTBatchEnv-v1 (env.BATCH_ENV_ID), 13-D",
     "  • The weight and the material are inputs, not tasks",
     "",
     "Observation (11-D, always the same shape):",
@@ -374,13 +380,15 @@ left_items = [
 ]
 right_items = [
     "Reward per step:",
-    "  r = 5·(w₁·MRR/MRR_max − w₂·E_pass/E_ref)",
-    "       + 2·Δ(stock removed)",
+    "  r = 100·(w₁·MRR/MRR_max − w₂·E_pass/E_ref)",
+    "       + 20·Δ(stock removed)",
     "       − 50·1[V_B > V_B_safe] − 100·1[broken]",
     "       − 50·1[finishing pass ∧ R_a > R_a_safe] − 0.05",
     "  +200 for a part finished in spec, +≤5 Pareto margin",
     "  w₁ = 1 − w₂; safety limits 0.255 mm and 1.36 μm",
     "  breakage p = 0.3·wear factor·(load factor)² above 0.15 mm",
+    "  THE SCALE IS A DESIGN DECISION: the objective term is",
+    "  worth about 50 points per part, a quarter of a part",
     "",
     "Domain Randomization (--randomize):",
     "  • Workpiece: κ_total [2,15], D [40,150], L_cut [50,200]",
@@ -462,6 +470,10 @@ runs = [
     "    weight PINNED at training, evaluated at that",
     "    same weight",
     "",
+    "3️⃣ Batch-aware policy: 1M steps on MillingDTBatchEnv-v1",
+    "",
+    "4️⃣ Noisy-measurement policy: 1M steps, --obs-noise 0.05",
+    "",
     "Heartbeat callback: queue signal every 1000 steps",
     "→ stall detection in run_experiments.py",
 ]
@@ -485,11 +497,11 @@ for j, w in enumerate([2.9, 1.2, 1.2, 1.3]):
 
 mc_data = [
     ("Metric", "Mean", "Std", "95% CI"),
-    ("MRR (mm³/min)", "1205.2", "585.7", "[1088.9, 1321.4]"),
-    ("Energy/part (kJ)", "68.4", "48.3", "[58.8, 77.9]"),
-    ("Cycle time (s)", "20.3", "17.1", "[16.9, 23.6]"),
-    ("Max R_a (μm)", "1.379", "0.350", "[1.309, 1.448]"),
-    ("Max V_B (mm)", "0.1244", "0.0679", "[0.1109, 0.1378]"),
+    ("MRR (mm³/min)", "1608.5", "550.7", "[1499.2, 1717.8]"),
+    ("Energy/part (kJ)", "66.4", "48.0", "[56.9, 75.9]"),
+    ("Cycle time (s)", "11.4", "6.9", "[10.1, 12.8]"),
+    ("Max R_a (μm)", "1.610", "0.178", "[1.575, 1.645]"),
+    ("Max V_B (mm)", "0.1407", "0.0672", "[0.1274, 0.1540]"),
 ]
 
 for i, row in enumerate(mc_data):
@@ -504,13 +516,13 @@ for j, w in enumerate([3.4, 1.0, 1.5]):
 
 vio_data = [
     ("Constraint", "Rate", "95% CI"),
-    ("R_a viol., worst pass", "38.0%", "[28.5, 47.5]%"),
-    ("R_a viol., finished surface", "0.0%", "[0, 0]%"),
-    ("R_a above safety limit, worst", "56.0%", "[46.3, 65.7]%"),
-    ("R_a above safety limit, finished", "0.0%", "[0, 0]%"),
+    ("R_a viol., worst pass", "55.0%", "[45.2, 64.8]%"),
+    ("R_a viol., finished surface", "4.0%", "[0.2, 7.8]%"),
+    ("R_a above safety limit, worst", "87.0%", "[80.4, 93.6]%"),
+    ("R_a above safety limit, finished", "4.0%", "[0.2, 7.8]%"),
     ("Flank wear violations (V_B > 0.3)", "0.0%", "[0, 0]%"),
-    ("Tool breakage", "1.0%", "[0, 3]%"),
-    ("Parts completed in spec", "99.0%", ""),
+    ("Tool breakage", "6.0%", "[1.3, 10.7]%"),
+    ("Parts completed in spec", "94.0%", ""),
 ]
 
 for i, row in enumerate(vio_data):
@@ -522,11 +534,11 @@ style_table(vio_table, font_size=13)
 add_shape(slide, Inches(0.5), Inches(4.35), Inches(12.3), Inches(2.6), fill_color=RGBColor(230, 245, 230), line_color=GREEN, line_width=Pt(2))
 add_text_box(slide, Inches(0.8), Inches(4.5), Inches(11.7), Inches(0.5), "✅ Key Findings", font_size=22, bold=True, color=GREEN)
 takeaways = [
-    "• Finished surface ALWAYS within spec (0% violations), the part quality holds",
-    "• Flank wear NEVER exceeded (0% violations); 99% of the parts completed",
-    "• 56% of the passes exceed the roughness safety margin (1.36 μm): the policy pushes and recovers by the finish pass",
-    "• High MRR variance (std = 49% of mean) → domain randomization works: diverse operating points",
-    "• Mean operating point: 7199 RPM, 0.247 mm/r, 2.11 mm, 4.0 passes",
+    "• A much more aggressive operator than under the old reward: 1608.5 mm³/min against 1205.2, and 11.4 s per part against 20.3 s",
+    "• The price is paid in the tool and in the part quality: 6.0% tool breakage and 4.0% of the finished surfaces outside the roughness limit",
+    "• The roughing passes are rough: 87% of the worst passes are above the safety margin, 55% above the hard limit",
+    "• Wear is not the binding constraint on a single part (0% violations, mean 0.1407 mm); it binds on the aggregate of a batch",
+    "• Mean operating point: 7907 RPM, 0.318 mm/r, 2.07 mm, 4.0 passes",
 ]
 add_bullet_list(slide, Inches(0.8), Inches(5.1), Inches(11.7), Inches(1.7), takeaways, font_size=15, color=DARK_GRAY, spacing=Pt(4))
 
@@ -549,13 +561,13 @@ for i, w in enumerate(cols):
 
 abl_data = [
     ("w₂", "MRR (mm³/min)", "Energy (kJ)", "Cycle (s)", "n (RPM)", "f_r (mm/r)", "Frontier"),
-    ("0.0", "946.3±63.4", "82.9±1.4", "44.8", "7094", "0.166", "✗ dominated"),
-    ("0.2", "1007.8±22.7", "77.1±1.1", "31.3", "7471", "0.184", "✗ dominated"),
-    ("0.4", "1038.0±67.6", "72.7±0.5", "24.8", "7256", "0.203", "✓"),
-    ("0.5", "1035.8±43.8", "70.3±1.2", "22.0", "7080", "0.214", "✓"),
-    ("0.6", "1023.9±27.4", "70.8±0.6", "22.1", "7148", "0.209", "✗ dominated"),
-    ("0.8", "971.1±43.2", "66.8±1.2", "21.9", "6538", "0.228", "✓"),
-    ("1.0", "951.3±54.7", "65.8±0.6", "20.9", "6490", "0.229", "✓"),
+    ("0.0", "1397.1±14.8", "70.4±0.1", "14.8", "7998", "0.299", "✗ dominated"),
+    ("0.2", "1456.9±14.6", "70.0±0.1", "13.8", "7992", "0.299", "✗ dominated"),
+    ("0.4", "1524.9±40.2", "69.3±0.2", "13.0", "7896", "0.296", "✗ dominated"),
+    ("0.5", "1556.6±9.7", "69.1±0.2", "12.7", "7859", "0.296", "✓"),
+    ("0.6", "1519.8±36.4", "68.3±0.4", "13.1", "7638", "0.296", "✓"),
+    ("0.8", "1224.4±11.3", "63.0±0.2", "15.4", "6573", "0.292", "✓"),
+    ("1.0", "918.5±14.9", "57.2±0.2", "20.1", "5382", "0.292", "✓"),
 ]
 
 for i, row in enumerate(abl_data):
@@ -567,9 +579,9 @@ style_table(table, font_size=13)
 add_shape(slide, Inches(0.5), Inches(4.35), Inches(12.3), Inches(2.6), fill_color=RGBColor(255, 248, 220), line_color=IIT_GOLD, line_width=Pt(2))
 add_text_box(slide, Inches(0.8), Inches(4.5), Inches(11.7), Inches(0.5), "📊 Frontier Analysis", font_size=22, bold=True, color=IIT_GOLD)
 insights = [
-    "• From w₂ = 0.4 to w₂ = 1.0 the removal rate falls 8.4% (1038 → 951 mm³/min) and the energy falls 9.5% (72.7 → 65.8 kJ): a symmetric trade-off",
-    "• The spindle speed falls with the energy weight (7256 → 6490 RPM): the energy is bought with throughput, not with time",
-    "• Dominated points (w₂ = 0.0, 0.2, 0.6) remove less for more",
+    "• From w₂ = 0.5 to w₂ = 1.0 the removal rate falls 41% (1557 → 919 mm³/min) and the energy falls 17% (69.1 → 57.2 kJ): the trade-off is asymmetric",
+    "• The energy is bought with a lot of removal rate, and with time (12.7 → 20.1 s); the spindle speed falls with the weight (7859 → 5382 RPM)",
+    "• Dominated points (w₂ = 0.0, 0.2, 0.4) remove less for more",
     "• Each policy has its weight pinned at training and evaluated at that same weight; 3 seeds, 50 scenarios each",
 ]
 add_bullet_list(slide, Inches(0.8), Inches(5.1), Inches(11.7), Inches(1.7), insights, font_size=14, color=DARK_GRAY, spacing=Pt(4))
@@ -582,7 +594,7 @@ add_figure_slide(
     "ablation_pareto_frontier.png",
     "How to read this",
     "Seven pinned-weight policies, three seeds each. The four non-dominated points are joined into the frontier: "
-    "w₂ = 0.4, 0.5, 0.8 and 1.0, and the three dominated points sit off it. Left: the energy of a part. "
+    "w₂ = 0.5, 0.6, 0.8 and 1.0, and the three dominated points sit off it. Left: the energy of a part. "
     "Right: the energy of a pass, which the reward charges.")
 
 # ============================================================
@@ -603,13 +615,13 @@ for j, w in enumerate([1.1, 1.9, 1.9, 1.5, 1.9, 1.9, 1.6]):
 
 cond_data = [
     ("w₂", "MRR, one policy", "MRR, per weight", "MRR gap", "Energy, one policy", "Energy, per weight", "Energy gap"),
-    ("0.0", "1213.6", "946.3", "+28.2%", "69.6", "82.9", "−16.0%"),
-    ("0.2", "1215.3", "1007.8", "+20.6%", "69.0", "77.1", "−10.5%"),
-    ("0.4", "1205.1", "1038.0", "+16.1%", "68.3", "72.7", "−6.0%"),
-    ("0.5", "1191.0", "1035.8", "+15.0%", "68.0", "70.3", "−3.3%"),
-    ("0.6", "1169.3", "1023.9", "+14.2%", "67.6", "70.8", "−4.5%"),
-    ("0.8", "1130.8", "971.1", "+16.4%", "67.1", "66.8", "+0.5%"),
-    ("1.0", "1096.0", "951.3", "+15.2%", "67.1", "65.8", "+2.1%"),
+    ("0.0", "1475.9", "1397.1", "+5.6%", "68.4", "70.4", "−2.9%"),
+    ("0.2", "1518.0", "1456.9", "+4.2%", "65.8", "70.0", "−6.1%"),
+    ("0.4", "1608.5", "1524.9", "+5.5%", "66.4", "69.3", "−4.2%"),
+    ("0.5", "1630.3", "1556.6", "+4.7%", "66.0", "69.1", "−4.4%"),
+    ("0.6", "1540.8", "1519.8", "+1.4%", "65.5", "68.3", "−4.0%"),
+    ("0.8", "1114.5", "1224.4", "−9.0%", "57.9", "63.0", "−8.0%"),
+    ("1.0", "720.4", "918.5", "−21.6%", "51.7", "57.2", "−9.7%"),
 ]
 
 for i, row in enumerate(cond_data):
@@ -619,12 +631,12 @@ style_table(table, font_size=13)
 
 # Key message
 add_shape(slide, Inches(0.5), Inches(4.35), Inches(12.3), Inches(2.6), fill_color=RGBColor(230, 245, 230), line_color=GREEN, line_width=Pt(2))
-add_text_box(slide, Inches(0.8), Inches(4.5), Inches(11.7), Inches(0.5), "🎯 Result", font_size=22, bold=True, color=GREEN)
+add_text_box(slide, Inches(0.8), Inches(4.5), Inches(11.7), Inches(0.5), "🎯 Result (the previous claim has reversed)", font_size=22, bold=True, color=GREEN)
 msg = [
-    "• For w₂ from 0.0 to 0.6 the single policy removes 14% to 28% more material for 3% to 16% less energy",
-    "• At w₂ = 0.8 and w₂ = 1.0 it still removes 16% and 15% more for 0.5% and 2.1% more energy",
-    "• The weight stays a runtime query, not a retrain: the observation carries w₂ and the material context (C_wear, k₁)",
-    "• The same policy swept at runtime: MRR 1213.6 (w₂ = 0.0) → 1096.0 (w₂ = 1.0), energy 69.6 → 67.1 kJ, spindle 7513 → 6475 RPM",
+    "• Over the weights from 0.0 to 0.6 the single policy removes 1.4% to 5.6% more material for 2.9% to 6.1% less energy",
+    "• At w₂ = 0.8 and w₂ = 1.0 it is behind by 9.0% and 21.6% of the removal rate",
+    "• The weight in the observation is a weaker signal than a dedicated policy where the trade-off is steepest",
+    "• The same policy swept at runtime: MRR 1475.9 (w₂ = 0.0) → 720.4 (w₂ = 1.0), energy 68.4 → 51.7 kJ, spindle 8000 → 4111 RPM",
 ]
 add_bullet_list(slide, Inches(0.8), Inches(5.1), Inches(11.7), Inches(1.7), msg, font_size=15, color=DARK_GRAY, spacing=Pt(4))
 
@@ -639,19 +651,18 @@ add_text_box(slide, Inches(0.5), Inches(0.2), Inches(12), Inches(0.7),
     font_size=30, bold=True, color=WHITE)
 
 # Baseline table
-table_shape = slide.shapes.add_table(7, 5, Inches(1.2), Inches(1.4), Inches(10.8), Inches(2.4))
+table_shape = slide.shapes.add_table(6, 5, Inches(1.2), Inches(1.4), Inches(10.8), Inches(2.4))
 table = table_shape.table
 for j, w in enumerate([3.0, 1.8, 2.2, 2.0, 1.8]):
     table.columns[j].width = Inches(w)
 
 base_data = [
     ("Policy", "Reward", "MRR (mm³/min)", "Energy (kJ)", "Cycle (s)"),
-    ("PPO (ours)", "204.09", "894.3", "18.40", "5.56"),
-    ("Receding-Horizon", "203.45", "981.7", "18.02", "4.80"),
-    ("NSGA-II Static", "−46.39", "732.9", "18.8", "6.4"),
-    ("Rule-Based", "−46.48", "719.8", "18.7", "6.6"),
-    ("Constant-High", "−46.10", "1099.6", "17.8", "4.3  ⚠ violates"),
-    ("Constant-Safe", "−139.25", "1.6", "1506.8", "3000.0"),
+    ("Constant high", "10.0", "1099.6", "17.8", "4.3"),
+    ("NSGA-II static", "5.1", "732.9", "18.8", "6.4"),
+    ("Rule based", "3.3", "719.8", "18.8", "6.6"),
+    ("Receding-horizon", "253.5", "725.5", "19.0", "6.7"),
+    ("Constant safe", "−1882.9", "1.6", "385.7", "768.0"),
 ]
 
 for i, row in enumerate(base_data):
@@ -659,20 +670,20 @@ for i, row in enumerate(base_data):
         table.cell(i, j).text = val
 style_table(table, font_size=14)
 for j in range(5):
-    table.cell(6, j).fill.solid()
-    table.cell(6, j).fill.fore_color.rgb = RGBColor(255, 230, 230)
     table.cell(5, j).fill.solid()
-    table.cell(5, j).fill.fore_color.rgb = RGBColor(255, 248, 220)
+    table.cell(5, j).fill.fore_color.rgb = RGBColor(255, 230, 230)
+    table.cell(4, j).fill.solid()
+    table.cell(4, j).fill.fore_color.rgb = RGBColor(255, 248, 220)
 
 # Analysis
 add_shape(slide, Inches(0.5), Inches(4.15), Inches(12.3), Inches(2.8), fill_color=LIGHT_GRAY, line_color=IIT_BLUE, line_width=Pt(1.5))
 add_text_box(slide, Inches(0.8), Inches(4.3), Inches(11.7), Inches(0.4), "Analysis", font_size=20, bold=True, color=IIT_BLUE)
 analysis = [
     "• Same 50 episodes of the nominal condition for all six policies, at w₂ = 0.4",
-    "• Level on the reward: PPO 204.1 against the controller 203.5",
-    "• The controller is ahead on the removal rate (981.7 vs 894.3) and the cycle time (4.80 s vs 5.56 s)",
-    "• No reinforcement learning advantage is demonstrated yet",
-    "• The three fast static policies finish outside the roughness safety limit, so the reward takes the −50 finishing penalty; Constant-Safe stays inside but needs 3000 s",
+    "• Three of the four static policies finish outside the roughness safety limit (1.56 μm against 1.36 μm): no completion bonus, the finishing penalty, so they land near zero",
+    "• Constant-Safe stays inside the limit (0.26 μm) but needs 768 s and 385.7 kJ per part: −1882.9",
+    "• Receding-horizon is the strongest baseline, +253.5, and the only classical policy that finishes every part in spec",
+    "• It pays for that with throughput: 725.5 mm³/min and 6.7 s against 1099.6 mm³/min and 4.3 s",
 ]
 add_bullet_list(slide, Inches(0.8), Inches(4.85), Inches(11.7), Inches(2.0), analysis, font_size=15, color=DARK_GRAY, spacing=Pt(4))
 
@@ -683,12 +694,93 @@ add_figure_slide(
     "Policy Comparison: Six Policies, Same 50 Episodes",
     "baseline_vs_ppo_comparison.png",
     "How to read this",
-    "The four static policies all take a negative reward: three of them finish outside the roughness safety "
-    "limit and Constant-Safe stays inside but needs 3000 s per part. The comparison that matters is the "
-    "controller against the learned policy, the only two with a positive reward.")
+    "The three fast static policies land near zero: they finish outside the roughness safety limit, so they are paid "
+    "no completion bonus and are charged the finishing penalty. Constant-Safe stays inside but needs 768 s and "
+    "385.7 kJ per part. The comparison that matters is the receding-horizon controller against the learned policy, "
+    "the only two with a positive reward.")
 
 # ============================================================
-# SLIDE 14: Controller Initialization, Method and Result
+# SLIDE 14: Robustness Against the Classical Controller
+# ============================================================
+slide = prs.slides.add_slide(prs.slide_layouts[6])
+add_background(slide, WHITE)
+add_shape(slide, Inches(0), Inches(0), Inches(13.333), Inches(1.1), fill_color=IIT_BLUE)
+add_text_box(slide, Inches(0.5), Inches(0.2), Inches(12), Inches(0.7),
+    "Robustness Against the Classical Controller", font_size=30, bold=True, color=WHITE)
+
+rob_data = [
+    ("Regime", "Arm", "Reward", "Std", "MRR", "kJ", "s", "Broken", "Done"),
+    ("Controller has every advantage", "Receding-horizon", "248.9", "79.5", "1318.2", "68.9", "17.1", "3%", "96%"),
+    ("", "PPO", "233.6", "79.7", "1608.5", "66.4", "11.4", "6%", "94%"),
+    ("Material model is wrong", "Receding-horizon", "63.5", "117.1", "1306.9", "71.0", "23.3", "2%", "95%"),
+    ("", "PPO", "226.9", "88.3", "1604.2", "66.3", "11.5", "6%", "94%"),
+    ("Wear measurement is noisy", "Receding-horizon", "181.3", "185.9", "1300.4", "74.2", "31.1", "4%", "91%"),
+    ("", "PPO trained with noise", "213.6", "87.3", "1554.2", "66.9", "12.0", "6%", "94%"),
+]
+
+rob_table = slide.shapes.add_table(7, 9, Inches(0.4), Inches(1.35), Inches(12.5), Inches(2.9)).table
+for j, w in enumerate([2.6, 2.2, 1.1, 1.0, 1.2, 1.0, 1.0, 1.1, 1.0]):
+    rob_table.columns[j].width = Inches(w)
+for i, row in enumerate(rob_data):
+    for j, val in enumerate(row):
+        rob_table.cell(i, j).text = val
+style_table(rob_table, font_size=12)
+for j in range(9):
+    rob_table.cell(2, j).fill.solid()
+    rob_table.cell(2, j).fill.fore_color.rgb = RGBColor(255, 248, 220)
+    rob_table.cell(4, j).fill.solid()
+    rob_table.cell(4, j).fill.fore_color.rgb = RGBColor(255, 248, 220)
+
+add_text_box(slide, Inches(0.5), Inches(4.45), Inches(12.3), Inches(0.5),
+    "Same 100 randomized scenarios at w₂ = 0.4 in every row. The regime changes what the CONTROLLER is given, "
+    "not what the policy is given.", font_size=15, bold=True, color=IIT_BLUE)
+
+add_shape(slide, Inches(0.5), Inches(4.95), Inches(12.3), Inches(2.15), fill_color=RGBColor(255, 248, 220), line_color=IIT_GOLD, line_width=Pt(2))
+add_text_box(slide, Inches(0.8), Inches(5.05), Inches(11.7), Inches(0.4), "🎯 The central result of the work", font_size=20, bold=True, color=IIT_GOLD)
+rob_notes = [
+    "• Inside a perfect digital twin the controller wins on the reward (248.9 against 233.6) and the gap of 15 is inside the noise: the standard error of the mean is about 8 for both arms",
+    "• The learned policy is the better throughput operator: 22% more material per minute, a third less time, 3.7% less energy, at twice the tool breakage",
+    "• The advantage appears where the controller's information advantage disappears: a wrong model of the material (63.5 against 226.9) and a noisy wear measurement (181.3 against 213.6)",
+]
+add_bullet_list(slide, Inches(0.8), Inches(5.55), Inches(11.7), Inches(1.5), rob_notes, font_size=13, color=DARK_GRAY, spacing=Pt(4))
+
+# ============================================================
+# SLIDE 15: Batch Against the Part
+# ============================================================
+slide = prs.slides.add_slide(prs.slide_layouts[6])
+add_background(slide, WHITE)
+add_shape(slide, Inches(0), Inches(0), Inches(13.333), Inches(1.1), fill_color=IIT_BLUE)
+add_text_box(slide, Inches(0.5), Inches(0.2), Inches(12), Inches(0.7),
+    "Batch Against the Part: One Tool, Ten Parts", font_size=30, bold=True, color=WHITE)
+
+batch_data = [
+    ("Arm", "Batch reward", "Std", "Reward/part", "Tool changes", "Batch time (s)", "Batch energy (kJ)"),
+    ("PPO, batch aware", "1772.3", "358.3", "169.0", "0.767", "113.8", "632.7"),
+    ("PPO, per part", "1694.6", "352.3", "171.7", "0.833", "110.8", "655.7"),
+    ("Receding-horizon, per part", "1859.9", "328.8", "173.7", "0.833", "207.5", "692.0"),
+]
+
+batch_table = slide.shapes.add_table(4, 7, Inches(0.5), Inches(1.4), Inches(12.3), Inches(1.7)).table
+for j, w in enumerate([2.9, 1.6, 1.1, 1.6, 1.6, 1.6, 1.9]):
+    batch_table.columns[j].width = Inches(w)
+for i, row in enumerate(batch_data):
+    for j, val in enumerate(row):
+        batch_table.cell(i, j).text = val
+style_table(batch_table, font_size=13)
+
+add_shape(slide, Inches(0.5), Inches(3.4), Inches(12.3), Inches(3.5), fill_color=LIGHT_GRAY, line_color=IIT_BLUE, line_width=Pt(1.5))
+add_text_box(slide, Inches(0.8), Inches(3.55), Inches(11.7), Inches(0.4), "How to read this", font_size=20, bold=True, color=IIT_BLUE)
+batch_notes = [
+    "• A batch is ten parts cut with one tool. The tool is replaced when it breaks or reaches its wear limit, and the replacement costs 500 reward units against the 200 a finished part is worth",
+    "• The observation is the eleven features of the part plus the tool life left and the fraction of the batch still to cut (MillingDTBatchEnv-v1, 13-D)",
+    "• The batch context is worth 8% fewer tool changes and 3.5% less energy at the same completion: 0.767 tool changes against 0.833, and 632.7 kJ against 655.7 kJ",
+    "• The per-part controller gets the highest batch reward, 1859.9, and buys it with the machine time: 207.5 s for the batch against the batch-aware policy's 113.8 s",
+    "• It solves one part at a time, so it cannot price a tool change against the parts that follow it",
+]
+add_bullet_list(slide, Inches(0.8), Inches(4.1), Inches(11.7), Inches(2.6), batch_notes, font_size=15, color=DARK_GRAY, spacing=Pt(6))
+
+# ============================================================
+# SLIDE 16: Controller Initialization, Method and Result
 # ============================================================
 slide = prs.slides.add_slide(prs.slide_layouts[6])
 add_background(slide, WHITE)
@@ -723,14 +815,15 @@ add_bullet_list(slide, Inches(0.8), Inches(2.65), Inches(5.0), Inches(4.0), meth
 # Three arms table
 ci_data = [
     ("Metric", "Receding-horizon\ncontroller", "PPO\nfrom scratch", "PPO initialized\nfrom controller"),
-    ("Mean episode reward", "187.96", "198.57", "199.35"),
-    ("Reward std", "65.92", "30.03", "3.35"),
-    ("MRR (mm³/min)", "1560.6", "1205.1", "1126.1"),
-    ("Energy per part (kJ)", "68.01", "68.35", "77.17"),
-    ("Cycle time (s)", "13.54", "20.25", "32.35"),
-    ("Ra viol., finished", "0.0%", "0.0%", "0.0%"),
-    ("Tool breakage", "5%", "1%", "0%"),
-    ("Parts completed", "95%", "99%", "100%"),
+    ("Mean episode reward", "248.9", "233.6", "119.8"),
+    ("Reward std", "79.5", "79.7", "178.7"),
+    ("MRR (mm³/min)", "1318.2", "1608.5", "1274.9"),
+    ("Energy per part (kJ)", "68.9", "66.4", "81.5"),
+    ("Cycle time (s)", "17.1", "11.4", "42.6"),
+    ("Ra viol., finished", "2%", "4%", "4%"),
+    ("Flank wear violations", "1%", "0%", "9%"),
+    ("Tool breakage", "3%", "6%", "4%"),
+    ("Parts completed", "96%", "94%", "87%"),
 ]
 
 table_shape = slide.shapes.add_table(len(ci_data), 4, Inches(6.3), Inches(1.9), Inches(6.5), Inches(3.6))
@@ -741,17 +834,17 @@ for j, w in enumerate([2.1, 1.5, 1.4, 1.5]):
 for i, row in enumerate(ci_data):
     for j, val in enumerate(row):
         table.cell(i, j).text = val
-style_table(table, font_size=12)
+style_table(table, font_size=11)
 
 # Reading box under the table
 add_shape(slide, Inches(6.3), Inches(5.65), Inches(6.5), Inches(1.15), fill_color=RGBColor(255, 248, 220), line_color=IIT_GOLD, line_width=Pt(2))
 add_text_box(slide, Inches(6.55), Inches(5.75), Inches(6.0), Inches(0.4), "Same 100 scenarios, same energy weight w₂ = 0.4", font_size=15, bold=True, color=IIT_GOLD)
 add_bullet_list(slide, Inches(6.55), Inches(6.15), Inches(6.0), Inches(0.6), [
-    "All three arms keep the finished surface in spec (0% violations)",
+    "The initialized arm is the only one that exceeds the flank wear limit (9%)",
 ], font_size=13, color=DARK_GRAY, spacing=Pt(2))
 
 # ============================================================
-# SLIDE 15: Controller Initialization, What It Shows
+# SLIDE 17: Controller Initialization, What It Shows
 # ============================================================
 slide = prs.slides.add_slide(prs.slide_layouts[6])
 add_background(slide, WHITE)
@@ -762,42 +855,44 @@ add_text_box(slide, Inches(0.5), Inches(0.2), Inches(12), Inches(0.7),
 
 # Left: no advantage
 add_shape(slide, Inches(0.5), Inches(1.35), Inches(6.05), Inches(3.6), fill_color=RGBColor(255, 248, 220), line_color=IIT_GOLD, line_width=Pt(2))
-add_text_box(slide, Inches(0.8), Inches(1.5), Inches(5.5), Inches(0.5), "No advantage over the controller", font_size=20, bold=True, color=IIT_GOLD)
+add_text_box(slide, Inches(0.8), Inches(1.5), Inches(5.5), Inches(0.5), "The initialization is now harmful", font_size=20, bold=True, color=IIT_GOLD)
 add_bullet_list(slide, Inches(0.8), Inches(2.1), Inches(5.5), Inches(2.7), [
-    "• The controller still removes 38% more material per minute (1560.6 against 1126.1 mm³/min)",
-    "• and finishes in 13.5 s against 32.3 s",
-    "• The reward cannot separate the two learned policies: 199.35 against 198.57 is a gap of 0.8, while the standard error of the mean over 100 scenarios is 30.0/√100 = 3.0",
+    "• The initialized policy scores 119.8 against the from-scratch policy's 233.6, a gap of 113.8, more than fourteen times the standard error of the mean",
+    "• The clone starts the policy at the controller's conservative operating point, and with the wear constraint binding that conservatism is expensive",
+    "• It cuts a part in 42.6 s against 17.1 s and 11.4 s, and spends 81.5 kJ against 66.4 kJ",
+    "• It is the only arm that exceeds the flank wear limit (9%)",
 ], font_size=15, color=DARK_GRAY, spacing=Pt(6))
 
 # Right: consistency
 add_shape(slide, Inches(6.8), Inches(1.35), Inches(6.05), Inches(3.6), fill_color=LIGHT_GRAY, line_color=IIT_BLUE, line_width=Pt(1.5))
-add_text_box(slide, Inches(7.1), Inches(1.5), Inches(5.5), Inches(0.8), "Consistency, paid for with throughput and energy", font_size=20, bold=True, color=IIT_BLUE)
+add_text_box(slide, Inches(7.1), Inches(1.5), Inches(5.5), Inches(0.8), "The result reversed", font_size=20, bold=True, color=IIT_BLUE)
 add_bullet_list(slide, Inches(7.1), Inches(2.1), Inches(5.5), Inches(2.7), [
-    "• Reward std across the 100 scenarios falls from 30.0 to 3.4, tool breakage falls to zero, every part is completed",
-    "• Against the from-scratch policy: 6.6% less removal rate and 12.9% more energy per part",
-    "• The controller is the least reliable arm of the three: std 65.9, 5% breakage, 95% of the parts completed",
+    "• The earlier revision found the initialization harmless: it made the policy more consistent and did not change the reward",
+    "• That was the reward not counting the cost of the slow operating point",
+    "• With the throughput counted, the initialization is what the measurement says it is",
+    "• What stays is the record and clone machinery, not the initialization itself",
 ], font_size=15, color=DARK_GRAY, spacing=Pt(6))
 
 # Claim box
 add_shape(slide, Inches(0.5), Inches(5.2), Inches(12.35), Inches(1.6), fill_color=RGBColor(230, 240, 250), line_color=IIT_BLUE, line_width=Pt(1.5))
 add_text_box(slide, Inches(0.8), Inches(5.35), Inches(11.7), Inches(0.5), "What the work claims", font_size=20, bold=True, color=IIT_BLUE)
 add_bullet_list(slide, Inches(0.8), Inches(5.9), Inches(11.7), Inches(0.8), [
-    "The reinforcement learning agent navigates the energy/throughput trade-off inside a fixed constraint set. It does not beat a classical controller that re-optimizes every pass with the exact physics.",
+    "The learned policy does not beat a model-based controller on the objective inside a perfect digital twin. It is the better throughput operator, and its advantage appears where the controller's information advantage disappears.",
 ], font_size=16, color=DARK_GRAY, spacing=Pt(4))
 
 # ============================================================
-# SLIDE 16: Controller Initialization, The Three Arms (figure)
+# SLIDE 18: Controller Initialization, The Three Arms (figure)
 # ============================================================
 add_figure_slide(
     "Controller Initialization: The Three Arms",
     "controller_vs_ppo.png",
     "How to read this",
-    "Six panels at slide size, so the values are in the table. The three arms are level on the reward, and the "
-    "spread over the 100 scenarios separates them: 65.9, 30.0 and 3.4. The controller leads on the removal rate "
-    "and the cycle time, the learned policies on the reliability.")
+    "Six panels at slide size, so the values are in the table. The initialized arm sits 114 points below the from-scratch "
+    "arm on the reward, and its spread of 178.7 is more than twice the spread of the other two: the initialization does "
+    "not buy consistency any more, it buys variance.")
 
 # ============================================================
-# SLIDE 17: Transfer Experiment
+# SLIDE 19: Transfer Experiment
 # ============================================================
 slide = prs.slides.add_slide(prs.slide_layouts[6])
 add_background(slide, WHITE)
@@ -814,10 +909,10 @@ add_text_box(slide, Inches(0.5), Inches(1.3), Inches(12.3), Inches(0.8),
 # Four arms
 arm_data = [
     ("Arm", "Mean reward", "R_a violations\n(worst pass)", "R_a violations\n(finished surface)", "Parts\ncompleted"),
-    ("Source policy, zero shot", "182.5", "100.0%", "3.3%", "93.3%"),
-    ("Source policy, fine tuned (50k)", "196.6", "0.0%", "0.0%", "100.0%"),
-    ("Trained on the target from scratch (50k)", "196.6", "0.0%", "0.0%", "100.0%"),
-    ("Production policy, zero shot", "200.3", "60.0%", "0.0%", "100.0%"),
+    ("Source policy, zero shot", "168.5", "100.0%", "6.7%", "86.7%"),
+    ("Source policy, fine tuned (50k)", "101.9", "26.7%", "0.0%", "86.7%"),
+    ("Trained on the target from scratch (50k)", "101.9", "26.7%", "0.0%", "86.7%"),
+    ("Production policy, zero shot", "190.1", "100.0%", "10.0%", "90.0%"),
 ]
 
 table_shape = slide.shapes.add_table(5, 5, Inches(0.7), Inches(2.2), Inches(11.9), Inches(1.9))
@@ -834,16 +929,15 @@ style_table(table, font_size=13, highlight_rows=(4,))
 add_shape(slide, Inches(0.5), Inches(4.35), Inches(12.3), Inches(2.6), fill_color=RGBColor(255, 248, 220), line_color=IIT_GOLD, line_width=Pt(2))
 add_text_box(slide, Inches(0.8), Inches(4.5), Inches(11.7), Inches(0.5), "⚠ How to read this", font_size=22, bold=True, color=IIT_GOLD)
 conc_items = [
-    "• The production policy was trained across a distribution of materials with the material context in its observation, so the harder material is inside its training distribution and needs no adaptation at all",
-    "• It scores the highest reward (200.3); the finished surface, which is the part quality, is in spec in every scenario",
-    "• Its 60% worst-pass violations fall on the roughing passes, which the reward does not constrain",
-    "• The nominal-trained source policy cannot: 182.5, and it violates the roughness limit in every scenario",
-    "• Fine tuning it for 50,000 steps, or training on the target from scratch, both fix it, and both land at 196.6",
+    "• The production policy was trained across a distribution of materials with the material context in its observation, so the harder material is inside its training distribution and it needs no adaptation at all",
+    "• It scores the highest reward (190.1) and completes 90.0% of the parts; its worst pass violates the roughness limit in every scenario, and its finished surface in 10.0% of them",
+    "• Adaptation repairs the roughness and costs more than it gains: fine tuning the nominal-trained policy for 50,000 steps, or training on the target from scratch, both cut the worst-pass violations to a quarter and land at 101.9 against the source policy's 168.5 zero shot",
+    "• The target alloy wears the tool twice as fast, and a policy that slows down for that trades away more throughput than it gains in specification",
 ]
 add_bullet_list(slide, Inches(0.8), Inches(5.1), Inches(11.7), Inches(1.8), conc_items, font_size=14, color=DARK_GRAY, spacing=Pt(4))
 
 # ============================================================
-# SLIDE 18: Interactive Workstation
+# SLIDE 20: Interactive Workstation
 # ============================================================
 slide = prs.slides.add_slide(prs.slide_layouts[6])
 add_background(slide, WHITE)
@@ -872,7 +966,7 @@ add_text_box(slide, Inches(0.5), Inches(6.8), Inches(12), Inches(0.5),
     font_size=20, bold=True, color=IIT_BLUE, alignment=PP_ALIGN.CENTER)
 
 # ============================================================
-# SLIDE 19: Software Engineering & Reproducibility
+# SLIDE 21: Software Engineering & Reproducibility
 # ============================================================
 slide = prs.slides.add_slide(prs.slide_layouts[6])
 add_background(slide, WHITE)
@@ -883,13 +977,13 @@ add_text_box(slide, Inches(0.5), Inches(0.2), Inches(12), Inches(0.7),
 
 left_items = [
     "Architecture:",
-    "  MillingDT/  →  config, env, agent (controller init),",
-    "                  baselines, sim, utils",
+    "  MillingDT/  →  config, env (part + batch), agent",
+    "                  (controller init), baselines, sim, utils",
     "  experiments/ →  train, eval, ablation, baselines,",
-    "                  transfer, controller experiment, pipeline",
+    "                  transfer, controller, robustness, batch,",
+    "                  pipeline",
     "  viz/         →  shared plotting utilities",
-    "  results/     →  one directory per run (models, log,",
-    "                  metrics, plots)",
+    "  results/     →  one directory per run",
     "",
     "Reproducibility:",
     "  • Global seeding (Python, NumPy, PyTorch, CUDA)",
@@ -899,24 +993,20 @@ left_items = [
     "  • Centralized constants and paths (MillingDT/config/)",
 ]
 right_items = [
-    "Testing (34 tests):",
-    "  • 22 env tests: clipping, truncation, soft norm, 11-D",
-    "    observation, constants, overrides, accumulators, energy",
-    "    norm, Gym checker, randomization, pinned values, scenario",
-    "    scales, context (weight, material, random weight), speed",
-    "    dependence, energy minimum, shared physics",
-    "  • 2 reward tests: golden values (w₂ = 0.0, 0.4, 0.75),",
-    "    finishing penalty",
-    "  • 5 integration: train→eval roundtrip, one registration,",
-    "    context in the observation, one policy at a pinned weight,",
-    "    baseline artifact",
-    "  • 3 callback: heartbeat delivery, failure report, interval",
-    "  • 2 training: convergence, reproducibility",
+    "Testing (45 tests):",
+    "  • 24 env tests: clipping, truncation, soft norm, 11-D",
+    "    observation, constants, overrides, energy norm, Gym",
+    "    checker, randomization, scenario scales, context",
+    "    (weight, material, belief), observation noise, speed",
+    "    dependence, energy minimum, reward golden values",
+    "  • 11 batch env tests: the 13-D observation, the tool",
+    "    life and the batch left, the wear carried over, the",
+    "    tool change, the batch reward, the seeded reproducibility",
+    "  • 5 integration, 3 callback, 2 training",
     "",
     "Code Quality:",
     "  • No unused imports (AST verified)",
     "  • Conventional commits, clean git history",
-    "  • Constants and paths in MillingDT/config/",
 ]
 
 add_two_column(slide, Inches(0.5), Inches(1.3), Inches(12.3), Inches(5.9),
@@ -924,7 +1014,7 @@ add_two_column(slide, Inches(0.5), Inches(1.3), Inches(12.3), Inches(5.9),
     title_left="Architecture & Reproducibility", title_right="Test Coverage & Quality")
 
 # ============================================================
-# SLIDE 20: Discussion
+# SLIDE 22: Discussion
 # ============================================================
 slide = prs.slides.add_slide(prs.slide_layouts[6])
 add_background(slide, WHITE)
@@ -939,27 +1029,30 @@ titles = ["✅ What Worked", "⚠️ Limitations", "🚀 Future Work"]
 contents = [
     [
         "Speed-dependent k_c creates genuine trade-off",
-        "Domain randomization → 99% completion, 0% finished violations",
-        "One policy beats the 21 per-weight policies",
+        "The reward scale decides the operating point: 50 points per part",
+        "Domain randomization → 94% completion",
+        "One policy covers the range, ahead over w₂ = 0.0 to 0.6",
         "Training across materials makes the adaptation unnecessary",
-        "Receding-horizon = strong, fair baseline (same physics)",
-        "Controller initialization buys consistency: reward std 30.0 → 3.4, no tool breakage",
-        "Full reproducibility: one script regenerates all tables",
+        "Receding-horizon = strong, fair baseline (184.3 → 248.9)",
+        "Robustness: the advantage appears where the controller's information runs out",
+        "Batch context: 8% fewer tool changes, 3.5% less energy",
     ],
     [
-        "PPO is level with the receding-horizon, not ahead of it",
-        "Initializing from the controller does not close the gap: more uniform, but 6.6% less removal rate and 12.9% more energy",
+        "Inside a perfect twin the controller is ahead: 248.9 against 233.6, and the gap is inside the noise",
+        "The learned policy is the better throughput operator, at twice the tool breakage",
+        "Initializing from the controller is now harmful: 119.8 against 233.6",
+        "The reward scale is a design decision, and the comparison is sensitive to it",
+        "The wear tool life varies by only a factor of a few across the envelope",
         "Ablation uses 150k steps/weight (vs 1M production)",
-        "The reward charges a pass, the metric is a part",
-        "Micro-topography is simplified (no chatter/vibration)",
         "Sim-only, no real machine calibration yet",
     ],
     [
+        "Sensitivity of the comparison to the reward scale",
         "Compare against a restricted controller (is the gap an information gap?)",
         "Sim-to-real: calibrate on machine data, add noise/delay",
         "True multi-objective RL (Pareto-conditioned, hypervolume)",
         "Online adaptation: runtime w₂ optimizer for energy budget",
-        "Full 3D Digital Twin: toolpath viz, collision checking",
+        "Batch-level planning: optimize the whole batch, not a part",
         "Deploy on edge hardware for real-time control",
     ],
 ]
@@ -968,11 +1061,11 @@ x = Inches(0.4)
 for title, items in zip(titles, contents):
     add_shape(slide, x, Inches(1.3), col_w, Inches(5.8), fill_color=LIGHT_GRAY, line_color=IIT_BLUE, line_width=Pt(1.5))
     add_text_box(slide, x + Inches(0.2), Inches(1.4), col_w - Inches(0.4), Inches(0.5), title, font_size=20, bold=True, color=IIT_BLUE)
-    add_bullet_list(slide, x + Inches(0.2), Inches(2.0), col_w - Inches(0.4), Inches(4.8), items, font_size=15, color=DARK_GRAY, spacing=Pt(8))
+    add_bullet_list(slide, x + Inches(0.2), Inches(2.0), col_w - Inches(0.4), Inches(4.8), items, font_size=13, color=DARK_GRAY, spacing=Pt(4))
     x += col_w + Inches(0.15)
 
 # ============================================================
-# SLIDE 21: Conclusion
+# SLIDE 23: Conclusion
 # ============================================================
 slide = prs.slides.add_slide(prs.slide_layouts[6])
 add_background(slide, IIT_BLUE)
@@ -983,29 +1076,34 @@ add_text_box(slide, Inches(1), Inches(1.2), Inches(11.333), Inches(1),
     font_size=40, bold=True, color=WHITE, alignment=PP_ALIGN.CENTER)
 
 conclusions = [
-    "🏭 Physics-grounded Digital Twin: speed-dependent cutting energy, tool wear, roughness, breakage",
-    "🤖 One environment (MillingDTEnv-v1): domain randomization, 11-D observation with the context",
+    "🏭 Digital Twin: speed-dependent cutting energy, tool wear, roughness, breakage; the wear coefficient is anchored on a published tool life",
+    "🤖 Two environments: the part (11-D) and the batch of ten parts cut with one tool (13-D), both with domain randomization",
     "📊 One production policy (1M steps): the energy weight is a runtime query, not a retrain",
-    "🔬 Monte Carlo (100 scenarios, 95% CIs), ablation frontier, sweep vs 21 per-weight policies",
-    "⚔️ Six baselines on the same 50 episodes, level on the reward, no RL advantage yet",
-    "🧬 Controller init: more uniform (std 3.4 vs 30.0), no tool breakage, no gain on throughput",
+    "🔬 Monte Carlo (100 scenarios, 95% CIs), ablation frontier, sweep against the 21 per-weight policies",
+    "⚔️ Five classical baselines on the same 50 episodes; the receding-horizon controller is the strongest at +253.5",
+    "🛡️ Robustness: the controller leads inside a perfect twin (248.9 against 233.6), and collapses to 63.5 and 181.3; the policy holds at 226.9 and 213.6",
+    "📦 Batch: the batch context is worth 8% fewer tool changes and 3.5% less energy; the per-part controller needs 207.5 s against 113.8 s",
+    "🧬 Controller init: the result reversed, the initialization is now harmful (119.8 against 233.6)",
     "🔄 Transfer: the production policy needs no adaptation; the nominal-trained one does",
-    "🖥️ Interactive workstation: 2D stock depletion, micro-topography, G-code, controllers",
-    "🔁 Full reproducibility: every result table from committed artifacts by one script",
+    "🖥️ Interactive workstation and full reproducibility: every result table from committed artifacts by one script",
 ]
 
-y = Inches(2.15)
+y = Inches(1.85)
 for c in conclusions:
-    add_text_box(slide, Inches(1), y, Inches(11.333), Inches(0.45), c, font_size=16, color=WHITE, alignment=PP_ALIGN.LEFT)
-    y += Inches(0.45)
+    add_text_box(slide, Inches(1), y, Inches(11.333), Inches(0.4), c, font_size=13, color=WHITE, alignment=PP_ALIGN.LEFT)
+    y += Inches(0.42)
 
 add_shape(slide, Inches(1), Inches(6.2), Inches(11.333), Pt(4), fill_color=IIT_GOLD)
-add_text_box(slide, Inches(1), Inches(6.32), Inches(11.333), Inches(0.9),
-    "Key Scientific Finding: The speed-dependent specific cutting energy creates a genuine energy/throughput trade-off. Across the measured frontier the removal rate falls 8.4% while the energy of the part falls 9.5%. One conditioned policy reaches that whole frontier at runtime, beats the 21 policies trained per weight, and transfers to a harder material with no adaptation.",
-    font_size=15, bold=True, color=IIT_GOLD, alignment=PP_ALIGN.CENTER)
+add_text_box(slide, Inches(1), Inches(6.3), Inches(11.333), Inches(1.0),
+    "Key Scientific Finding: The speed-dependent specific cutting energy creates a genuine energy/throughput trade-off. "
+    "Across the frontier the removal rate falls 41% while the energy of the part falls 17%, and one conditioned policy "
+    "reaches that whole frontier at runtime. Against a model-based controller the claim is narrow: inside a perfect "
+    "digital twin the controller wins on the reward, the learned policy wins on throughput, and its advantage appears "
+    "where the controller's information advantage disappears.",
+    font_size=13, bold=True, color=IIT_GOLD, alignment=PP_ALIGN.CENTER)
 
 # ============================================================
-# SLIDE 22: Reproducibility Commands
+# SLIDE 24: Reproducibility Commands
 # ============================================================
 slide = prs.slides.add_slide(prs.slide_layouts[6])
 add_background(slide, WHITE)
@@ -1018,6 +1116,8 @@ cmds = [
     ("Tests", "pytest tests/ -v"),
     ("Production policy", "python -m experiments.train_rl --steps 1000000 --seed 42 --randomize --randomize-weight"),
     ("One pinned weight", "python -m experiments.train_rl --steps 150000 --seed 42 --randomize --w2 0.6"),
+    ("Noisy measurement", "python -m experiments.train_rl --obs-noise 0.05 --run-name PPO_noisystate_seed42"),
+    ("Batch policy", "python -m experiments.train_rl --env-id MillingDTBatchEnv-v1 --run-name PPO_batch_seed42"),
     ("Ablation grid", "python -m experiments.train_rl_ablation --steps 150000 --scenarios 50 --slots 7"),
     ("Monte Carlo eval", "python -m experiments.evaluate --scenarios 100"),
     ("Weight sweep", "python -m experiments.evaluate --sweep-weight --scenarios 100"),
@@ -1025,20 +1125,22 @@ cmds = [
     ("Classical baselines", "python -m experiments.run_baselines"),
     ("Transfer experiment", "python -m experiments.transfer_experiment 300000 50000"),
     ("Controller initialization", "python -m experiments.controller_experiment 1000000 2000"),
+    ("Robustness experiment", "python -m experiments.robustness_experiment"),
+    ("Batch experiment", "python -m experiments.batch_experiment"),
     ("Regenerate RESULTS.md", "python -m experiments.summarize_results"),
     ("Launch workstation", "streamlit run app.py"),
-    ("Full pipeline", "python -m experiments.run_pipeline --steps 1000000"),
+    ("Full pipeline", "python -m experiments.run_pipeline --steps 1000000 --ablation_steps 150000"),
 ]
 
-y = Inches(1.35)
+y = Inches(1.3)
 for idx, (name, cmd) in enumerate(cmds):
-    add_shape(slide, Inches(0.5), y, Inches(12.3), Inches(0.42), fill_color=LIGHT_GRAY if idx % 2 == 0 else WHITE)
-    add_text_box(slide, Inches(0.7), y + Inches(0.02), Inches(3.0), Inches(0.4), name, font_size=15, bold=True, color=IIT_BLUE)
-    add_text_box(slide, Inches(3.8), y + Inches(0.02), Inches(8.9), Inches(0.4), cmd, font_size=13, color=DARK_GRAY, font_name='Consolas')
-    y += Inches(0.45)
+    add_shape(slide, Inches(0.5), y, Inches(12.3), Inches(0.32), fill_color=LIGHT_GRAY if idx % 2 == 0 else WHITE)
+    add_text_box(slide, Inches(0.7), y + Inches(0.01), Inches(3.0), Inches(0.3), name, font_size=13, bold=True, color=IIT_BLUE)
+    add_text_box(slide, Inches(3.8), y + Inches(0.01), Inches(8.9), Inches(0.3), cmd, font_size=11, color=DARK_GRAY, font_name='Consolas')
+    y += Inches(0.335)
 
 # ============================================================
-# SLIDE 23: Thank You / Questions
+# SLIDE 25: Thank You / Questions
 # ============================================================
 slide = prs.slides.add_slide(prs.slide_layouts[6])
 add_background(slide, IIT_BLUE)

@@ -177,19 +177,25 @@ Key innovations:
 \begin{itemize}
     \item \textbf{Speed-dependent specific cutting energy} $k_c(v_c) = k_{c0} (v_c/v_\text{ref})^m$ creates a genuine trade-off: faster cutting increases energy per unit volume but reduces idle energy.
     \item \textbf{Domain randomization} during training: material/tool coefficients, workpiece geometry, and initial wear are sampled per episode from literature-calibrated ranges.
-    \item \textbf{One environment, one policy:} The energy weight $w_2$ and the material context live in the observation, so a single PPO policy covers the entire Pareto frontier and a whole distribution of materials.
+    \item \textbf{One environment, one policy:} The energy weight $w_2$ and the material context live in the observation, so a single PPO policy covers the whole weight range and a whole distribution of materials.
+    \item \textbf{A fair classical baseline:} A part-level controller that maximizes the expected episode reward over the same physics, with the breakage risk, the step penalty and the completion bonus priced.
+    \item \textbf{Robustness experiment:} The same two arms on the same scenarios in three regimes: the controller with every advantage, the controller with a wrong model of the material, and the controller with a noisy wear measurement.
+    \item \textbf{Batch experiment:} A second environment in which one tool cuts a batch of parts, the tool life is shared across the parts and the tool change is priced.
     \item \textbf{Transfer experiment:} Measures how much a policy trained on one material knows about a harder, faster-wearing material.
-    \item \textbf{Receding-horizon controller baseline:} A strong classical benchmark that re-solves at every pass.
 \end{itemize}
 
 \subsection{Contributions}
 \begin{enumerate}
     \item A Gymnasium-compliant milling environment with explicit physics, energy-aware reward, and domain randomization.
+    \item A batch environment in which one tool cuts a batch of parts, the tool life is shared across the parts and the tool change is priced.
     \item A trained PPO policy evaluated via 100-scenario Monte Carlo sweep with 95\% confidence intervals.
     \item Energy-weight ablation study (7 weights $\times$ 3 seeds) mapping the empirical Pareto frontier.
     \item Comparison against 5 classical baselines, all on the same episodes:\\
     Constant-High, Constant-Safe, Rule-Based, NSGA-II Static, Receding-Horizon.
-    \item Transfer experiment on a harder alloy: a policy trained across a distribution of materials needs no adaptation there, while a policy trained on the nominal material violates the roughness limit until it is fine tuned.
+    \item A robustness experiment against the receding-horizon controller in three regimes: the controller with every advantage, the controller with a wrong model of the material, and the controller with a noisy wear measurement.
+    \item A batch experiment: the batch context is worth 8\% fewer tool changes and 3.5\% less energy at the same completion, and the per-part controller needs 207.5 s of machine time for a batch of ten parts against the batch-aware policy's 113.8 s.
+    \item Transfer experiment on a harder alloy: a policy trained across a distribution of materials is the best arm there without any adaptation.
+    \item A controller initialization experiment whose result reversed: the initialization is now harmful rather than harmless (Section~\ref{sec:controllerinit}).
     \item Interactive Streamlit workstation with 2D stock depletion, micro-topography, G-code generation, and multi-controller comparison.
     \item Full reproducibility: all results regenerated from committed artifacts by\\
     \texttt{experiments/summarize\_results.py}.
@@ -204,7 +210,7 @@ This project positions itself against the papers held in \texttt{docs/papers/}:
 
 \begin{table}[H]
 \centering
-\caption{Position against the two reference papers held in \texttt{docs/papers/}}
+\caption{Position against the reference papers held in \texttt{docs/papers/}}
 \label{tab:papers}
 \small
 \setlength{\tabcolsep}{4pt}
@@ -221,15 +227,16 @@ Domain randomization & \xmark & \xmark & \checkmark \\
 Conditioned policy (single $\to$ frontier) & \xmark & \xmark & \checkmark \\
 Transfer experiment across materials & \xmark & \xmark & \checkmark \\
 Receding-horizon baseline & \xmark & \xmark & \checkmark \\
+Robustness against a model-based controller & \xmark & \xmark & \checkmark \\
 Monte Carlo robustness (100 scenarios) & \xmark & \xmark & \checkmark \\
 Interactive digital twin workstation & \xmark & \xmark & \checkmark \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-Both reference papers treat energy as related work rather than as an optimization target: in each of them energy appears in the discussion of prior art, not among the objectives. Mo et al. optimize the surface roughness and the production time of a multi-pass turning operation and carry the tool condition and the tool damage in the decision variables, so the wear and the roughness marks carry over. Wang et al. (2025a) build their state from sequences of machining parameters and cutting force features, and their objectives from the dimensional error of the machining features and the machining time; neither the tool wear nor the roughness enters their formulation, so only the dynamic parameter optimization carries over. The third paper in \texttt{docs/papers/} (Wang et al., 2025b) solves the discrete step sequencing problem, so continuous cutting parameters are outside its scope.
+Both reference papers treat energy as related work rather than as an optimization target: in each of them energy appears in the discussion of prior art, not among the objectives. Mo et al. optimize the surface roughness and the production time of a multi-pass turning operation and carry the tool condition and the tool damage in the decision variables, so the wear and the roughness marks carry over. Wang et al. (2025a) build their state from sequences of machining parameters and cutting force features, and their objectives from the dimensional error of the machining features and the machining time; neither the tool wear nor the roughness enters their formulation, so only the dynamic parameter optimization carries over. The third paper in \texttt{docs/papers/} (Wang et al., 2025b) solves the discrete step sequencing problem, so continuous cutting parameters are outside its scope. None of the three carries a Taylor wear model, so the wear coefficient of this work is anchored on the tool life that Wang et al. report rather than on a wear equation taken from a paper (Section~\ref{sec:wear}).
 
-The speed-dependent cutting energy model (Section~\ref{sec:physics}) is the key enabler here: without it the energy of a part is fixed by the volume removed, both objectives point the same way, and no weight on the energy term can open a trade-off. Putting the energy weight and the material context in the observation reduces the ablation cost from 21 training runs to one. The receding-horizon controller provides a fair classical benchmark that uses the same physics and re-optimizes at every pass.
+The speed-dependent cutting energy model (Section~\ref{sec:physics}) is the key enabler here: without it the energy of a part is fixed by the volume removed, both objectives point the same way, and no weight on the energy term can open a trade-off. Putting the energy weight and the material context in the observation reduces the ablation cost from 21 training runs to one. The receding-horizon controller provides a fair classical benchmark that uses the same physics, re-optimizes at every pass and maximizes the same expected episode reward, and the robustness experiment of Section~\ref{sec:robustness} puts the two on the same scenarios in the three regimes a plant actually runs in.
 
 % ========================================================================
 % 3. DIGITAL TWIN PHYSICS
@@ -255,7 +262,13 @@ Flank wear rate per pass:
     \Delta \VB = C_\text{wear} \cdot v_c^{\alpha} \cdot f_r^{\beta} \cdot a_p^{\gamma_\text{wear}} \cdot t_\text{cut}
     \label{eq:wear}
 \end{equation}
-with calibrated coefficients $C_\text{wear}=1.1\times10^{-4}$, $\alpha=0.3$, $\beta=0.2$, $\gamma_\text{wear}=0.15$. Cumulative wear $V_{B,k} = \sum_{i=1}^k \Delta V_{B,i}$.
+with calibrated coefficients $C_\text{wear}=1.0\times10^{-2}$, $\alpha=0.3$, $\beta=0.2$, $\gamma_\text{wear}=0.15$. Cumulative wear $V_{B,k} = \sum_{i=1}^k \Delta V_{B,i}$.
+
+\paragraph{The coefficient is anchored on a tool life, not on a wear equation.}
+None of the three reference papers carries a Taylor wear model, so there is no published wear equation to calibrate the coefficient against. What Wang et al. (2025a) do report is a tool life: 40 parts cut with 5 identical tools, which is about 8 parts per tool. The coefficient is set so that the tool life at the reference cutting condition is about 9 parts per tool, which puts the tool life inside the range where a batch can run out of a tool. The previous value $C_\text{wear}=1.1\times10^{-4}$ gave a tool life of about 870 parts, so the wear constraint did nothing inside a part and the tool life was irrelevant to a batch; the wear model was inert.
+
+\paragraph{The exponents are the exponents of the wear rate, not of the Taylor tool life.}
+The classical tool life equation carries the exponents $(4.0, 0.8, 3.2)$, and with them the tool life spans six orders of magnitude over the machine envelope, which is not a usable envelope either. The exponents used here describe how fast the wear accumulates, so the tool life varies only by a factor of a few across the envelope: a faster cut barely shortens the tool life in this model. That is a known weakness of the wear model and it is carried into the limitations of Section~\ref{sec:limitations}. It is the reason the wear constraint acts mainly on the aggregate of a batch rather than on the choice of a single pass.
 
 \subsection{Surface Roughness (Empirical Regression)}
 \label{sec:roughness}
@@ -297,11 +310,14 @@ where $\MRR_\text{max}$ is the removal rate of the machine envelope at its upper
 \section{Environment Design}
 
 \subsection{Registrations}
-One Gymnasium environment is registered in \texttt{MillingDT/\allowbreak env/\_\_init\_\_.py}, and it is exported as the constant \texttt{MillingDT.env.ENV\_ID}:
+Two Gymnasium environments are registered in \texttt{MillingDT/\allowbreak env/\_\_init\_\_.py}. The per-part one is exported as the constant \texttt{MillingDT.env.ENV\_ID} and the batch one as \texttt{MillingDT.env.BATCH\_ENV\_ID}:
 
 \begin{enumerate}
-    \item \texttt{MillingDTEnv-v1}: the only registration. The observation is always $\R^{11}$: the eight physics features followed by the conditioning context (the energy weight $w_2$, the wear coefficient $C_\text{wear}$ and the roughness coefficient $k_1$). The flags \texttt{randomize} and \texttt{randomize\_weight} decide whether the scenario and the energy weight are drawn per \texttt{reset()}. A task with a pinned weight is the same environment with a constant in the context, so there is a single observation shape across the whole project.
+    \item \texttt{MillingDTEnv-v1}: the part environment. The observation is always $\R^{11}$: the eight physics features followed by the conditioning context (the energy weight $w_2$, the wear coefficient $C_\text{wear}$ and the roughness coefficient $k_1$). The flags \texttt{randomize} and \texttt{randomize\_weight} decide whether the scenario and the energy weight are drawn per \texttt{reset()}. A task with a pinned weight is the same environment with a constant in the context, so there is a single observation shape across the whole project.
+    \item \texttt{MillingDTBatchEnv-v1}: the batch environment. One episode is a batch of ten parts cut with one tool. The observation is $\R^{13}$: the eleven features of the part the tool is cutting, then the fraction of the tool life that is left and the fraction of the batch that is still to cut. The tool is replaced when it breaks or reaches its wear limit, the wear of the new tool starts at zero, and the replacement costs 500 reward units against the 200 a finished part is worth. The physics is not duplicated: the batch environment wraps the part environment and adds the tool accounting.
 \end{enumerate}
+
+Two optional arguments make the environment behave like a plant rather than like a simulator with perfect knowledge. The argument \texttt{belief} sets what the setup \emph{believes} the material is, while the physics keep running on the truth, and the argument \texttt{obs\_noise} puts noise on the two measured state features, the flank wear and the remaining stock. Both are used by the robustness experiment of Section~\ref{sec:robustness}.
 
 \subsection{State Space}
 \label{sec:obs}
@@ -330,7 +346,7 @@ One Gymnasium environment is registered in \texttt{MillingDT/\allowbreak env/\_\
 
 Every feature is normalized against the \emph{scenario's own} limits, so the observation is scale free across geometries and materials. The $\tanh$ squashing keeps the gradient magnitude when a constraint is violated, instead of clipping the value to 1.
 
-The context occupies the last three slots in every task. A policy trained with a pinned weight sees a constant there, a policy trained with the weight drawn sees the weight it is being asked for, and a policy trained across the material distribution sees the material it is cutting. The shape never changes, so one trained policy can be asked for any weight and any material at runtime.
+The context occupies the last three slots in every task. A policy trained with a pinned weight sees a constant there, a policy trained with the weight drawn sees the weight it is being asked for, and a policy trained across the material distribution sees the material it is cutting. The shape never changes, so one trained policy can be asked for any weight and any material at runtime. The two material slots carry what the setup \emph{believes} the material is, not what it is: a plant that does not know its material passes a belief that differs from the truth while the physics keep running on the truth. Of the eight state features only two are measured, the flank wear and the remaining stock, and only those two carry the measurement noise.
 
 \subsection{Action Space}
 Continuous 3D box $\mathcal{A} = [-1, 1]^3$, mapped to physical parameters:
@@ -345,8 +361,8 @@ The policy output is unbounded; the environment clips to $[-1,1]$ before mapping
 The per-step reward is:
 \begin{equation}
 \begin{split}
-r ={}& \underbrace{5\left(w_1 \frac{\MRR}{\MRR_\text{max}} - w_2 \frac{E_\text{pass}}{E_\text{ref}}\right)}_{\text{Objective}}
-+ \underbrace{2\,\Delta\!\left(\tfrac{\kappa_\text{removed}}{\kappa_\text{total}}\right)}_{\text{Progress}} \\
+r ={}& \underbrace{100\left(w_1 \frac{\MRR}{\MRR_\text{max}} - w_2 \frac{E_\text{pass}}{E_\text{ref}}\right)}_{\text{Objective}}
++ \underbrace{20\,\Delta\!\left(\tfrac{\kappa_\text{removed}}{\kappa_\text{total}}\right)}_{\text{Progress}} \\
 & - \underbrace{50\,\mathbb{1}[\VB > \VBSafe]}_{\text{Wear penalty}}
 - \underbrace{100\,\mathbb{1}[\text{broken}]}_{\text{Breakage}} \\
 & - \underbrace{50\,\mathbb{1}[\text{finishing pass} \wedge \Ra > \RaSafe]}_{\text{Roughness penalty}}
@@ -358,9 +374,9 @@ plus, on a part finished inside spec, a $+200$ completion bonus and a Pareto mar
     \text{HV} = \max\!\left(0, 1 - \tfrac{T_\text{total}}{T_\text{ref}}\right) \cdot \max\!\left(0, 1 - \tfrac{\Ra}{\RaSafe}\right) \cdot 5
 \end{equation}
 
-The objective term carries a scale factor of 5 so that it competes with the shaping terms. Without it the progress bonus and the constraint penalties decide the policy on their own, and the energy weight $w_2$ has no visible effect at all: an earlier revision of the reward produced 21 identical ablation policies. The constraint penalties and the completion bonus are an order of magnitude larger on purpose, so that breaking a constraint is never worth a throughput or energy gain. $\RaSafe = 0.85\,\RaMax$, $w_1 + w_2 = 1$, and $E_\text{ref}$ is the energy of a pass under the reference condition, recomputed for every scenario from that scenario's diameter, cutting length and energy coefficients.
+All of these magnitudes live in the \texttt{reward} section of \texttt{MillingDT/\allowbreak config/\allowbreak physics\_\allowbreak constants.yaml}, so they are in one place and the file states that they are a design decision. \textbf{The scale of the objective term matters as much as the weights.} The objective term is what decides the operating point, so it has to be worth a sensible fraction of the value of a finished part. With the objective scale at 5 the whole throughput and energy trade-off of a part was worth about 1.2 points of reward against a completion bonus of 200, so a policy that finished every part at any cost scored well and the energy weight had almost nothing to select. At 100 the trade-off is worth about fifty points per part, a quarter of the value of a part, and the completion bonus still dominates the decision to finish. The constraint penalties (50 for a pass above the wear safety limit, 100 for a broken tool, 50 for a finishing pass outside the roughness safety limit) sit above the progress bonus of 20, so that breaking a constraint is never worth a throughput or energy gain.
 
-The reward is validated by \texttt{test\_reward\_matches\_an\_independent\_calculation}, which recomputes it from \texttt{MillingDT/config/physics.py}, independently of the code that assembles it, and asserts agreement to $10^{-9}$.
+$\RaSafe = 0.85\,\RaMax$, $w_1 + w_2 = 1$, and $E_\text{ref}$ is the energy of a pass under the reference condition, recomputed for every scenario from that scenario's diameter, cutting length and energy coefficients. The reward is validated by \texttt{test\_reward\_matches\_an\_independent\_calculation}, which recomputes it from \texttt{MillingDT/config/physics.py}, independently of the code that assembles it, and asserts agreement to $10^{-9}$.
 
 \subsection{Episode Logic}
 \begin{itemize}
@@ -418,9 +434,11 @@ Training uses a custom \texttt{ProgressQueueCallback} that sends a heartbeat eve
     \item \textbf{Production policy:} 1,000,000 steps, seed 42, \texttt{--randomize --randomize-weight}. Both the machining scenario and the energy weight are drawn per episode, so one network covers the whole weight range and the whole material distribution. Model at\\
     \texttt{results/run\_PPO\_seed42/}. This is the policy the dashboard, the Monte Carlo sweep, the runtime weight sweep and the baseline comparison all use.
     \item \textbf{Ablation grid:} 7 weights $w_2 \in \{0.0, 0.2, 0.4, 0.5, 0.6, 0.8, 1.0\} \times$ 3 seeds $\{42,43,44\}$, 150,000 steps each, trained in parallel via \texttt{experiments/run\_experiments.py}. Every ablation policy is trained with its energy weight \textbf{pinned} and is evaluated at the weight it was trained for, so it is always asked the question it was trained for. The model directories follow the pattern \texttt{results/run\_ablation\_w2\_0\_4\_seed42}, one per weight and seed.
+    \item \textbf{Batch-aware policy:} 1,000,000 steps, seed 42, on the batch environment (\texttt{--env-id MillingDTBatchEnv-v1 --randomize}). The observation carries the tool life left and the fraction of the batch still to cut. Model at \texttt{results/run\_PPO\_batch\_seed42/}.
+    \item \textbf{Policy trained with a noisy wear measurement:} 1,000,000 steps, seed 42, \texttt{--randomize --randomize-weight --obs-noise 0.05}. The noise is on the two measured state features, the flank wear and the remaining stock. Model at \texttt{results/run\_PPO\_noisystate\_seed42/}.
 \end{enumerate}
 
-Both training paths use the same script, \texttt{experiments/train\_rl.py}: \texttt{--randomize} draws a new machining scenario per episode, \texttt{--randomize-weight} draws a new energy weight per episode, and \texttt{--w2} pins the weight of the task.
+All training paths use the same script, \texttt{experiments/train\_rl.py}: \texttt{--randomize} draws a new machining scenario per episode, \texttt{--randomize-weight} draws a new energy weight per episode, \texttt{--w2} pins the weight of the task, \texttt{--env-id} selects the environment and \texttt{--obs-noise} puts noise on the measured state. The controller initialization experiment trains its own arm through the same script with the flag \texttt{--init-\allowbreak from-\allowbreak controller}.
 
 \begin{figure}[H]
     \centering
@@ -429,7 +447,7 @@ Both training paths use the same script, \texttt{experiments/train\_rl.py}: \tex
     \label{fig:training-curves}
 \end{figure}
 
-Figure~\ref{fig:training-curves} shows what the budgets buy. The production policy reaches the level of about 200 inside its first 200,000 steps and then oscillates around it for the remaining 800,000, so the size of the budget buys stability rather than a higher reward. The 21 ablation policies reach the same level within their 150,000 steps, and the two transfer arms converge inside their 300,000 step budget. The vertical axis is the normalized reward mean of \texttt{VecNormalize}, so it does not carry the scale of the episode reward reported in the evaluation tables.
+Figure~\ref{fig:training-curves} shows what the budgets buy. The production policy reaches the level of about 200 inside its first 200,000 steps and then oscillates around it for the remaining 800,000, so the size of the budget buys stability rather than a higher reward. The 21 ablation policies reach the same level within their 150,000 steps, the individual runs drawn faintly behind their mean spread widely, and the two transfer arms converge inside their 300,000 step budget. The vertical axis is the normalized reward mean of \texttt{VecNormalize}, so it does not carry the scale of the episode reward reported in the evaluation tables.
 
 \subsection{Monte Carlo Evaluation}
 \texttt{python -m experiments.evaluate --scenarios 100} runs the production policy over 100 randomized scenarios (fixed seed 42). Each scenario is a full machining episode. Reports mean $\pm$ std and 95\% CI (t-distribution) for:
@@ -453,10 +471,10 @@ Five non-RL baselines implemented in \texttt{experiments/run\_baselines.py}:
     \item \textbf{Constant-Safe:} $n=2000, f_r=0.05, a_p=0.1$ (lower bounds).
     \item \textbf{Rule-Based Degradation:} Feed at maximum, spindle speed reduced by 20\% every second pass, as a shop-floor heuristic for tool degradation.
     \item \textbf{NSGA-II Static:} Multi-objective optimization (pymoo) picking \textit{one} parameter set for the whole part. Decision variables $[n, f_r, a_p]$. Objectives: maximize $\MRR$, minimize Energy. Constraints: $\RaFinal \le \RaMax$, $V_{B,\text{final}} \le \VBMax$.
-    \item \textbf{Receding-Horizon Controller:} Vectorized grid search over $(n, f_r, a_p)$ at \textit{every pass}, simulating the remaining passes with the current $\VB$ and $\kappa_\text{rem}$. Keeps feasible candidates, picks the best by the same scalarization $w_1 \MRR - w_2 E$. This is the strongest classical baseline.
+    \item \textbf{Receding-Horizon Controller:} A vectorized grid search over $(n, f_r, a_p)$ that re-solves at every pass, simulating the remaining passes of the part with the current $\VB$ and $\kappa_\text{rem}$. It is a part-level maximizer of the expected episode reward: for every candidate it prices the objective term, the progress bonus, the wear penalty, the step penalty, the completion bonus, the Pareto margin and the breakage probability, and it keeps the candidate with the best expected value. The plan of a part is two parameter sets, a roughing feed and a finishing feed, because the reward penalizes the roughness of the finishing pass only and a plan that holds one feed for the whole part would have to satisfy the roughness limit on the worst pass. This is the strongest classical baseline.
 \end{enumerate}
 
-All baselines use the \textit{same physics} (\texttt{MillingDT/config/physics.py}) and are evaluated on the same 50 episodes of the nominal machining condition, at the same energy weight $w_2 = 0.4$ at which the learned policy is queried.
+The controller is a baseline in the strict sense: it optimizes the same quantity the environment pays, over the same physics, and it is given the model and the state it is handed. It is not given anything the policy does not have, and it is not a stand-in for the reward. Its quality is the measure of the comparison: on the same scenarios it went from 184.3 to 248.9 when it was changed from a per-pass maximizer of the objective term into a part-level maximizer of the expected episode reward. All baselines use the \textit{same physics} (\texttt{MillingDT/config/physics.py}) and are evaluated on the same 50 episodes of the nominal machining condition, at the same energy weight $w_2 = 0.4$ at which the learned policy is queried.
 
 % ========================================================================
 % 7. RESULTS
@@ -477,32 +495,32 @@ All tables below are regenerated from committed CSVs by\\
 \toprule
 \textbf{Metric} & \textbf{Mean} & \textbf{Std} & \textbf{95\% CI} \\
 \midrule
-Material removal rate (mm$^3$/min) & 1205.15 & 585.65 & [1088.94, 1321.35] \\
-Energy per part (kJ) & 68.35 & 48.26 & [58.77, 77.92] \\
-Cycle time per part (s) & 20.25 & 17.06 & [16.86, 23.63] \\
-Max surface roughness ($\mu$m) & 1.379 & 0.350 & [1.309, 1.448] \\
-Max flank wear (mm) & 0.1244 & 0.0679 & [0.1109, 0.1378] \\
+Material removal rate (mm$^3$/min) & 1608.49 & 550.69 & [1499.22, 1717.76] \\
+Energy per part (kJ) & 66.40 & 48.03 & [56.87, 75.93] \\
+Cycle time per part (s) & 11.43 & 6.93 & [10.06, 12.81] \\
+Max surface roughness ($\mu$m) & 1.610 & 0.178 & [1.575, 1.645] \\
+Max flank wear (mm) & 0.1407 & 0.0672 & [0.1274, 0.1540] \\
 \multicolumn{4}{l}{\textit{Constraint violations}} \\
-Roughness violations, worst pass & 38.0\% & & [28.5\%, 47.5\%] \\
-Roughness violations, finished surface & 0.0\% & & [0.0\%, 0.0\%] \\
-Roughness $>$ safety limit, worst pass & 56.0\% & & [46.3\%, 65.7\%] \\
-Roughness $>$ safety limit, finished surface & 0.0\% & & [0.0\%, 0.0\%] \\
+Roughness violations, worst pass & 55.0\% & & [45.2\%, 64.8\%] \\
+Roughness violations, finished surface & 4.0\% & & [0.2\%, 7.8\%] \\
+Roughness $>$ safety limit, worst pass & 87.0\% & & [80.4\%, 93.6\%] \\
+Roughness $>$ safety limit, finished surface & 4.0\% & & [0.2\%, 7.8\%] \\
 Flank wear violations ($\VB > 0.3$ mm) & 0.0\% & & [0.0\%, 0.0\%] \\
-Tool breakage & 1.0\% & & [0.0\%, 3.0\%] \\
-Parts completed within spec & 99.0\% & & \\
+Tool breakage & 6.0\% & & [1.3\%, 10.7\%] \\
+Parts completed within spec & 94.0\% & & \\
 \midrule
 Scenarios & \multicolumn{3}{c}{100} \\
-Mean operating point & \multicolumn{3}{c}{7199 RPM, 0.247 mm/r, 2.11 mm, 4.0 passes} \\
+Mean operating point & \multicolumn{3}{c}{7907 RPM, 0.318 mm/r, 2.07 mm, 4.0 passes} \\
 \bottomrule
 \end{tabular}
 \end{table}
 
 Key observations:
 \begin{itemize}
-    \item \textbf{Finished surface always within spec:} 0\% roughness violations on the final pass.
-    \item \textbf{Wear never exceeded:} 0\% flank wear violations.
-    \item \textbf{Intermediate roughness:} 56\% of passes exceed the safety margin (0.85 $\times$ 1.6 = 1.36 $\mu$m), but the policy recovers by the finish pass.
-    \item \textbf{High variance:} Std of $\MRR$ is 49\% of mean -- domain randomization produces diverse operating points.
+    \item \textbf{The policy is a much more aggressive operator than it was under the old reward.} It removes 1608.5 mm$^3$/min, against 1205.2 before, and it cuts a part in 11.4 s against 20.3 s. The price is paid in the tool and in the part quality: the breakage rate is 6.0\% and 4.0\% of the finished surfaces are outside the roughness limit.
+    \item \textbf{The roughing passes are rough:} 87\% of the worst passes are above the safety margin (0.85 $\times$ 1.6 = 1.36 $\mu$m) and 55\% are above the hard limit of 1.6 $\mu$m. The finished surface, which is the quality the reward prices, is inside the limit in 96\% of the scenarios.
+    \item \textbf{Wear is never the binding constraint on a single part:} 0\% wear violations, and the mean maximum wear of 0.1407 mm is under half the 0.3 mm limit. The constraint binds on the aggregate of a batch, which is why the batch experiment of Section~\ref{sec:batch} exists.
+    \item \textbf{High variance:} the standard deviation of $\MRR$ is 34\% of its mean, and the scenarios range from 2 to 15 mm of stock, so the policy is measured on a wide spread of operating points.
 \end{itemize}
 
 \begin{figure}[H]
@@ -512,7 +530,7 @@ Key observations:
     \label{fig:mc-envelope}
 \end{figure}
 
-Figure~\ref{fig:mc-envelope} puts the two constraints on one plane and shows where the 100 scenarios land. No scenario reaches the wear limit: the rightmost point stops at 0.239 mm against $\VBMax = 0.3$ mm, which is the 0\% wear violation rate of Table~\ref{tab:mc}. The scenarios lie on a downward slope, the more the tool wears the smoother the surface, so the scenarios that push the roughness up are the ones with the least wear. The 38 crosses above $\RaMax = 1.6\ \mu$m are the worst-pass roughness violations of the table, and the 18 circles between $\RaSafe$ and $\RaMax$ are the scenarios that exceed the safety margin without violating the limit. All of these are intermediate passes: the finished surface is inside the limit in every one of the 100 scenarios.
+Figure~\ref{fig:mc-envelope} puts the two constraints on one plane and shows where the 100 scenarios land. No scenario reaches the wear limit: the rightmost point stops just inside the wear safety limit at 0.26 mm, well short of $\VBMax = 0.3$ mm, which is the 0\% wear violation rate of Table~\ref{tab:mc}. The scenarios lie on a downward slope, the more the tool wears the smoother the surface, so the scenarios that push the roughness up are the ones with the least wear. The 55 crosses above $\RaMax = 1.6\ \mu$m are the worst-pass roughness violations of the table, and the circles are the 45 scenarios whose worst pass stays inside the limit, the ones between $\RaSafe$ and $\RaMax$ exceeding the safety margin without breaking it. The finished surface is a separate quantity, and it is outside the limit in 4 of the 100 scenarios.
 
 \begin{figure}[H]
     \centering
@@ -521,7 +539,7 @@ Figure~\ref{fig:mc-envelope} puts the two constraints on one plane and shows whe
     \label{fig:mc-kde-ra}
 \end{figure}
 
-Figure~\ref{fig:mc-kde-ra} is that distribution in one axis. The mean is 1.38 $\mu$m and the median 1.45 $\mu$m, so half of the scenarios end above the mean, and the density is still high where the limit stands, which is the same fact the 38\% worst-pass violation rate states. The distribution carries two modes, a lower one near 0.9 $\mu$m from the scenarios cut conservatively and a higher one just below the limit. The finishing pass is a separate quantity and it is inside the limit in every scenario.
+Figure~\ref{fig:mc-kde-ra} is that distribution in one axis. The mean is 1.61 $\mu$m and the median 1.63 $\mu$m, and the density is concentrated on and just above the limit, which is the same fact the 55\% worst-pass violation rate states. The distribution has a single mode, near the limit: under the old reward it carried a second mode near 0.9 $\mu$m from the scenarios cut conservatively, and that mode is gone, because the reward now pays for the throughput that the conservative scenarios give up. The finishing pass is a separate quantity, and it is outside the limit in 4\% of the scenarios.
 
 \begin{figure}[H]
     \centering
@@ -530,7 +548,7 @@ Figure~\ref{fig:mc-kde-ra} is that distribution in one axis. The mean is 1.38 $\
     \label{fig:mc-kde-vb}
 \end{figure}
 
-Figure~\ref{fig:mc-kde-vb} is the same view of the wear. The mean and the median both sit at 0.12 mm, half of the wear limit, and the density has already collapsed before the safety limit, so the wear constraint is never the binding one on this policy. The 1\% breakage rate of Table~\ref{tab:mc} comes from the stochastic draw above 0.15 mm of wear, not from the wear limit itself.
+Figure~\ref{fig:mc-kde-vb} is the same view of the wear. The mean sits at 0.14 mm and the median at 0.15 mm, and the density now reaches the safety limit at 0.26 mm instead of collapsing well before it, so the wear of a single part runs close to the limit without crossing it. The 6\% breakage rate of Table~\ref{tab:mc} comes from the stochastic draw above 0.15 mm of wear, not from the wear limit itself.
 
 \subsection{Energy Weight Ablation -- Pareto Frontier}
 \label{sec:ablation}
@@ -543,22 +561,22 @@ Figure~\ref{fig:mc-kde-vb} is the same view of the wear. The mean and the median
 \toprule
 $w_2$ & $\MRR$ (mm$^3$/min) & Energy (kJ) & Cycle (s) & $n$ (RPM) & $f_r$ (mm/r) & Frontier \\
 \midrule
-0.0 & 946.3 $\pm$ 63.4 & 82.9 $\pm$ 1.4 & 44.8 $\pm$ 2.4 & 7094 & 0.166 & dominated \\
-0.2 & 1007.8 $\pm$ 22.7 & 77.1 $\pm$ 1.1 & 31.3 $\pm$ 1.3 & 7471 & 0.184 & dominated \\
-0.4 & 1038.0 $\pm$ 67.6 & 72.7 $\pm$ 0.5 & 24.8 $\pm$ 1.8 & 7256 & 0.203 & \checkmark \\
-0.5 & 1035.8 $\pm$ 43.8 & 70.3 $\pm$ 1.2 & 22.0 $\pm$ 0.5 & 7080 & 0.214 & \checkmark \\
-0.6 & 1023.9 $\pm$ 27.4 & 70.8 $\pm$ 0.6 & 22.1 $\pm$ 0.5 & 7148 & 0.209 & dominated \\
-0.8 & 971.1 $\pm$ 43.2 & 66.8 $\pm$ 1.2 & 21.9 $\pm$ 0.7 & 6538 & 0.228 & \checkmark \\
-1.0 & 951.3 $\pm$ 54.7 & 65.8 $\pm$ 0.6 & 20.9 $\pm$ 0.6 & 6490 & 0.229 & \checkmark \\
+0.0 & 1397.1 $\pm$ 14.8 & 70.4 $\pm$ 0.1 & 14.8 $\pm$ 0.3 & 7998 & 0.299 & dominated \\
+0.2 & 1456.9 $\pm$ 14.6 & 70.0 $\pm$ 0.1 & 13.8 $\pm$ 0.2 & 7992 & 0.299 & dominated \\
+0.4 & 1524.9 $\pm$ 40.2 & 69.3 $\pm$ 0.2 & 13.0 $\pm$ 0.3 & 7896 & 0.296 & dominated \\
+0.5 & 1556.6 $\pm$ 9.7 & 69.1 $\pm$ 0.2 & 12.7 $\pm$ 0.1 & 7859 & 0.296 & \checkmark \\
+0.6 & 1519.8 $\pm$ 36.4 & 68.3 $\pm$ 0.4 & 13.1 $\pm$ 0.4 & 7638 & 0.296 & \checkmark \\
+0.8 & 1224.4 $\pm$ 11.3 & 63.0 $\pm$ 0.2 & 15.4 $\pm$ 0.1 & 6573 & 0.292 & \checkmark \\
+1.0 & 918.5 $\pm$ 14.9 & 57.2 $\pm$ 0.2 & 20.1 $\pm$ 0.4 & 5382 & 0.292 & \checkmark \\
 \bottomrule
 \end{tabular}
 \end{table}
 
 \begin{proposition}[Frontier Shape]
-Across the Pareto frontier ($w_2 \in [0.4, 1.0]$): $\MRR$ falls 8.4\% (1038 $\to$ 951 mm$^3$/min) while energy falls 9.5\% (72.7 $\to$ 65.8 kJ). The trade-off is \textit{symmetric}: the energy of the part falls slightly more than the removal rate, and the spindle speed falls with the energy weight, which is the mechanism the model predicts.
+Across the Pareto frontier ($w_2 \in [0.5, 1.0]$): $\MRR$ falls 41\% (1557 $\to$ 919 mm$^3$/min) while energy falls 17\% (69.1 $\to$ 57.2 kJ). The trade-off is \textit{asymmetric}: the energy of the part is bought with a lot of removal rate, and the spindle speed falls with the energy weight, which is the mechanism the model predicts.
 \end{proposition}
 
-The dominated points ($w_2 = 0.0, 0.2, 0.6$) all spend more energy than a point on the frontier. The two low weights push the speed too high, which raises $k_c(v_c)$ without cutting the idle energy enough to compensate. The $w_2 = 0.6$ point is dominated by $w_2 = 0.5$, which removes more material for less energy.
+The dominated points ($w_2 = 0.0, 0.2, 0.4$) all spend more energy than a point on the frontier. The two low weights push the speed to the top of the envelope, which raises $k_c(v_c)$ without cutting the idle energy enough to compensate, and $w_2 = 0.4$ is dominated by $w_2 = 0.5$, which removes more material for less energy.
 
 \begin{figure}[H]
     \centering
@@ -567,7 +585,7 @@ The dominated points ($w_2 = 0.0, 0.2, 0.6$) all spend more energy than a point 
     \label{fig:ablation-pareto}
 \end{figure}
 
-Figure~\ref{fig:ablation-pareto} draws the seven policies in the plane of energy against removal rate. The frontier is the chain of four non-dominated points from $w_2 = 0.4$ to $w_2 = 1.0$, and it is the same chain in both panels, so the energy of a pass and the energy of a part select the same operating points here. The three dominated points sit off it: $w_2 = 0.0$ and $w_2 = 0.2$ to the right of the chain, spending more energy for less material, and $w_2 = 0.6$ just under the segment between $w_2 = 0.5$ and $w_2 = 0.4$. The energy of a pass is roughly a quarter of the energy of the part at every frontier point, which matches the four passes per part of the mean operating point in Table~\ref{tab:mc}.
+Figure~\ref{fig:ablation-pareto} draws the seven policies in the plane of energy against removal rate. The frontier is the chain of four non-dominated points from $w_2 = 0.5$ to $w_2 = 1.0$, and it is the same chain in both panels, so the energy of a pass and the energy of a part select the same operating points here. The three dominated points sit off it: $w_2 = 0.0$ and $w_2 = 0.2$ to the right of the chain, spending more energy for less material, and $w_2 = 0.4$ in the cluster at the top of the chain, just under the segment between $w_2 = 0.5$ and $w_2 = 0.6$.
 
 \begin{figure}[H]
     \centering
@@ -576,7 +594,7 @@ Figure~\ref{fig:ablation-pareto} draws the seven policies in the plane of energy
     \label{fig:ablation-lines}
 \end{figure}
 
-Figure~\ref{fig:ablation-lines} shows the same sweep as two curves against the weight. The energy per part falls from 82.9 kJ at $w_2 = 0.0$ to 65.8 kJ at $w_2 = 1.0$ and the cycle time falls from 44.8 s to 20.9 s over the same range, and the shaded band shows that the three seeds agree on the shape. Two details of the curves decide the frontier. The energy curve is not monotone between $w_2 = 0.5$ and $w_2 = 0.6$, where it rises from 70.3 kJ to 70.8 kJ, and that is the weight that falls off the frontier. The cycle time, on the other hand, is flat from $w_2 = 0.5$ onwards at 22.0, 22.1, 21.9 and 20.9 s, so after that point the energy is bought with removal rate and not with time.
+Figure~\ref{fig:ablation-lines} shows the same sweep as two curves against the weight. The energy per part falls from 70.4 kJ at $w_2 = 0.0$ to 57.2 kJ at $w_2 = 1.0$, and the shaded band shows that the three seeds agree on the shape. The cycle time is not monotone: it falls from 14.8 s to its minimum of 12.7 s at $w_2 = 0.5$ and then rises to 20.1 s at $w_2 = 1.0$. Past $w_2 = 0.5$ the energy is bought with the removal rate and with the time, and the two heaviest weights are where the trade-off is steepest. That is the region in which the one conditioned policy loses to the per-weight policies of Section~\ref{sec:conditioned}.
 
 \subsection{Runtime Weight Sweep of the Production Policy}
 \label{sec:weightsweep}
@@ -591,18 +609,18 @@ The weight is a query, not a retrain: the same policy is asked for each point of
 \toprule
 $w_2$ & $\MRR$ (mm$^3$/min) & Energy (kJ) & Cycle (s) & $n$ (RPM) & $f_r$ (mm/r) & $\Ra$ violation rate \\
 \midrule
-0.0 & 1213.6 & 69.6 & 19.0 & 7513 & 0.238 & 34.0\% \\
-0.2 & 1215.3 & 69.0 & 19.5 & 7379 & 0.243 & 36.0\% \\
-0.4 & 1205.1 & 68.3 & 20.2 & 7199 & 0.247 & 38.0\% \\
-0.5 & 1191.0 & 68.0 & 20.9 & 7081 & 0.249 & 38.0\% \\
-0.6 & 1169.3 & 67.6 & 21.5 & 6953 & 0.250 & 39.0\% \\
-0.8 & 1130.8 & 67.1 & 23.0 & 6710 & 0.251 & 39.0\% \\
-1.0 & 1096.0 & 67.1 & 24.8 & 6475 & 0.249 & 39.0\% \\
+0.0 & 1475.9 & 68.4 & 13.1 & 8000 & 0.323 & 56.0\% \\
+0.2 & 1518.0 & 65.8 & 11.8 & 7997 & 0.323 & 56.0\% \\
+0.4 & 1608.5 & 66.4 & 11.4 & 7907 & 0.318 & 55.0\% \\
+0.5 & 1630.3 & 66.0 & 11.4 & 7798 & 0.317 & 54.0\% \\
+0.6 & 1540.8 & 65.5 & 12.4 & 7433 & 0.317 & 55.0\% \\
+0.8 & 1114.5 & 57.9 & 17.4 & 5841 & 0.316 & 56.0\% \\
+1.0 & 720.4 & 51.7 & 26.1 & 4111 & 0.315 & 56.0\% \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-As the weight goes from 0.0 to 1.0 the removal rate falls from 1213.6 to 1096.0 mm$^3$/min, the energy of the part falls from 69.6 to 67.1 kJ, the cycle time rises from 19.0 to 24.8 s and the spindle speed falls from 7513 to 6475 RPM. The operating point moves along the trade-off without a retrain.
+As the weight goes from 0.0 to 1.0 the removal rate falls from 1475.9 to 720.4 mm$^3$/min, the energy of the part falls from 68.4 to 51.7 kJ, the cycle time rises from 13.1 to 26.1 s and the spindle speed falls from 8000 to 4111 RPM. The operating point moves along the trade-off without a retrain. The response is not monotone in the removal rate: it peaks at 1630.3 mm$^3$/min at $w_2 = 0.5$, so the weight buys the energy of the first half of the range with throughput and only starts to pay for it after that. The roughness violation rate of the worst pass stays at 54\% to 56\% over the whole range, so the operating point moves without the constraint behaviour changing.
 
 \subsection{One Policy against the Per-Weight Policies}
 \label{sec:conditioned}
@@ -617,59 +635,127 @@ The production policy is compared against the 21 ablation policies, one per weig
 \toprule
 $w_2$ & \makecell{MRR, one\\policy} & \makecell{MRR, per\\weight} & MRR gap & \makecell{Energy, one\\policy} & \makecell{Energy, per\\weight} & Energy gap \\
 \midrule
-0.0 & 1213.6 & 946.3 & $+28.2\%$ & 69.6 & 82.9 & $-16.0\%$ \\
-0.2 & 1215.3 & 1007.8 & $+20.6\%$ & 69.0 & 77.1 & $-10.5\%$ \\
-0.4 & 1205.1 & 1038.0 & $+16.1\%$ & 68.3 & 72.7 & $-6.0\%$ \\
-0.5 & 1191.0 & 1035.8 & $+15.0\%$ & 68.0 & 70.3 & $-3.3\%$ \\
-0.6 & 1169.3 & 1023.9 & $+14.2\%$ & 67.6 & 70.8 & $-4.5\%$ \\
-0.8 & 1130.8 & 971.1 & $+16.4\%$ & 67.1 & 66.8 & $+0.5\%$ \\
-1.0 & 1096.0 & 951.3 & $+15.2\%$ & 67.1 & 65.8 & $+2.1\%$ \\
+0.0 & 1475.9 & 1397.1 & $+5.6\%$ & 68.4 & 70.4 & $-2.9\%$ \\
+0.2 & 1518.0 & 1456.9 & $+4.2\%$ & 65.8 & 70.0 & $-6.1\%$ \\
+0.4 & 1608.5 & 1524.9 & $+5.5\%$ & 66.4 & 69.3 & $-4.2\%$ \\
+0.5 & 1630.3 & 1556.6 & $+4.7\%$ & 66.0 & 69.1 & $-4.4\%$ \\
+0.6 & 1540.8 & 1519.8 & $+1.4\%$ & 65.5 & 68.3 & $-4.0\%$ \\
+0.8 & 1114.5 & 1224.4 & $-9.0\%$ & 57.9 & 63.0 & $-8.0\%$ \\
+1.0 & 720.4 & 918.5 & $-21.6\%$ & 51.7 & 57.2 & $-9.7\%$ \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-A single policy of 1,000,000 steps covers the whole weight range and beats the 21 weight-specific policies of 150,000 steps each, which is 3,150,000 steps in total. At every weight it removes 14\% to 28\% more material. From $w_2 = 0.0$ to $w_2 = 0.6$ it also spends up to 16\% less energy, and at $w_2 = 0.8$ and $w_2 = 1.0$ it removes 16.4\% and 15.2\% more material for 0.5\% and 2.1\% more energy. The energy weight stays a runtime query rather than a retrain.
+\textbf{The claim of the previous revision has reversed.} Under the old reward the one policy was ahead of all 21 by 14\% to 28\% of the removal rate. Under the reward of this revision it is ahead by 1.4\% to 5.6\% over the weights from 0.0 to 0.6, and it is behind at the two heaviest weights, by 9.0\% at $w_2 = 0.8$ and by 21.6\% at $w_2 = 1.0$. Over the whole range of 0.0 to 0.6 it also spends 2.9\% to 6.1\% less energy than the per-weight policies, and at 0.8 and 1.0 it spends 8.0\% and 9.7\% less energy for the throughput it gives up.
+
+The reason is the signal, not the training budget. The weight in the observation is a weaker signal than a dedicated policy where the trade-off is steepest: one conditional policy has to serve 0.0 and 1.0 with the same network, and the sweep of Table~\ref{tab:weightsweep} shows how far apart those two requests are (8000 RPM against 4111 RPM, 13.1 s against 26.1 s). A policy trained for one weight is not asked to do both. The honest reading is therefore: one conditional policy covers the range and is ahead over most of it, but a policy trained for a single weight is better at the extreme weights, where the trade-off is steepest. The weight stays a runtime query rather than a retrain, but it is not free at the ends of the range.
 
 \subsection{Baseline Comparison}
-All six policies are evaluated on the same 50 episodes of the nominal machining condition at the same energy weight $w_2 = 0.4$, so the numbers are comparable. The reward column is the decisive one, because it carries the constraint penalties.
+The five classical policies are evaluated on the same 50 episodes of the nominal machining condition at the same energy weight $w_2 = 0.4$, so the numbers are comparable. The reward column is the decisive one, because it carries the constraint penalties.
 
 \begin{table}[H]
 \centering
 \caption{Baseline comparison, 50 episodes of the nominal condition at $w_2 = 0.4$}
 \label{tab:baselines}
-\begin{tabular}{@{}lcccc@{}}
+\small
+\setlength{\tabcolsep}{4pt}
+\begin{tabular}{@{}lccccc@{}}
 \toprule
-\textbf{Policy} & \textbf{$\MRR$ (mm$^3$/min)} & \textbf{Energy (kJ)} & \textbf{Cycle (s)} & \textbf{Mean reward} \\
+\textbf{Policy} & \textbf{Reward} & \textbf{$\MRR$ (mm$^3$/min)} & \textbf{Energy (kJ)} & \textbf{Cycle (s)} & \textbf{$\Ra$ final ($\mu$m)} \\
 \midrule
-PPO (ours) & 894.3 & 18.40 & 5.56 & \alert{+204.09} \\
-Receding-Horizon & \textbf{981.7} & \textbf{18.02} & \textbf{4.80} & \alert{+203.45} \\
-NSGA-II Static & 732.9 & 18.8 & 6.4 & $-46.39$ \\
-Rule-Based & 719.8 & 18.7 & 6.6 & $-46.48$ \\
-Constant-High & 1099.6 & 17.8 & 4.3 & $-46.10$ \quad (violates) \\
-Constant-Safe & 1.6 & 1506.8 & 3000.0 & $-139.25$ \\
+Constant high & 10.0 & \alert{1099.6} & 17.8 & \alert{4.3} & 1.56 \\
+NSGA-II static & 5.1 & 732.9 & 18.8 & 6.4 & 1.56 \\
+Rule based & 3.3 & 719.8 & 18.8 & 6.6 & 1.56 \\
+Receding-horizon & \alert{253.5} & 725.5 & 19.0 & 6.7 & 1.25 \\
+Constant safe & $-1882.9$ & 1.6 & 385.7 & 768.0 & 0.26 \\
 \bottomrule
 \end{tabular}
 \end{table}
 
 \begin{itemize}
-    \item \textbf{Three of the four static policies finish outside the roughness safety limit} ($\RaSafe = 0.85 \times 1.6 = 1.36\ \mu$m), which the reward penalizes with $-50$, and they land at about $-46$. The fourth, Constant-Safe, stays inside the limit but needs 3000 s and 1506.8 kJ per part, which is what its $-139.25$ measures. The receding-horizon controller is the only classical policy that stays inside the limit and reaches a positive reward, $+203.45$.
-    \item \textbf{The learned policy and the controller are level on the reward} ($+204.09$ against $+203.45$), while the controller is ahead on the removal rate (981.7 against 894.3 mm$^3$/min) and on the cycle time (4.80 s against 5.56 s). The energy of the part is close (18.02 kJ against 18.40 kJ).
-    \item \textbf{This digital twin does not yet show a reinforcement learning advantage.} The next experiment initializes the policy from the controller and fine-tunes from there (Section~\ref{sec:controllerinit}).
+    \item \textbf{Three of the four static policies finish outside the roughness safety limit} ($\RaSafe = 0.85 \times 1.6 = 1.36\ \mu$m), at 1.56 $\mu$m. A part that finishes out of spec is paid no completion bonus and is charged the finishing-pass penalty, so those three land near zero (10.0, 5.1 and 3.3) however fast they cut. The fourth, the constant-safe policy, finishes inside the limit at 0.26 $\mu$m but needs 768 s and 385.7 kJ per part, which is what its $-1882.9$ measures.
+    \item \textbf{The receding-horizon controller is the strongest baseline} at $+253.5$, and it is the only classical policy that finishes every part inside the limit, at 1.25 $\mu$m. It pays for that with throughput and time: 725.5 mm$^3$/min and 6.7 s against 1099.6 mm$^3$/min and 4.3 s for the constant-high policy.
+    \item \textbf{The learned policy is measured against the same controller in the next two sections}, on 100 randomized scenarios at the same weight, where the controller scores 248.9 and the policy 233.6. On the 50 episodes of this table the figure annotates the mean reward of the learned policy at 248.4, level with the controller's 253.5, and the figure shows the learned policy removing more material per minute.
 \end{itemize}
 
 \begin{figure}[H]
     \centering
     \includegraphics[width=\textwidth]{baseline_vs_ppo_comparison.png}
-    \caption{The six policies on the same 50 episodes of the nominal condition at $w_2 = 0.4$: the mean removal rate, the energy per part and the cumulative reward. The four static policies all take a negative reward, the three fast ones because they finish outside the roughness safety limit and Constant-Safe because it needs 3000 s per part, so the comparison that matters is the receding-horizon controller against the learned policy, the only two with a positive reward.}
+    \caption{The six policies on the same 50 episodes of the nominal condition at $w_2 = 0.4$: the mean removal rate, the energy per part and the cumulative reward. The four static policies all take a reward near zero or deeply negative, the three fast ones because they finish outside the roughness safety limit and Constant-Safe because it needs 768 s and 385.7 kJ per part, so the comparison that matters is the receding-horizon controller against the learned policy, the only two with a positive reward.}
     \label{fig:baseline-comparison}
 \end{figure}
 
-Figure~\ref{fig:baseline-comparison} shows the same six policies as three bar charts. The first two panels cannot be compared directly, because Constant-Safe sits at the edge of both scales: it removes 1.6 mm$^3$/min and needs 1506.8 kJ, which is why it appears as a sliver in the throughput panel and is left out of the energy panel. The energy of the other five policies lies between 17.8 kJ and 18.8 kJ, so the energy does not separate them. The third panel does, because the reward carries the constraint penalties: the three fast static policies sit at about $-46$, the level of the finishing-pass penalty alone, Constant-Safe sits at $-139$, and the receding-horizon controller and the learned policy sit at \alert{$+203$} and \alert{$+204$}. The controller removes more material per minute, and the two are level on the reward.
+Figure~\ref{fig:baseline-comparison} shows the same six policies as three bar charts. The first two panels cannot be compared directly, because Constant-Safe sits at the edge of both scales: it removes 1.6 mm$^3$/min and needs 385.7 kJ, which is why it appears as a sliver in the throughput panel and is left out of the energy panel. The energy of the other five policies lies between 17.8 kJ and 19.0 kJ, so the energy does not separate them. The third panel does, because the reward carries the constraint penalties: the three fast static policies sit at 10.0, 5.1 and 3.3, the level of the finishing-pass penalty with no completion bonus to cancel it, Constant-Safe sits at $-1883$, and the receding-horizon controller and the learned policy sit at \alert{$+253$} and \alert{$+248$}. The learned policy removes more material per minute than the controller, and the two are level on the reward.
+
+\subsection{Robustness Against the Classical Controller}
+\label{sec:robustness}
+
+This is the central result of the work. The two arms are measured on the same 100 randomized scenarios at the same energy weight $w_2 = 0.4$, and the three regimes change what the controller is given, not what the policy is given. The artifact is \texttt{results/\allowbreak evaluation/\allowbreak robustness\_results.csv} and the script is \texttt{experiments/\allowbreak robustness\_experiment.py}.
+
+\begin{table}[H]
+\centering
+\caption{Robustness experiment: the same two arms on the same 100 randomized scenarios at $w_2 = 0.4$, in three regimes. Std is the standard deviation of the episode reward over the scenarios.}
+\label{tab:robustness}
+\scriptsize
+\setlength{\tabcolsep}{3pt}
+\begin{tabular}{@{}llrrrrrrr@{}}
+\toprule
+\textbf{Regime} & \textbf{Arm} & \textbf{Mean reward} & \textbf{Std} & \makecell{\textbf{$\MRR$}\\(mm$^3$/min)} & \makecell{\textbf{Energy}\\(kJ)} & \makecell{\textbf{Cycle}\\(s)} & \makecell{\textbf{Tool}\\\textbf{breakage}} & \makecell{\textbf{Parts}\\\textbf{completed}} \\
+\midrule
+\makecell[l]{Controller has\\every advantage} & \makecell[l]{Receding-\\horizon} & \alert{248.9} & 79.5 & 1318.2 & 68.9 & 17.1 & 3\% & 96\% \\
+ & PPO & 233.6 & 79.7 & \alert{1608.5} & 66.4 & \alert{11.4} & 6\% & 94\% \\
+\midrule
+\makecell[l]{Material model\\is wrong} & \makecell[l]{Receding-\\horizon} & 63.5 & 117.1 & 1306.9 & 71.0 & 23.3 & 2\% & 95\% \\
+ & PPO & \alert{226.9} & 88.3 & 1604.2 & 66.3 & 11.5 & 6\% & 94\% \\
+\midrule
+\makecell[l]{Wear measurement\\is noisy} & \makecell[l]{Receding-\\horizon} & 181.3 & 185.9 & 1300.4 & 74.2 & 31.1 & 4\% & 91\% \\
+ & \makecell[l]{PPO trained\\with the noise} & \alert{213.6} & 87.3 & 1554.2 & 66.9 & 12.0 & 6\% & 94\% \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Four things follow from the table.
+
+\textbf{1. Inside a perfect digital twin there is no reinforcement learning advantage.} The controller computes the per-pass optimum of the same objective with the exact model, the exact state and the material in its hand, and it scores 248.9 against the policy's 233.6. The gap is inside the noise: the standard error of the mean is about 8 for both arms, so a difference of 15 has a $t$ of about 1.4.
+
+\textbf{2. The learned policy is the better throughput operator.} It removes 22\% more material per minute (1608 against 1318), finishes a part in a third less time (11.4 against 17.1 s) and spends 3.7\% less energy. It pays for that with twice the tool breakage, 6\% against 3\%, and with 4\% of its finished surfaces above the roughness limit against the controller's 2\%.
+
+\textbf{3. The advantage appears where a plant actually is.} With a material the controller has no model for, its reward collapses by three quarters, from 248.9 to 63.5, because it does not slow down and its finished surfaces go out of specification. The learned policy holds at 226.9. The same holds for a noisy measurement: with 5\% noise on the wear and on the remaining stock the controller's reward falls to 181.3 and its spread more than doubles, to 185.9 against the policy's 87.3. The policy trained with the same noise keeps 213.6 and cuts the part in 12.0 s against the controller's 31.1 s.
+
+\textbf{4. The policy does not need the material to be told.} The third arm of the model-error regime, the policy that is told the true material, scores 215.1 with a spread of 94.2, against 226.9 and 88.3 for the policy that believes the nominal material. The material in the observation is a help, not a necessity.
+
+The claim this work supports is therefore narrow and specific: the learned policy does not beat a model-based controller on the objective inside a perfect digital twin, because the controller computes the optimum of the same objective with strictly more information. It beats it in the two regimes where that information advantage disappears, a wrong model of the material and a noisy wear measurement. And the scale of the reward is a design decision that decides how the ideal case is scored.
+
+\subsection{Batch Against the Part}
+\label{sec:batch}
+
+A tool is a resource that a batch of parts runs out of. The environment \texttt{MillingDT/\allowbreak env/\allowbreak milling\_batch\_env.py} (\texttt{MillingDTBatchEnv-v1}) cuts a batch of ten parts with one tool: the tool is replaced when it breaks or reaches its wear limit, the replacement costs 500 reward units against the 200 a finished part is worth, and the observation is the eleven features of the part plus the tool life left and the fraction of the batch still to cut. The artifact is \texttt{results/\allowbreak evaluation/\allowbreak batch\_results.csv}, measured over 30 batches.
+
+\begin{table}[H]
+\centering
+\caption{Batch experiment: a batch of ten parts cut with one tool, 30 batches. The tool change costs 500 reward units.}
+\label{tab:batch}
+\footnotesize
+\setlength{\tabcolsep}{4pt}
+\begin{tabular}{@{}lccccccc@{}}
+\toprule
+\textbf{Arm} & \textbf{Batch reward} & \textbf{Std} & \makecell{\textbf{Reward}\\\textbf{per part}} & \makecell{\textbf{Tool}\\\textbf{changes}} & \makecell{\textbf{Parts}\\\textbf{cut}} & \makecell{\textbf{Batch}\\\textbf{time (s)}} & \makecell{\textbf{Batch}\\\textbf{energy (kJ)}} \\
+\midrule
+PPO, batch aware & 1772.3 & 358.3 & 169.0 & \alert{0.767} & 10 & \alert{113.8} & \alert{632.7} \\
+PPO, per part & 1694.6 & 352.3 & 171.7 & 0.833 & 10 & 110.8 & 655.7 \\
+Receding-horizon, per part & \alert{1859.9} & 328.8 & 173.7 & 0.833 & 10 & 207.5 & 692.0 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\textbf{The batch context is worth 8\% fewer tool changes and 3.5\% less energy at the same completion.} The policy that sees the tool life and the batch that is left replaces the tool 0.767 times per batch against 0.833 for the same policy without that context, and it uses 632.7 kJ against 655.7 kJ, and both cut the ten parts.
+
+\textbf{The per-part controller gets the highest batch reward, 1859.9, and it buys it with the machine time.} It needs 207.5 s of machine time for the batch against the batch-aware policy's 113.8 s, an almost twofold longer batch for a reward that is 4.9\% higher. The reason is structural: the controller solves one part at a time, so it has no notion of a tool that the parts of a batch share, and it cannot price a tool change against the parts that follow it.
 
 \subsection{Controller Initialization Experiment}
 \label{sec:controllerinit}
 
-The baseline comparison left one question open: the controller re-solves the next pass with the exact state and the exact physics, and the learned policy is level with it on the reward but behind it on the physical metrics. The experiment asks whether a policy that starts from the controller ends up better than the expert it started from.
+The baseline comparison left one question open: the controller re-solves the next pass with the exact state and the exact physics, so it is a strong teacher, and the learned policy is level with it on the reward. The experiment asks whether a policy that starts from the controller ends up better than the expert it started from.
 
 The method is a behavior cloning step used as an initialization. The controller's behavior is recorded on 2000 randomized episodes, a supervised actor with the same shape as the PPO actor (two hidden layers of 256 with Tanh) is fitted on those trajectories by regression, and the fitted weights are copied into a fresh PPO policy. The reinforcement learning therefore starts from a feasible behavior instead of from noise. The policy is then trained with the same budget as the production policy (1,000,000 steps) and evaluated on the same 100 randomized scenarios at the same energy weight $w_2 = 0.4$. The clone lives in \texttt{MillingDT/\allowbreak agent/\allowbreak controller\_init.py}, the experiment in \texttt{experiments/\allowbreak controller\_experiment.py}, and the trained policy in \texttt{results/\allowbreak run\_PPO\_controller\_init\_seed42/}.
 
@@ -677,33 +763,33 @@ The method is a behavior cloning step used as an initialization. The controller'
 \centering
 \caption{Controller initialization experiment: three arms on the same 100 scenarios at $w_2 = 0.4$. Std is the standard deviation of the episode reward over the scenarios.}
 \label{tab:controllerinit}
-\footnotesize
-\setlength{\tabcolsep}{3pt}
-\begin{tabular}{@{}lcccccccc@{}}
+\scriptsize
+\setlength{\tabcolsep}{2.5pt}
+\begin{tabular}{@{}lccccccccc@{}}
 \toprule
-\textbf{Arm} & \textbf{Mean reward} & \textbf{Std} & \makecell{\textbf{$\MRR$}\\(mm$^3$/min)} & \makecell{\textbf{Energy}\\(kJ/part)} & \makecell{\textbf{Cycle}\\(s)} & \makecell{\textbf{$\Ra$ viol.}\\finished} & \makecell{\textbf{Tool}\\breakage} & \makecell{\textbf{Parts}\\completed} \\
+\textbf{Arm} & \textbf{Mean reward} & \textbf{Std} & \makecell{\textbf{$\MRR$}\\(mm$^3$/min)} & \makecell{\textbf{Energy}\\(kJ/part)} & \makecell{\textbf{Cycle}\\(s)} & \makecell{\textbf{$\Ra$ viol.}\\finished} & \makecell{\textbf{Flank wear}\\\textbf{violations}} & \makecell{\textbf{Tool}\\breakage} & \makecell{\textbf{Parts}\\completed} \\
 \midrule
-\makecell[l]{Receding-horizon\\controller} & 187.96 & 65.92 & \alert{1560.6} & 68.01 & \alert{13.54} & 0.0\% & 5\% & 95\% \\
-PPO from scratch & 198.57 & 30.03 & 1205.1 & 68.35 & 20.25 & 0.0\% & 1\% & 99\% \\
-\makecell[l]{PPO initialized from\\the controller} & \alert{199.35} & \alert{3.35} & 1126.1 & 77.17 & 32.35 & 0.0\% & \alert{0\%} & \alert{100\%} \\
+\makecell[l]{Receding-horizon\\controller} & \alert{248.9} & 79.5 & 1318.2 & 68.9 & 17.1 & 2\% & 1\% & 3\% & 96\% \\
+PPO from scratch & 233.6 & 79.7 & \alert{1608.5} & 66.4 & \alert{11.4} & 4\% & 0\% & 6\% & 94\% \\
+\makecell[l]{PPO initialized\\from the controller} & 119.8 & 178.7 & 1274.9 & 81.5 & 42.6 & 4\% & 9\% & 4\% & 87\% \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-\textbf{The initialization does not produce a policy that beats the controller.} The controller still removes 38\% more material per minute (1560.6 against 1126.1 mm$^3$/min) and finishes in 13.5 s against 32.3 s. The reward cannot separate the two learned policies either: 199.35 against 198.57 is a gap of 0.8, and the standard error of the mean over the 100 scenarios is $30.0/\sqrt{100} = 3.0$ for the from-scratch arm. A gap of 0.8 is inside the noise, so it is not a result.
+\textbf{The initialization is now actively harmful, and the reason is instructive.} The policy initialized from the controller scores 119.8 against the from-scratch policy's 233.6, a gap of 113.8, which is more than fourteen times the standard error of the mean over the 100 scenarios. The cloned actor starts the policy at the controller's operating point, which is the conservative one: a low feed and a low spindle speed, so that every pass of the part stays inside the roughness safety limit. With the wear constraint now binding, that conservatism is expensive. The policy then learns from a bad starting point, slows down further to stay away from the wear limit, and ends up cutting a part in 42.6 s against the controller's 17.1 s and the from-scratch policy's 11.4 s, while it spends 81.5 kJ per part against 66.4 kJ. It also exceeds the flank wear limit on 9\% of the parts, which the other two arms never do.
 
-\textbf{What it does produce is consistency.} The spread of the episode reward across the 100 scenarios falls from 30.0 to 3.4, the tool breakage falls to zero, and every part is completed. The controller itself is the least reliable of the three arms, with a reward std of 65.9, 5\% tool breakage and 95\% of the parts completed.
+\textbf{The earlier revision found the initialization harmless.} It made the policy more consistent and did not change the reward, and the report said so. That was the reward not counting the cost of the slow operating point: a policy that finished every part at any cost looked like a good policy. With the throughput counted, the initialization is what the measurement says it is.
 
-\textbf{The consistency is paid for with throughput and energy.} Against the from-scratch policy the initialized policy removes 6.6\% less material per minute and spends 12.9\% more energy per part. Starting from the feasible behavior of the controller gives a policy that scores almost the same on every scenario, and that operating point is slower and more expensive than the one a policy started from noise finds.
+\textbf{So the method to keep from the controller initialization is the record and clone machinery, not the initialization itself.} The recording, the regression and the weight copy are a clean way to put a feasible behaviour into a policy, and they stay in the code, because they are what makes the arms of Table~\ref{tab:controllerinit} comparable. What the experiment now shows is that starting the reinforcement learning at the controller's operating point is the wrong way to use them.
 
 \begin{figure}[H]
     \centering
     \includegraphics[width=\textwidth]{controller_vs_ppo.png}
-    \caption{The three arms of the controller initialization experiment on the same 100 scenarios at $w_2 = 0.4$: the mean episode reward with its spread over the scenarios, the spread on its own, the removal rate, the energy per part, the cycle time and the reliability. The three arms are level on the reward, and the spread across the scenarios is what separates them: the reward standard deviation of the initialized policy is \alert{3.4} against \alert{65.9} for the controller. The controller is ahead on the removal rate and the cycle time, and the two learned policies are ahead on the reliability, with no tool breakage and every part completed.}
+    \caption{The three arms of the controller initialization experiment on the same 100 scenarios at $w_2 = 0.4$: the mean episode reward with its spread over the scenarios, the spread on its own, the removal rate, the energy per part, the cycle time and the reliability. The initialized arm sits \alert{114 points} below the from-scratch arm on the reward, and its spread of \alert{178.7} is more than twice the spread of the other two. It is the only arm that cuts a part in more than 17 s and the only one that exceeds the flank wear limit.}
     \label{fig:controller-comparison}
 \end{figure}
 
-Figure~\ref{fig:controller-comparison} puts the three arms side by side over the six measures. The top-left panel is the one to read with care: the three bars are 187.96, 198.57 and 199.35, and the error bars, which are the standard deviation over the 100 scenarios, are far wider than the gaps between the bars, so the reward does not separate the arms. The second panel is where they do separate: the spread of the episode reward falls from 65.9 for the controller to 30.0 for the from-scratch policy and to 3.4 for the initialized policy. The remaining panels show what that consistency costs and what it buys. The controller removes 1560.6 mm$^3$/min in 13.54 s, against 1126.1 mm$^3$/min in 32.35 s for the initialized policy, and it spends 68.01 kJ against 77.17 kJ. On the reliability panel the controller breaks 5\% of its tools and completes 95\% of the parts, against 0\% and 100\% for the initialized policy.
+Figure~\ref{fig:controller-comparison} puts the three arms side by side over the six measures. The top-left panel is the one to read with care: the three bars are 248.9, 233.6 and 119.8, and while the error bars of the first two are far wider than the gap between them, the gap to the third is far wider than its error bar. The second panel shows the same thing in the spread: the reward standard deviation is 79.5 for the controller, 79.7 for the from-scratch policy and \alert{178.7} for the initialized one, so the initialization does not buy consistency any more, it buys variance. The remaining panels show what it costs: the initialized arm removes 1274.9 mm$^3$/min against 1608.5, spends 81.5 kJ against 66.4 kJ and takes 42.6 s against 11.4 s. On the reliability panel it completes 87\% of the parts against 94\% and 96\%, and it is the only arm with 9\% flank wear violations.
 
 \subsection{Transfer Experiment}
 
@@ -719,17 +805,17 @@ Target material: harder alloy ($k_1 \times 1.25$, $k_2 \times 1.30$) with faster
 \toprule
 \textbf{Arm} & \textbf{Mean reward} & \makecell{\textbf{$\Ra$ violation}\\\textbf{worst pass}} & \makecell{\textbf{$\Ra$ violation}\\\textbf{finished surface}} & \textbf{Parts completed} \\
 \midrule
-\makecell[l]{Source policy,\\zero-shot} & 182.5 & 100.0\% & 3.3\% & 93.3\% \\
-\makecell[l]{Source policy,\\fine-tuned (50k steps)} & 196.6 & 0.0\% & 0.0\% & 100.0\% \\
-\makecell[l]{Trained on the target\\from scratch (50k steps)} & 196.6 & 0.0\% & 0.0\% & 100.0\% \\
-\makecell[l]{Production policy,\\zero-shot} & \alert{200.3} & 60.0\% & 0.0\% & 100.0\% \\
+\makecell[l]{Source policy,\\zero-shot} & 168.5 & 100.0\% & 6.7\% & 86.7\% \\
+\makecell[l]{Source policy,\\fine-tuned (50k steps)} & 101.9 & 26.7\% & 0.0\% & 86.7\% \\
+\makecell[l]{Trained on the target\\from scratch (50k steps)} & 101.9 & 26.7\% & 0.0\% & 86.7\% \\
+\makecell[l]{Production policy,\\zero-shot} & \alert{190.1} & 100.0\% & 10.0\% & 90.0\% \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-\textbf{The production policy needs no adaptation.} It was trained across a distribution of materials with the material context in its observation, so the harder alloy is inside its training distribution. Zero shot it scores the highest reward of the four arms ($+200.3$), the finished surface, which is the part quality the reward constrains, is inside the limit in every one of the 30 scenarios, and every part is completed. The 60\% worst-pass violations are on the roughing passes, which the reward does not constrain.
+\textbf{The production policy is the best arm without a single adaptation step.} It was trained across a distribution of materials with the material context in its observation, so the harder alloy is inside its training distribution. Zero shot it scores the highest reward of the four arms ($+190.1$) and completes 90.0\% of the parts against 86.7\% for the other three. Its worst pass violates the roughness limit in every scenario, and its finished surface in 10.0\% of them, which is worse on that count than the nominal-trained source policy, and it is still ahead on the reward.
 
-\textbf{The nominal-trained source policy cannot do this.} Zero shot it scores 182.5, violates the roughness limit in every scenario, finishes outside the limit in 3.3\% of them and completes only 93.3\% of the parts. Fine tuning it for 50,000 steps on the target removes every violation and lifts the reward to 196.6, and training on the target from scratch for the same budget lands at exactly the same place, 196.6. A material change can therefore be repaired by adaptation, but the policy that already carries the material in its state does not need the repair: it is the best of the four arms without a single adaptation step.
+\textbf{Adaptation repairs the roughness violations and costs more than it gains.} Fine tuning the source policy for 50,000 steps on the target, or training on the target from scratch for the same budget, both cut the worst-pass violations from every scenario to a quarter of them and take the finished surface back inside the limit, and both land at exactly the same reward, 101.9, against the source policy's 168.5 zero shot. The reason is the material: the target alloy wears the tool twice as fast, and a policy that slows down for that trades away more throughput than it gains in specification. The lesson is that the cost of a material change is not only the roughness, it is the throughput that the repair gives up.
 
 % ========================================================================
 % 8. INTERACTIVE WORKSTATION
@@ -761,32 +847,34 @@ Launch: \texttt{streamlit run app.py}
 \subsection{Architecture}
 \begin{itemize}
     \item \texttt{MillingDT/config/}: Calibrated constants and paths (YAML), the shared physics equations, the scenario distributions (single source of truth)
-    \item \texttt{MillingDT/env/}: Gymnasium environment, one registration (\texttt{MillingDTEnv-v1})
+    \item \texttt{MillingDT/env/}: The Gymnasium environments, two registrations (\texttt{MillingDTEnv-v1} for the part, \texttt{MillingDTBatchEnv-v1} for the batch)
     \item \texttt{MillingDT/agent/}: The controller initialization, the behavior clone of the receding-horizon controller
     \item \texttt{MillingDT/baselines/}: The receding-horizon controller
     \item \texttt{MillingDT/sim/}: Simulation engine for Streamlit (stock depletion, micro-topography, G-code)
     \item \texttt{MillingDT/utils/}: Seeding, reproducibility
-    \item \texttt{experiments/}: The entry points: training, evaluation, ablation, baselines, transfer, controller experiment, pipeline orchestration
-    \item \texttt{viz/}: Plotting utilities, training curves, MC distributions, baseline comparison
+    \item \texttt{experiments/}: The entry points: training, evaluation, ablation, baselines, transfer, controller, robustness and batch experiments, pipeline orchestration
+    \item \texttt{viz/}: Plotting utilities, training curves, MC distributions, baseline comparison, controller comparison
     \item \texttt{results/}: One directory per run, holding the policy, the log, the metrics and the figures of that run
 \end{itemize}
 
 \subsection{Behavior Cloning as an Initialization}
-The receding-horizon controller is a competent expert, so it can supply the starting point of the learner instead of leaving the learner to start from noise. The module \texttt{MillingDT/\allowbreak agent/\allowbreak controller\_init.py} records what the controller does, fits a supervised actor of the same shape as the PPO actor on those trajectories by regression, and copies the fitted weights into a fresh PPO policy. The initialization stays a separate concern: the clone knows nothing about the training loop, the copy is a weight assignment between two tensors of the same shape, and the rest of the run is an ordinary PPO training, selected with the \texttt{--init-\allowbreak from-\allowbreak controller} flag. The same separation is what makes the arm comparable: the three arms of Table~\ref{tab:controllerinit} share the environment, the scenarios, the budget and the evaluation code, so the only difference between them is where the weights start.
+The receding-horizon controller is a competent expert, so it can supply the starting point of the learner instead of leaving the learner to start from noise. The module \texttt{MillingDT/\allowbreak agent/\allowbreak controller\_init.py} records what the controller does, fits a supervised actor of the same shape as the PPO actor on those trajectories by regression, and copies the fitted weights into a fresh PPO policy. The initialization stays a separate concern: the clone knows nothing about the training loop, the copy is a weight assignment between two tensors of the same shape, and the rest of the run is an ordinary PPO training, selected with the \texttt{--init-\allowbreak from-\allowbreak controller} flag. The same separation is what makes the arm comparable: the three arms of Table~\ref{tab:controllerinit} share the environment, the scenarios, the budget and the evaluation code, so the only difference between them is where the weights start. The measurement of Section~\ref{sec:controllerinit} is that the difference matters: the initialization now costs 113.8 reward points, so the machinery is kept and the initialization is not.
 
 \subsection{Reproducibility}
 \begin{itemize}
     \item Global seeding via \texttt{MillingDT/utils/seeding.py} (Python, NumPy, PyTorch, CUDA deterministic)
     \item \texttt{MillingDT/config/scenarios.py} shared by training and Monte Carlo -- no drift
     \item \texttt{experiments/summarize\_results.py} rebuilds \texttt{RESULTS.md} from committed CSVs
+    \item The comparison tables are committed as CSVs under \texttt{results/evaluation/}: the baselines, the ablation summary, the weight sweep against the ablation, the transfer, the controller initialization, the robustness and the batch tables
     \item All random draws (scenarios, weights, seeds) are deterministic given the seed
 \end{itemize}
 
 \subsection{Testing}
-34 tests in \texttt{tests/} covering:
+45 tests in \texttt{tests/} covering:
 \begin{itemize}
-    \item Environment: action clipping, truncation, soft norm, the 11-dimensional observation, physics constants, overrides, info dict, energy norm, Gym checker, randomization, pinned values, scenario scales, the context (weight and material), cutting energy speed dependence, part energy interior minimum, shared physics, shared scenario tables
+    \item Environment: action clipping, truncation, soft norm, the 11-dimensional observation, physics constants, overrides, info dict, energy norm, Gym checker, randomization, pinned values, scenario scales, the context (weight and material), the belief of the material, the measurement noise, random weight, cutting energy speed dependence, part energy interior minimum, shared physics, shared scenario tables
     \item Reward: golden-value test (independent recomputation), finishing-pass penalty
+    \item Batch environment: the 13-dimensional batch observation, the tool life and the batch left, every part of the batch, the tool change, the wear carried over, a broken tool, the wear limit, the batch reward, the seeded reproducibility, the pinned weight, Gym checker
     \item Integration: training$\to$evaluation roundtrip, one registration, the context in the observation, one policy answering a pinned weight, baseline artifact
     \item Progress callback: heartbeat delivery, failure reporting, interval respect
 \end{itemize}
@@ -808,31 +896,39 @@ The receding-horizon controller is a competent expert, so it can supply the star
 \subsection{What Worked}
 \begin{enumerate}
     \item The speed-dependent cutting energy model ($k_c \propto v_c^m$) is essential. In an earlier revision of the reward, without it the energy/throughput trade-off vanished and the 21 ablation policies came out identical.
-    \item Domain randomization + shared scenario tables: the policy generalizes to unseen scenarios (99\% part completion, 0\% finished-surface violations).
-    \item Putting the energy weight in the observation reduces the ablation cost from 21 training runs to one, and the one policy beats the 21 per-weight policies at every weight.
-    \item Training across a distribution of materials removes the need for an adaptation step: on a harder alloy the production policy is the best of the four transfer arms zero shot, while a policy trained on the nominal material violates the roughness limit until it is fine tuned.
-    \item The receding-horizon controller is a strong, fair baseline using the same physics. It also exposed that the earlier baseline comparison was hollow.
-    \item Initializing the policy from the controller does not make it beat the controller, but it does make it uniform: the reward std over the 100 scenarios falls from 30.0 to 3.4, the tool breakage falls to zero and every part is completed (Table~\ref{tab:controllerinit}).
+    \item The scale of the reward matters as much as the weights. With the objective term worth about 1.2 points against a completion bonus of 200, the reward did not count the throughput and the policy learned to finish every part at any cost. At about fifty points per part the trade-off is inside the reward, and the operating point of the production policy changed completely: 1608 mm$^3$/min against 1205 before.
+    \item Domain randomization + shared scenario tables: the policy generalizes to unseen scenarios (94\% part completion, 4\% finished-surface violations).
+    \item Putting the energy weight in the observation reduces the ablation cost from 21 training runs to one. The one policy is ahead of the per-weight policies over the weights from 0.0 to 0.6 and behind at 0.8 and 1.0, so the weight stays a runtime query, but it is not free at the ends of the range.
+    \item Training across a distribution of materials removes the need for an adaptation step: on a harder alloy the production policy is the best of the four transfer arms zero shot, while a policy trained on the nominal material has to be repaired.
+    \item A controller that maximizes the expected episode reward is a far stronger baseline than one that maximizes the objective term per pass: on the same scenarios it went from 184.3 to 248.9, and building it exposed that the earlier baseline comparison was hollow.
+    \item The robustness experiment is the central result of the work: the learned policy is the better throughput operator, and its advantage appears exactly where the controller's information advantage disappears, a wrong model of the material and a noisy wear measurement.
+    \item The batch context is worth something: 8\% fewer tool changes and 3.5\% less energy at the same completion.
     \item The test suite catches physics regressions (energy interior minimum, cutting energy speed dependence) and reward regressions (golden-value test).
 \end{enumerate}
 
 \subsection{Limitations}
+\label{sec:limitations}
 \begin{enumerate}
-    \item The learned policy does not outperform the receding-horizon controller on the reward (Table~\ref{tab:baselines}), and the controller is ahead on the physical metrics. The controller re-solves with perfect physics; the policy has to learn the dynamics from experience. Initializing the policy from the controller does not close that gap: the initialized policy is more consistent (reward std 3.4 against 30.0) but slower and more hungry for energy (6.6\% less removal rate and 12.9\% more energy per part against the from-scratch policy), and the difference in mean reward, 199.35 against 198.57, is inside the standard error of the mean of 3.0.
+    \item Inside a perfect digital twin the learned policy does not outperform the model-based controller: the controller scores 248.9 against the policy's 233.6 (Table~\ref{tab:robustness}), and the gap of 15 is inside the noise. The learned policy is the better throughput operator (22\% more material per minute, a third less time, 3.7\% less energy) and it pays for that with twice the tool breakage and with more finished surfaces outside the roughness limit. The work therefore does not claim a reinforcement learning advantage inside a perfect twin.
+    \item Initializing the policy from the controller is now harmful rather than harmless: 119.8 against the from-scratch policy's 233.6 (Table~\ref{tab:controllerinit}). The clone starts the policy at a conservative operating point, and with the wear constraint binding that conservatism is expensive.
+    \item The scale of the reward is a design decision, and the comparison is sensitive to it. The objective term is worth about fifty points per part against a completion bonus of 200; another scale would score the ideal case differently and could reorder the arms.
+    \item The wear model is anchored on the tool life of one paper and the exponents are the exponents of the wear rate, not the Taylor tool life exponents, so the tool life varies only by a factor of a few across the machine envelope and a faster cut barely shortens it.
     \item The energy weight ablation uses 150,000 steps per weight against 1,000,000 for the production policy, so the ablation frontier is a lower bound on what a pinned policy can reach and may shift with more training.
     \item The reward charges the energy of a pass, while the reported metric is the energy of a part. A part cut in many shallow passes draws less power per pass but spends more time on the idle machine, so the two can move in opposite directions. Both are reported.
-    \item Stochastic tool breakage (1\% rate) introduces variance; the reward penalty could be shaped more carefully.
+    \item Stochastic tool breakage (6\% rate) introduces variance; the reward penalty could be shaped more carefully.
     \item The micro-topography model is a simplified feed-mark cusp; real chatter and vibration are not modeled.
     \item The energy model is the modelling choice of this work, not a result taken from the reference papers, and it is calibrated against a single reference condition.
-    \item The frontier is symmetric but shallow: 8.4\% less removal rate buys 9.5\% less energy. A decision-maker who needs a large energy reduction has to pay for it in throughput elsewhere, and this digital twin does not yet show a way to escape that trade-off.
+    \item The frontier is steep at the heavy weights: from $w_2 = 0.5$ to $w_2 = 1.0$ the removal rate falls 41\% for 17\% less energy, and the cycle time rises from 12.7 s to 20.1 s. A decision-maker who needs a large energy reduction pays for it in throughput and in time.
 \end{enumerate}
 
 \subsection{Future Work}
 \begin{enumerate}
-    \item \textbf{Against a restricted controller:} The controller re-solves every pass with the exact state and the exact physics, so it is an oracle that a learned policy cannot match from its observation alone. Restricting the controller's information, or pricing the cycle time explicitly in the reward, would tell whether the remaining gap is an information gap or an optimization gap.
+    \item \textbf{The sensitivity of the comparison to the reward scale:} the scale of the objective term is a design decision and it decides how the ideal case is scored. Running the robustness experiment at several objective scales would separate the part of the ranking that comes from the reward from the part that comes from the policy.
+    \item \textbf{Against a restricted controller:} the controller re-solves every pass with the exact state and the exact physics, so it is an oracle that a learned policy cannot match from its observation alone. The robustness experiment answers the model-error and the measurement-noise part of that question; what is left is the information gap inside a perfect twin.
     \item \textbf{Sim-to-real:} Calibrate physics coefficients on real machine data; add sensor noise and delay to the environment.
     \item \textbf{Multi-objective RL:} Replace scalarization with Pareto-conditioned networks or hypervolume maximization.
     \item \textbf{Runtime energy budget:} Drive the production policy with an optimizer that sets $w_2$ from an energy budget. The weight is a query, not a retrain.
+    \item \textbf{Batch-level planning:} let the policy plan a whole batch instead of a part, with the tool life and the tool change in the objective, so that the context of Section~\ref{sec:batch} is optimized rather than merely read.
     \item \textbf{Full 3D Digital Twin:} Extend the 2D cross-section to 3D toolpath visualization with collision checking.
 \end{enumerate}
 
@@ -843,19 +939,21 @@ The receding-horizon controller is a competent expert, so it can supply the star
 
 This project demonstrates a complete pipeline for DRL-based CNC milling optimization:
 \begin{enumerate}
-    \item A physics-grounded Digital Twin with speed-dependent cutting energy, tool wear, surface roughness, and stochastic breakage.
-    \item A Gymnasium environment with domain randomization, an always 11-dimensional conditioned observation, and an energy-aware reward whose objective terms are scaled to compete with the shaping terms.
+    \item A physics-grounded Digital Twin with speed-dependent cutting energy, tool wear, surface roughness, and stochastic breakage. The wear coefficient is anchored on a tool life rather than on a wear equation, because none of the three reference papers carries one.
+    \item Two Gymnasium environments, one for a part and one for a batch of ten parts cut with one tool, with domain randomization, an always 11-dimensional conditioned observation and an energy-aware reward whose objective terms are scaled to a quarter of the value of a part.
     \item PPO policies trained with proper experimental rigor: Monte Carlo evaluation with confidence intervals, an ablation study mapping the empirical Pareto frontier, and one production policy covering the frontier in a single run.
-    \item Strong classical baselines including a receding-horizon controller that re-optimizes at every pass.
-    \item A controller initialization experiment, which records the receding-horizon controller on 2000 episodes, clones its actor into a fresh PPO policy and trains it with the same 1,000,000-step budget. The initialized policy is much more uniform (reward std 3.4 against 30.0 over the 100 scenarios), breaks no tools and completes every part, but it does not beat the controller: the controller removes 38\% more material per minute and finishes in 13.5 s against 32.3 s.
-    \item A transfer experiment on a harder alloy, which finds that a policy trained across a distribution of materials needs no adaptation there, while a policy trained on the nominal material violates the roughness limit until it is fine tuned.
+    \item Strong classical baselines including a receding-horizon controller that re-optimizes at every pass and maximizes the expected episode reward over the same physics.
+    \item A robustness experiment, the central result of the work: the learned policy and the controller on the same 100 scenarios in three regimes. Inside a perfect digital twin the controller is ahead on the reward (248.9 against 233.6) and the gap is inside the noise. With a wrong model of the material the controller's reward collapses to 63.5 while the policy holds at 226.9; with a noisy wear measurement the controller falls to 181.3 and the policy keeps 213.6. The learned policy is the better throughput operator in every regime: 22\% more material per minute, a third less time and 3.7\% less energy, at twice the tool breakage.
+    \item A batch experiment: a batch of ten parts cut with one tool, where the tool change costs 500 reward units. The batch context is worth 8\% fewer tool changes and 3.5\% less energy at the same completion, and the per-part controller needs 207.5 s of machine time for the batch against the batch-aware policy's 113.8 s.
+    \item A controller initialization experiment, which records the receding-horizon controller on 2000 episodes, clones its actor into a fresh PPO policy and trains it with the same 1,000,000-step budget. The result reversed: the initialization is now harmful (119.8 against the from-scratch policy's 233.6), because the clone starts the policy at the controller's conservative operating point and the wear constraint makes that conservatism expensive. The record and clone machinery stays, the initialization does not.
+    \item A transfer experiment on a harder alloy, which finds that a policy trained across a distribution of materials needs no adaptation there, while a policy trained on the nominal material has to be repaired, and that the repair costs more throughput than it gains in specification.
     \item An interactive workstation for visualization, G-code generation, and multi-controller comparison.
     \item Full reproducibility: every result table is generated from committed artifacts by a single script.
 \end{enumerate}
 
-The key scientific finding is that \textbf{the speed-dependent specific cutting energy creates a genuine energy/throughput trade-off}, and a DRL agent can learn to navigate it pass-by-pass while respecting surface quality and tool life constraints. Across the measured frontier the removal rate falls 8.4\% while the energy of the part falls 9.5\%, a symmetric trade-off, and the spindle speed falls with the energy weight, which is the mechanism the model predicts. One policy with the weight in its observation makes the whole trade-off accessible at runtime, and it beats the 21 per-weight policies at every point of it.
+The key scientific finding on the physics side is that \textbf{the speed-dependent specific cutting energy creates a genuine energy/throughput trade-off}, and a DRL agent can learn to navigate it pass-by-pass while respecting surface quality and tool life constraints. Across the measured frontier, from $w_2 = 0.5$ to $w_2 = 1.0$, the removal rate falls 41\% while the energy of the part falls 17\%, and the spindle speed falls with the energy weight, which is the mechanism the model predicts. One policy with the weight in its observation makes the whole trade-off accessible at runtime: it is ahead of the 21 policies trained per weight over the weights from 0.0 to 0.6, by 1.4\% to 5.6\% of the removal rate, and behind at 0.8 and 1.0, by 9.0\% and 21.6\%. The weight in the observation is a weaker signal than a dedicated policy where the trade-off is steepest.
 
-The result on the classical side is the opposite of an advantage: the receding-horizon controller still removes more material per minute and finishes sooner than the learned policy, and initializing the policy from it does not change that. What the initialization does buy is consistency, and it buys it with throughput and energy. The claim this work supports is therefore that the reinforcement learning agent navigates the energy/throughput trade-off within a fixed constraint set, not that it beats a classical controller that re-optimizes with perfect physics.
+The result on the classical side is narrower and more interesting than an advantage. \textbf{Inside a perfect digital twin the learned policy does not beat the model-based controller on the objective}, because the controller computes the optimum of the same objective with strictly more information: it has the exact model, the exact state and the material in its hand. What the learned policy does have is the throughput: it removes 22\% more material per minute, finishes a part in a third less time and spends 3.7\% less energy, and it pays for that with twice the tool breakage and with more finished surfaces outside the roughness limit. Its advantage appears where the information advantage of the controller disappears, a wrong model of the material and a noisy wear measurement, and in the batch, where the tool life is a resource shared by the parts. The scale of the reward decides how the ideal case is scored, so the comparison is a statement about a design decision as well as about the two operators.
 
 All code, data, and results are available in the repository at \texttt{G:/My Drive/IITM/AI in Mfg}.
 
@@ -893,6 +991,12 @@ python -m experiments.train_rl --steps 1000000 --seed 42 --randomize --randomize
 # Train the production policy with the energy weight pinned
 python -m experiments.train_rl --steps 150000 --seed 42 --randomize --w2 0.6
 
+# Train the policy that faces a noisy wear measurement
+python -m experiments.train_rl --steps 1000000 --seed 42 --randomize --randomize-weight --obs-noise 0.05 --run-name PPO_noisystate_seed42
+
+# Train the batch-aware policy (one tool cuts a batch of ten parts)
+python -m experiments.train_rl --env-id MillingDTBatchEnv-v1 --steps 1000000 --seed 42 --randomize --run-name PPO_batch_seed42
+
 # Monte Carlo sweep of the production policy (100 scenarios)
 python -m experiments.evaluate --scenarios 100
 
@@ -914,10 +1018,17 @@ python -m experiments.transfer_experiment 300000 50000
 # Controller initialization experiment (1M steps, 2000 controller episodes)
 python -m experiments.controller_experiment 1000000 2000
 
+# Robustness experiment (three regimes against the classical controller)
+python -m experiments.robustness_experiment
+
+# Batch experiment (the batch against the part)
+python -m experiments.batch_experiment
+
 # Regenerate all plots
 python -m viz.plot_results
 python -m viz.plot_eval
 python -m viz.plot_baselines_comparison
+python -m viz.plot_controller_comparison
 
 # Regenerate RESULTS.md from artifacts
 python -m experiments.summarize_results
@@ -925,7 +1036,7 @@ python -m experiments.summarize_results
 # Launch interactive workstation
 streamlit run app.py
 
-# Full pipeline (sequential)
+# Full pipeline (sequential, eleven stages)
 python -m experiments.run_pipeline --steps 1000000 --ablation_steps 150000
 \end{lstlisting}
 
@@ -935,7 +1046,7 @@ python -m experiments.run_pipeline --steps 1000000 --ablation_steps 150000
 \section{Project Structure}
 \label{app:structure}
 
-The project holds one Gymnasium registration, \texttt{MillingDTEnv-v1}, one training script and one evaluation script. The registration is exported as the constant \texttt{MillingDT.env.\allowbreak ENV\_ID}. There is no separate conditioned environment, no separate conditioned training script and no \texttt{results/conditioned/} directory. The reusable code lives in the \texttt{MillingDT/} package, the entry points in \texttt{experiments/}, and every training configuration keeps its own directory under \texttt{results/}.
+The project holds two Gymnasium registrations, \texttt{MillingDTEnv-v1} for the part and \texttt{MillingDTBatchEnv-v1} for the batch, one training script and one evaluation script. The registrations are exported as the constants \texttt{MillingDT.env.\allowbreak ENV\_ID} and \texttt{MillingDT.env.\allowbreak BATCH\_ENV\_ID}. There is no separate conditioned environment, no separate conditioned training script and no \texttt{results/conditioned/} directory. The reusable code lives in the \texttt{MillingDT/} package, the entry points in \texttt{experiments/}, and every training configuration keeps its own directory under \texttt{results/}.
 
 \begin{lstlisting}[style=bash, caption=Project directory tree]
 G:\My Drive\IITM\AI in Mfg
@@ -943,13 +1054,14 @@ G:\My Drive\IITM\AI in Mfg
 |   |-- __init__.py                  # Exports ENV_ID, ALL_CONSTANTS
 |   |-- config/
 |   |   |-- __init__.py              # Loads the two YAML files
-|   |   |-- physics_constants.yaml   # The calibrated constants
+|   |   |-- physics_constants.yaml   # The calibrated constants and the reward scales
 |   |   |-- paths.yaml               # Where the runs are kept
 |   |   |-- physics.py               # Shared physics equations
 |   |   `-- scenarios.py             # Randomized scenario sampling
 |   |-- env/
 |   |   |-- milling_env.py           # Gymnasium environment (11-D observation)
-|   |   `-- __init__.py              # Exports ENV_ID (one registration)
+|   |   |-- milling_batch_env.py     # Batch environment (13-D observation)
+|   |   `-- __init__.py              # Exports ENV_ID, BATCH_ENV_ID
 |   |-- agent/
 |   |   |-- controller_init.py       # Behavior clone of the controller
 |   |   `-- __init__.py
@@ -969,6 +1081,8 @@ G:\My Drive\IITM\AI in Mfg
 |   |-- run_baselines.py             # 5 classical baselines
 |   |-- transfer_experiment.py       # Cross-material transfer
 |   |-- controller_experiment.py     # Controller initialization, 3 arms
+|   |-- robustness_experiment.py     # Three regimes against the controller
+|   |-- batch_experiment.py          # The batch against the part
 |   |-- run_experiments.py           # Parallel training supervisor
 |   |-- run_pipeline.py              # Full pipeline orchestrator
 |   |-- summarize_results.py         # Regenerates RESULTS.md
@@ -978,9 +1092,11 @@ G:\My Drive\IITM\AI in Mfg
 |   |-- plot_eval.py                 # Monte Carlo distributions
 |   |-- plot_results.py              # Training curves
 |   |-- plot_baselines_comparison.py # Baseline comparison charts
+|   |-- plot_controller_comparison.py # Controller against the learned policies
 |   `-- __init__.py
 |-- tests/
 |   |-- test_env.py                  # Environment and reward tests
+|   |-- test_batch_env.py            # Batch environment tests
 |   |-- test_training.py             # Training tests
 |   |-- test_progress_callback.py    # Callback tests
 |   `-- test_integration.py          # Integration tests
