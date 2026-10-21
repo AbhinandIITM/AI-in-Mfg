@@ -274,6 +274,61 @@ def test_context_carries_the_material():
     harder.close()
 
 
+def test_the_context_follows_the_belief_not_the_truth():
+    """A setup that believes in the wrong material must see the belief.
+
+    The physics always run on the truth. Only the context the policy reads
+    follows the belief, which is what the model error experiment needs: a
+    machine that cuts a harder material than the setup believes it does.
+    """
+    nominal_c_wear = ALL_CONSTANTS['tool_wear']['C_wear']
+    nominal_k1 = ALL_CONSTANTS['surface_roughness']['k1']
+
+    # The machine cuts a harder material than the setup believes.
+    env_inst = env.MillingDTEnv(C_wear=nominal_c_wear * 1.4, k1=nominal_k1 * 1.2,
+                                 belief={'C_wear': nominal_c_wear,
+                                         'k1': nominal_k1})
+    obs, _ = env_inst.reset(seed=5)
+
+    # The context reports the belief, which is the nominal material.
+    assert obs[9] == pytest.approx(0.5)
+    assert obs[10] == pytest.approx(0.5)
+
+    # The physics still run on the truth.
+    assert env_inst.tool_wear_cfg['C_wear'] == pytest.approx(nominal_c_wear * 1.4)
+    assert env_inst.roughness_cfg['k1'] == pytest.approx(nominal_k1 * 1.2)
+    env_inst.close()
+
+
+def test_the_observation_noise_is_on_the_measured_state_only():
+    """A noisy measurement moves the wear and the stock, and nothing else.
+
+    The previous cutting parameters come from the machine's own control
+    system and the previous removal rate and roughness are computed, so they
+    are exact. The context is a property of the setup, not a measurement.
+    """
+    clean = env.MillingDTEnv()
+    obs_clean, _ = clean.reset(seed=11)
+    clean.close()
+
+    noisy = env.MillingDTEnv(obs_noise=0.05, obs_noise_seed=3)
+    obs_noisy, _ = noisy.reset(seed=11)
+    noisy.close()
+
+    # The measured state moved.
+    assert obs_noisy[0] != pytest.approx(obs_clean[0])
+    assert obs_noisy[1] != pytest.approx(obs_clean[1])
+
+    # The context did not.
+    assert obs_noisy[8] == pytest.approx(obs_clean[8])
+    assert obs_noisy[9] == pytest.approx(obs_clean[9])
+    assert obs_noisy[10] == pytest.approx(obs_clean[10])
+
+    # The observation is still inside the box.
+    assert 0.0 <= obs_noisy[0] <= 1.0
+    assert 0.0 <= obs_noisy[1] <= 1.0
+
+
 def test_randomized_weight_draws_a_new_weight_at_every_reset():
     """The energy weight is part of the scenario of the part."""
     env_inst = env.MillingDTEnv(randomize_weight=True)
