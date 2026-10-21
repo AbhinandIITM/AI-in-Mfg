@@ -74,13 +74,12 @@ results/workers/
 *.swp
 *.swo
 *.mp4
-desktop.ini
+*.ini
 .agents/
 .claude/
 logs/*/
 /docs/ppts/
 *.mp4
-desktop.ini
 .agents/
 .claude/
 events.out*

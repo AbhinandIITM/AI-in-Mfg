@@ -98,27 +98,34 @@ def plot_comparison():
     # Combine
     df_all = pd.concat([df_base, df_ppo], ignore_index=True)
 
-    # Map policy labels for clear presentation
+    # Map policy labels for clear presentation. Every baseline that carries a
+    # row in the table needs a label here, otherwise the bar is dropped from
+    # the figure without a word.
     label_map = {
-        "constant_high": "Constant High\n(Max Speed/Feed)",
-        "constant_safe": "Constant Safe\n(Min Speed/Feed)",
-        "rule_based": "Rule-Based\n(Feed/Speed Decay)",
-        "nsga2": "NSGA-II Static\n(Pareto Knee)",
-        "PPO (Ours)": "Dynamic PPO\n(Deep RL - Ours)"
+        "constant_high": "Constant\nHigh",
+        "constant_safe": "Constant\nSafe",
+        "rule_based": "Rule-\nBased",
+        "nsga2": "NSGA-II\nStatic",
+        "receding_horizon": "Receding-\nHorizon",
+        "PPO (Ours)": "Dynamic PPO\n(ours)"
     }
     df_all["policy_label"] = df_all["policy"].map(label_map)
+    missing = sorted(set(df_all["policy"]) - set(label_map))
+    if missing:
+        raise KeyError(f"Baselines without a label in the figure: {missing}")
 
-    # Order
+    # Order, from the weakest policy to the learned one.
     order = [
-        "Constant Safe\n(Min Speed/Feed)",
-        "Rule-Based\n(Feed/Speed Decay)",
-        "NSGA-II Static\n(Pareto Knee)",
-        "Constant High\n(Max Speed/Feed)",
-        "Dynamic PPO\n(Deep RL - Ours)"
+        "Constant\nSafe",
+        "Rule-\nBased",
+        "NSGA-II\nStatic",
+        "Constant\nHigh",
+        "Receding-\nHorizon",
+        "Dynamic PPO\n(ours)"
     ]
+    palette = ["#7f7f7f", "#bcbd22", "#1f77b4", "#ff7f0e", "#64748b", "#2ca02c"]
 
-    fig, axes = plt.subplots(1, 3, figsize=(18, 5.5))
-    palette = ["#7f7f7f", "#bcbd22", "#1f77b4", "#ff7f0e", "#2ca02c"]
+    fig, axes = plt.subplots(1, 3, figsize=(19, 6.5))
 
     # 1. MRR (Throughput)
     sns.barplot(
@@ -129,17 +136,21 @@ def plot_comparison():
     axes[0].set_xlabel("")
     axes[0].set_ylabel("Mean MRR (mm³/min)", fontsize=11)
     axes[0].grid(axis="y", linestyle="--", alpha=0.5)
+    axes[0].tick_params(axis="x", labelsize=9)
 
     # 2. Total Energy (Green Manufacturing)
     # Use log scale or direct scale note if constant_safe is high
+    energy_order = [o for o in order if "Safe" not in o]
+    energy_palette = [c for o, c in zip(order, palette) if "Safe" not in o]
     sns.barplot(
         data=df_all[df_all["policy"] != "constant_safe"], x="policy_label", y="total_energy_kJ",
-        order=[o for o in order if "Safe" not in o], palette=palette[1:], ax=axes[1], capsize=0.1, err_kws={'linewidth': 1.5}
+        order=energy_order, palette=energy_palette, ax=axes[1], capsize=0.1, err_kws={'linewidth': 1.5}
     )
     axes[1].set_title("Total Energy Consumption (kJ)", fontsize=13, fontweight="bold")
     axes[1].set_xlabel("")
     axes[1].set_ylabel("Energy per Part (kJ) [Lower is Better]", fontsize=11)
     axes[1].grid(axis="y", linestyle="--", alpha=0.5)
+    axes[1].tick_params(axis="x", labelsize=9)
 
     # 3. Overall Multi-Objective Objective / Reward
     sns.barplot(
@@ -150,6 +161,7 @@ def plot_comparison():
     axes[2].set_xlabel("")
     axes[2].set_ylabel("Total Cumulative Reward [Higher is Better]", fontsize=11)
     axes[2].grid(axis="y", linestyle="--", alpha=0.5)
+    axes[2].tick_params(axis="x", labelsize=9)
 
     # Highlight PPO in reward plot
     axes[2].axhline(df_ppo["total_reward"].mean(), color="#2ca02c", linestyle=":", alpha=0.7, label=f"PPO Mean: {df_ppo['total_reward'].mean():.1f}")
@@ -158,6 +170,14 @@ def plot_comparison():
     plt.suptitle("Benchmark: Dynamic DRL (PPO) vs. Classical & Metaheuristic Baselines\n"
                  f"The learned policy is queried at the energy weight w2 = {QUERY_WEIGHT:.2f}",
                  fontsize=15, fontweight="bold", y=1.06)
+    # The context a reader needs: the four static policies are infeasible, so
+    # the comparison that matters is the receding-horizon controller.
+    fig.text(0.5, -0.02,
+             "The four static policies finish outside the roughness safety limit, "
+             "which is what their negative reward measures.\n"
+             "The receding-horizon controller and the learned policy finish every "
+             "part in spec; the controller removes more material per minute.",
+             ha="center", va="top", fontsize=11, color="#334155")
     plt.tight_layout()
 
     out_plot = PLOTS_DIR / "baseline_vs_ppo_comparison.png"

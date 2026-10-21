@@ -10,6 +10,7 @@ Executes the full pipeline sequentially:
 5. Classical Baselines
 6. Viz Generation (Training Curves, MC Distributions, Baseline Comparison)
 7. Result Tables (rebuilds results/RESULTS.md)
+8. Controller Initialization Experiment
 
 Design note: this script drives the *pipeline stages* through subprocess calls
 (python -m experiments.train_rl, python -m experiments.run_baselines, etc.).
@@ -52,6 +53,12 @@ def main():
                         help="Scenarios per ablation policy")
     parser.add_argument("--slots", type=int, default=7,
                         help="Parallel training slots for the ablation")
+    parser.add_argument("--transfer_steps", type=int, default=300_000,
+                        help="Steps for the source policy of the transfer experiment")
+    parser.add_argument("--adapt_steps", type=int, default=50_000,
+                        help="Adaptation budget on the target material")
+    parser.add_argument("--controller_episodes", type=int, default=2000,
+                        help="Controller episodes recorded for the initialization")
     args = parser.parse_args()
 
     print("="*80)
@@ -77,12 +84,22 @@ def main():
     # 5. Classical Baselines
     run_cmd("python -m experiments.run_baselines")
 
-    # 6. Generate all Visualizations
+    # 6. Transfer to a harder material
+    run_cmd(f"python -m experiments.transfer_experiment {args.transfer_steps} "
+            f"{args.adapt_steps}")
+
+    # 7. The controller initialization experiment. It trains its own policy,
+    # so it runs before the figures, which read its table.
+    run_cmd(f"python -m experiments.controller_experiment {args.steps} "
+            f"{args.controller_episodes}")
+
+    # 8. Generate all Visualizations
     run_cmd("python -m viz.plot_results")
     run_cmd("python -m viz.plot_eval")
     run_cmd("python -m viz.plot_baselines_comparison")
+    run_cmd("python -m viz.plot_controller_comparison")
 
-    # 7. Rebuild the result tables quoted in the documentation
+    # 9. Rebuild the result tables quoted in the documentation
     run_cmd("python -m experiments.summarize_results")
 
     print("="*80)

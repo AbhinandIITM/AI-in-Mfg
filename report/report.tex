@@ -6,6 +6,7 @@
 \usepackage[margin=1in]{geometry}
 \usepackage{amsmath,amssymb,amsthm}
 \usepackage{graphicx}
+\graphicspath{{../results/plots/}{../results/run_PPO_seed42/plots/}}
 \usepackage{booktabs}
 \usepackage{longtable}
 \usepackage{caption}
@@ -421,6 +422,15 @@ Training uses a custom \texttt{ProgressQueueCallback} that sends a heartbeat eve
 
 Both training paths use the same script, \texttt{experiments/train\_rl.py}: \texttt{--randomize} draws a new machining scenario per episode, \texttt{--randomize-weight} draws a new energy weight per episode, and \texttt{--w2} pins the weight of the task.
 
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.85\textwidth]{training_curves.png}
+    \caption{Training curves of every run: the mean episode reward against the environment steps. The production policy in blue, the two arms of the transfer experiment, and the mean over the 21 ablation policies in orange with the individual runs drawn faintly behind it.}
+    \label{fig:training-curves}
+\end{figure}
+
+Figure~\ref{fig:training-curves} shows what the budgets buy. The production policy reaches the level of about 200 inside its first 200,000 steps and then oscillates around it for the remaining 800,000, so the size of the budget buys stability rather than a higher reward. The 21 ablation policies reach the same level within their 150,000 steps, and the two transfer arms converge inside their 300,000 step budget. The vertical axis is the normalized reward mean of \texttt{VecNormalize}, so it does not carry the scale of the episode reward reported in the evaluation tables.
+
 \subsection{Monte Carlo Evaluation}
 \texttt{python -m experiments.evaluate --scenarios 100} runs the production policy over 100 randomized scenarios (fixed seed 42). Each scenario is a full machining episode. Reports mean $\pm$ std and 95\% CI (t-distribution) for:
 \begin{itemize}
@@ -495,6 +505,33 @@ Key observations:
     \item \textbf{High variance:} Std of $\MRR$ is 49\% of mean -- domain randomization produces diverse operating points.
 \end{itemize}
 
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.9\textwidth]{monte_carlo_failure_landscape.png}
+    \caption{The operating envelope of the 100 Monte Carlo scenarios: the maximum flank wear of a scenario on the horizontal axis against its maximum surface roughness on the vertical axis. The shaded rectangle is the safe operating window, bounded by the wear safety limit $\VBSafe$ (0.255 mm, drawn at 0.26 mm) and the roughness safety limit $\RaSafe$ (1.36 $\mu$m, drawn at 1.4 $\mu$m). The dashed lines mark the hard limits $\VBMax = 0.3$ mm and $\RaMax = 1.6\ \mu$m. A circle marks a scenario that stays inside both hard limits, a cross a scenario that ends above the roughness limit or breaks a tool.}
+    \label{fig:mc-envelope}
+\end{figure}
+
+Figure~\ref{fig:mc-envelope} puts the two constraints on one plane and shows where the 100 scenarios land. No scenario reaches the wear limit: the rightmost point stops at 0.239 mm against $\VBMax = 0.3$ mm, which is the 0\% wear violation rate of Table~\ref{tab:mc}. The scenarios lie on a downward slope, the more the tool wears the smoother the surface, so the scenarios that push the roughness up are the ones with the least wear. The 38 crosses above $\RaMax = 1.6\ \mu$m are the worst-pass roughness violations of the table, one more cross is the scenario in which the tool broke, and the 18 circles between $\RaSafe$ and $\RaMax$ are the scenarios that exceed the safety margin without violating the limit. All of these are intermediate passes: the finished surface is inside the limit in every one of the 100 scenarios.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.75\textwidth]{monte_carlo_constraints_kde_ra.png}
+    \caption{Density of the worst-pass surface roughness over the 100 Monte Carlo scenarios, with the roughness limit $\RaMax = 1.6\ \mu$m, the safety limit $\RaSafe = 1.36\ \mu$m (drawn at 1.4 $\mu$m) and the violation zone beyond the limit.}
+    \label{fig:mc-kde-ra}
+\end{figure}
+
+Figure~\ref{fig:mc-kde-ra} is that distribution in one axis. The mean is 1.38 $\mu$m and the median 1.45 $\mu$m, so half of the scenarios end above the mean, and the density is still high where the limit stands, which is the same fact the 38\% worst-pass violation rate states. The distribution carries two modes, a lower one near 0.9 $\mu$m from the scenarios cut conservatively and a higher one just below the limit. The finishing pass is a separate quantity and it is inside the limit in every scenario.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.75\textwidth]{monte_carlo_constraints_kde_vb.png}
+    \caption{Density of the maximum flank wear over the 100 Monte Carlo scenarios, with the wear limit $\VBMax = 0.3$ mm, the safety limit $\VBSafe = 0.255$ mm (drawn at 0.26 mm) and the violation zone beyond the limit.}
+    \label{fig:mc-kde-vb}
+\end{figure}
+
+Figure~\ref{fig:mc-kde-vb} is the same view of the wear. The mean and the median both sit at 0.12 mm, half of the wear limit, and the density has already collapsed before the safety limit, so the wear constraint is never the binding one on this policy. The 1\% breakage rate of Table~\ref{tab:mc} comes from the stochastic draw above 0.15 mm of wear, not from the wear limit itself.
+
 \subsection{Energy Weight Ablation -- Pareto Frontier}
 \label{sec:ablation}
 
@@ -522,6 +559,24 @@ Across the Pareto frontier ($w_2 \in [0.4, 1.0]$): $\MRR$ falls 8.4\% (1038 $\to
 \end{proposition}
 
 The dominated points ($w_2 = 0.0, 0.2, 0.6$) all spend more energy than a point on the frontier. The two low weights push the speed too high, which raises $k_c(v_c)$ without cutting the idle energy enough to compensate. The $w_2 = 0.6$ point is dominated by $w_2 = 0.5$, which removes more material for less energy.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=\textwidth]{ablation_pareto_frontier.png}
+    \caption{The ablation frontier: the mean removal rate of each of the seven pinned-weight policies against its energy, with the spread over the three seeds as error bars and the non-dominated points joined into the frontier. The left panel carries the energy of a part, the metric of Table~\ref{tab:ablation}, and the right panel the energy of a single pass, the quantity the reward charges.}
+    \label{fig:ablation-pareto}
+\end{figure}
+
+Figure~\ref{fig:ablation-pareto} draws the seven policies in the plane of energy against removal rate. The frontier is the chain of four non-dominated points from $w_2 = 0.4$ to $w_2 = 1.0$, and it is the same chain in both panels, so the energy of a pass and the energy of a part select the same operating points here. The three dominated points sit off it: $w_2 = 0.0$ and $w_2 = 0.2$ to the right of the chain, spending more energy for less material, and $w_2 = 0.6$ just under the segment between $w_2 = 0.5$ and $w_2 = 0.4$. The energy of a pass is roughly a quarter of the energy of the part at every frontier point, which matches the four passes per part of the mean operating point in Table~\ref{tab:mc}.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.9\textwidth]{ablation_line_plots.png}
+    \caption{The energy weight sweep of the ablation policies: the energy per part (left) and the cycle time per part (right) against the energy weight, with the spread over the three seeds shaded.}
+    \label{fig:ablation-lines}
+\end{figure}
+
+Figure~\ref{fig:ablation-lines} shows the same sweep as two curves against the weight. The energy per part falls from 82.9 kJ at $w_2 = 0.0$ to 65.8 kJ at $w_2 = 1.0$ and the cycle time falls from 44.8 s to 20.9 s over the same range, and the shaded band shows that the three seeds agree on the shape. Two details of the curves decide the frontier. The energy curve is not monotone between $w_2 = 0.5$ and $w_2 = 0.6$, where it rises from 70.3 kJ to 70.8 kJ, and that is the weight that falls off the frontier. The cycle time, on the other hand, is flat from $w_2 = 0.5$ onwards at 22.0, 22.1, 21.9 and 20.9 s, so after that point the energy is bought with removal rate and not with time.
 
 \subsection{Runtime Weight Sweep of the Production Policy}
 \label{sec:weightsweep}

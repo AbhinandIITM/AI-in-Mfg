@@ -149,6 +149,7 @@ measured outcome is in finding 6.
 |   |-- plot_results.py            # the training curves from the progress.csv files
 |   |-- plot_eval.py               # KDE distributions and failure landscape plots
 |   |-- plot_baselines_comparison.py # the comparison against the classical baselines
+|   |-- plot_controller_comparison.py # the controller against the two learned policies
 |   |-- plotting_utils.py          # shared plotting helpers, single source for figure style
 |-- results/                       # every run, one directory per training configuration
 |   |-- run_<config>/
@@ -225,11 +226,18 @@ python -m experiments.run_pipeline --steps 1000000 --ablation_steps 150000
   ```bash
   python -m viz.plot_eval
   ```
-- **Comparative Baseline Benchmarks:**
+- **Comparative Baseline Benchmarks** (the six policies side by side):
   ```bash
   python -m viz.plot_baselines_comparison
   ```
-All output figures are saved to `results/plots/`.
+- **Controller Against the Learned Policies** (the three arms of the controller initialization experiment):
+  ```bash
+  python -m viz.plot_controller_comparison
+  ```
+All output figures are saved to `results/plots/`, except the Monte Carlo
+distributions and the failure landscape, which belong to the production run and
+are written to `results/run_PPO_seed42/plots/`. The index of every figure is at
+the end of `results/RESULTS.md`.
 
 ### 4. Interactive Digital Twin Workstation
 Launch the Streamlit web dashboard to simulate real-time cutting, inspect 2D workpiece stock depletion, view micro-topography cusps, and generate ISO 6983 CNC G-code:
@@ -266,11 +274,11 @@ larger network, or an off-policy algorithm with a replay buffer.
 
 3. **One policy replaces 21 weight-specific policies.** A single policy of 1,000,000 steps beats all 21 weight-specific policies of 150,000 steps each, which is 3,150,000 steps in total: 14% to 28% more material removal rate for 3% to 16% less energy across the weights, and 15% to 16% more removal rate for at most 2% more energy at the two heaviest weights. Its own frontier is monotone, 1213.6 down to 1096.0 mm3/min against 69.6 down to 67.1 kJ. The weight is a runtime query rather than a retrain.
 
-4. **The classical baselines were weak until the controller was made dynamic.** The static NSGA-II solution, the two constant policies and the rule-based policy all end outside the roughness safety limit and score around -46. The receding-horizon controller, which re-solves at every pass, scores +203.5 and is the strongest baseline in the repository.
+4. **The classical baselines were weak until the controller was made dynamic.** The static NSGA-II solution, the two constant policies and the rule-based policy all end outside the roughness safety limit and score around -46. The receding-horizon controller, which re-solves at every pass, scores +203.5 and is the strongest baseline in the repository. The figure `results/plots/baseline_vs_ppo_comparison.png` puts all six policies side by side: the four static ones are infeasible, so the comparison that carries information is the controller against the learned policy.
 
 5. **Training across materials is what transfers; fine tuning is not.** On a harder alloy, a policy trained on the nominal material scores 182.5 and violates the roughness limit in every scenario. Fine tuning it for 50,000 steps moves the score to 196.6 and removes every violation, and so does training on the target from scratch for the same budget. The production policy, which was trained across a distribution of materials with the material context in its observation, needs no adaptation at all and scores 200.3 with the finished surface in spec in every scenario. Its 60% worst-pass violations sit on the roughing passes, which the reward does not constrain.
 
-6. **Starting the policy from the controller does not beat the controller.** Three arms were measured on the same 100 randomized scenarios at the same energy weight w2 = 0.4: the receding-horizon controller, the production policy trained from scratch, and a policy whose actor was initialized from the controller and then trained with PPO. The initialization does not produce a policy that beats the expert it started from. The controller still removes 38% more material per minute (1560.6 against 1126.1 mm3/min) and finishes a part in 13.5 s against 32.3 s. What it does produce is a far more consistent policy: the spread of the episode reward across the 100 scenarios falls from 30.0 to 3.4, an order of magnitude, and the tool breakage falls to zero. The consistency is paid for in throughput and energy, 6.6% less material removal rate and 12.9% more energy per part than the from-scratch policy. The mean reward difference against the from-scratch policy, 199.35 against 198.57, is inside the noise: the standard error of the mean over 100 scenarios is 30.0/sqrt(100) = 3.0 for the from-scratch arm, so a gap of 0.8 is not a result. The controller is the least reliable of the three arms, with a reward standard deviation of 65.9, 5% tool breakage and 95% of the parts completed.
+6. **Starting the policy from the controller does not beat the controller.** Three arms were measured on the same 100 randomized scenarios at the same energy weight w2 = 0.4: the receding-horizon controller, the production policy trained from scratch, and a policy whose actor was initialized from the controller and then trained with PPO. The initialization does not produce a policy that beats the expert it started from. The controller still removes 38% more material per minute (1560.6 against 1126.1 mm3/min) and finishes a part in 13.5 s against 32.3 s. What it does produce is a far more consistent policy: the spread of the episode reward across the 100 scenarios falls from 30.0 to 3.4, an order of magnitude, and the tool breakage falls to zero. The consistency is paid for in throughput and energy, 6.6% less material removal rate and 12.9% more energy per part than the from-scratch policy. The mean reward difference against the from-scratch policy, 199.35 against 198.57, is inside the noise: the standard error of the mean over 100 scenarios is 30.0/sqrt(100) = 3.0 for the from-scratch arm, so a gap of 0.8 is not a result. The controller is the least reliable of the three arms, with a reward standard deviation of 65.9, 5% tool breakage and 95% of the parts completed. The figure `results/plots/controller_vs_ppo.png` shows all six metrics of the three arms.
 
 Every number below is generated from the artifacts in `results/` by
 `python -m experiments.summarize_results`, which writes the same tables to

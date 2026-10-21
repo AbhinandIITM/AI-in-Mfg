@@ -6,7 +6,7 @@
   - `MillingDT/env/milling_env.py` is the environment, `MillingDT/config/physics.py` the physical model, `MillingDT/config/scenarios.py` the randomized scenarios.
   - `MillingDT/baselines/receding_horizon.py` is the controller, `MillingDT/agent/controller_init.py` the initialization of the policy from that controller.
 - `experiments/` holds the entry points: `train_rl.py`, `train_rl_ablation.py`, `evaluate.py`, `run_baselines.py`, `transfer_experiment.py`, `controller_experiment.py`, `run_experiments.py`, `run_pipeline.py` and `summarize_results.py`. Run them as modules, for example `python -m experiments.train_rl`.
-- `viz/` holds the figures: `plot_results.py`, `plot_eval.py`, `plot_baselines_comparison.py` and the shared `plotting_utils.py`. Run them the same way, for example `python -m viz.plot_results`.
+- `viz/` holds the figures: `plot_results.py`, `plot_eval.py`, `plot_baselines_comparison.py`, `plot_controller_comparison.py` and the shared `plotting_utils.py`. Run them the same way, for example `python -m viz.plot_results`. Every baseline that carries a row in a comparison table needs a label in the figure script as well, otherwise its bar is dropped without a word.
 - `results/` holds every run, one directory per training configuration, named `run_<config>`. Each run writes to `results/run_<config>/models/` (the policy and its normalization statistics), `results/run_<config>/log/` (the training curve, `progress.csv`), `results/run_<config>/metrics/` (the evaluation tables of that policy) and `results/run_<config>/plots/` (the figures of that policy).
 - `results/evaluation/` holds the tables that compare several runs, `results/plots/` the cross-run figures, and `results/RESULTS.md` the generated summary of every artifact.
 - The run names are fixed by `MillingDT/config/paths.yaml`: `run_PPO_seed42` is the production policy, `run_ablation_w2_<w2>_seed<seed>` the 21 ablation policies, `run_PPO_controller_init_seed42`, `run_transfer_source_seed42` and `run_transfer_scratch_seed42` the transfer arms.
@@ -22,7 +22,7 @@
 - Run the transfer experiment: `python -m experiments.transfer_experiment 300000 50000`
 - Run the controller initialization experiment: `python -m experiments.controller_experiment 1000000 2000`
 - Rebuild the result tables: `python -m experiments.summarize_results`
-- Build the figures: `python -m viz.plot_results`, `python -m viz.plot_eval`, `python -m viz.plot_baselines_comparison`
+- Build the figures: `python -m viz.plot_results`, `python -m viz.plot_eval`, `python -m viz.plot_baselines_comparison`, `python -m viz.plot_controller_comparison`
 - Run the full pipeline: `python -m experiments.run_pipeline --steps 1000000 --ablation_steps 150000`
 - Launch the interactive Digital Twin simulator: `streamlit run app.py`
 
