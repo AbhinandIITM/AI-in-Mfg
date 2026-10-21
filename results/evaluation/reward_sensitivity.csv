@@ -1,0 +1,33 @@
+arm,objective_form,objective_scale,mean_reward,passes_per_part,objective_term
+Receding-horizon controller,the sum of the per-pass rates,5,209.687574373357,5.85,0.41257409820734847
+Receding-horizon controller,the material of the part against the energy of the part,5,208.15276409035584,5.85,0.10561204160711629
+Receding-horizon controller,the sum of the per-pass rates,20,215.8761858464673,5.85,0.41257409820734847
+Receding-horizon controller,the material of the part against the energy of the part,20,209.7369447144627,5.85,0.10561204160711629
+Receding-horizon controller,the sum of the per-pass rates,50,228.2534087926878,5.85,0.41257409820734847
+Receding-horizon controller,the material of the part against the energy of the part,50,212.90530596267615,5.85,0.10561204160711629
+Receding-horizon controller,the sum of the per-pass rates,100,248.8821137030551,5.85,0.41257409820734847
+Receding-horizon controller,the material of the part against the energy of the part,100,218.18590804303196,5.85,0.10561204160711629
+Receding-horizon controller,the sum of the per-pass rates,200,290.13952352379005,5.85,0.41257409820734847
+Receding-horizon controller,the material of the part against the energy of the part,200,228.74711220374357,5.85,0.10561204160711629
+Receding-horizon controller,the sum of the per-pass rates,400,372.6543431652598,5.85,0.41257409820734847
+Receding-horizon controller,the material of the part against the energy of the part,400,249.86952052516688,5.85,0.10561204160711629
+Receding-horizon controller,the sum of the per-pass rates,1000,620.1988020896689,5.85,0.41257409820734847
+Receding-horizon controller,the material of the part against the energy of the part,1000,313.2367454894366,5.85,0.10561204160711629
+Receding-horizon controller,the sum of the per-pass rates,4000,1857.9210967117147,5.85,0.41257409820734847
+Receding-horizon controller,the material of the part against the energy of the part,4000,630.0728703107856,5.85,0.10561204160711629
+PPO,the sum of the per-pass rates,5,202.63292934905266,4.0,0.32623782195801376
+PPO,the material of the part against the energy of the part,5,201.60976936367825,4.0,0.12160582488314396
+PPO,the sum of the per-pass rates,20,207.5264966784229,4.0,0.32623782195801376
+PPO,the material of the part against the energy of the part,20,203.43385673692552,4.0,0.12160582488314396
+PPO,the sum of the per-pass rates,50,217.3136313371633,4.0,0.32623782195801376
+PPO,the material of the part against the energy of the part,50,207.08203148341983,4.0,0.12160582488314396
+PPO,the sum of the per-pass rates,100,233.62552243506397,4.0,0.32623782195801376
+PPO,the material of the part against the energy of the part,100,213.16232272757702,4.0,0.12160582488314396
+PPO,the sum of the per-pass rates,200,266.2493046308653,4.0,0.32623782195801376
+PPO,the material of the part against the energy of the part,200,225.3229052158914,4.0,0.12160582488314396
+PPO,the sum of the per-pass rates,400,331.4968690224681,4.0,0.32623782195801376
+PPO,the material of the part against the energy of the part,400,249.64407019252016,4.0,0.12160582488314396
+PPO,the sum of the per-pass rates,1000,527.2395621972764,4.0,0.32623782195801376
+PPO,the material of the part against the energy of the part,1000,322.6075651224066,4.0,0.12160582488314396
+PPO,the sum of the per-pass rates,4000,1505.9530280713182,4.0,0.32623782195801376
+PPO,the material of the part against the energy of the part,4000,687.4250397718387,4.0,0.12160582488314396

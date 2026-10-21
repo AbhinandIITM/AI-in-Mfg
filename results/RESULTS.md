@@ -125,8 +125,8 @@ Artifact: `results/evaluation/batch_results.csv`
 
 | Arm | Batch reward | Std | Mean reward per part | Tool changes per batch | Parts cut | Batch time (s) | Batch energy (kJ) |
 | :--- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| PPO, batch aware | 1772.3 | 358.3 | 169.0 | 0.77 | 10.0 | 113.8 | 632.7 |
-| PPO, per part | 1694.6 | 352.3 | 171.7 | 0.83 | 10.0 | 110.8 | 655.7 |
+| PPO, batch aware | 1817.0 | 477.8 | 166.8 | 0.63 | 10.0 | 113.1 | 610.4 |
+| PPO, per part | 1709.9 | 366.1 | 169.4 | 0.83 | 10.0 | 114.7 | 674.3 |
 | Receding-horizon controller, per part | 1859.9 | 328.8 | 173.7 | 0.83 | 10.0 | 207.5 | 692.0 |
 
 A batch is ten parts cut with one tool. The tool is replaced when it breaks or reaches its wear limit, and the replacement costs 500 reward units against the 200 a finished part is worth.

@@ -200,6 +200,57 @@ $w_1 + w_2 = 1$ in every run, and the weight belongs to the environment: the
 environment reads it from its own reward configuration, so the policy and the
 reward can never disagree about which end of the trade-off they are on.
 
+#### The reward is not neutral
+
+The reward credits the removal rate of every pass. That is the standard way to
+express a rate in a reward that is paid per pass, but the total credit then
+grows with the number of passes a plan takes, so a plan that cuts the same
+part in more, shallower passes is paid more for it. It is a property of the
+reward, not of either method, and it has to be measured rather than argued
+about.
+
+Measured on the same 100 randomized scenarios at $w_2 = 0.4$, by
+`experiments/reward_sensitivity.py`:
+
+| | The controller | The policy |
+| :--- | ---: | ---: |
+| Passes per part | 5.85 | 4.00 |
+| Objective credit collected | +0.413 | +0.326 |
+| Mean reward | 248.9 | 233.6 |
+
+The two plans remove the same stock allowance. The controller takes more
+passes, so it collects 27% more objective credit for the same material, and at
+the objective scale of the configuration that is about nine of the fifteen
+reward points that separate the two arms in the ideal case. The ideal case
+comparison is therefore biased against the learned policy, and the defensible
+reading of it is that the two methods are comparable, with the policy ahead on
+the physical metrics and behind on the tool breakage.
+
+Three things were checked:
+
+1. The objective scale is not the lever. The controller wins at every scale
+   from 5 to 4000, and the gap only grows with it, from 7.1 points at 5 to
+   352 points at 4000. The sign never flips. The table is in
+   `results/evaluation/reward_sensitivity.csv`.
+2. The part level alternative was implemented and rejected. Crediting the
+   material of the part against the energy of the part removes the pass count
+   from the accounting, and under it the gap at the current scale is 5.0
+   points instead of 15.3, and the policy is ahead at the two largest scales.
+   It is not the right fix, because the material a part gives up is fixed by
+   its stock: the volume of a part is `pi * D * kappa * L_cut / 1000`,
+   independent of every cutting parameter. The throughput weight would then be
+   inert, the reward would be an energy objective with a throughput weight
+   that does nothing, and the weight sweep would stop measuring what it
+   claims to measure.
+3. What a correct formulation would need. The removal rate of a part is the
+   ratio of a fixed volume to the part's time, and a rate cannot be
+   accumulated over a part without becoming a volume. A correct reward has to
+   price the cycle time directly, or compare the part's average rate to a
+   reference at the end of the part. Both change the meaning of the weights,
+   and the second makes the objective sparse and the credit assignment poor.
+   Neither was adopted, and the reward as shipped carries the artifact
+   instead, documented rather than hidden.
+
 Tool breakage is stochastic. Above a flank wear of 0.15 mm the probability of
 breaking on a pass is
 
@@ -354,6 +405,7 @@ The classical rows are in `results/evaluation/baselines.csv`.
 | The controller initialization is measured against the controller it starts from | Met | `results/evaluation/controller_init_results.csv`; three arms on the same 100 randomized scenarios, and the initialized policy is worse than both the controller and the from-scratch policy |
 | The classical controller is a baseline for the same objective | Met | `MillingDT/baselines/receding_horizon.py`; it maximizes the expected episode reward the environment pays, over a full-part lookahead, with the breakage risk priced and a separate roughing and finishing feed |
 | The comparison against the controller is measured where it decides something | Met | `results/evaluation/robustness_results.csv`; three regimes, and the learned policy wins the two in which the controller's information advantage disappears |
+| The sensitivity of the comparison against the controller to the reward is measured | Met | `results/evaluation/reward_sensitivity.csv`; the reward credits the removal rate of every pass, and about nine of the fifteen points that separate the two arms in the ideal case are that artifact |
 | The batch objective is measured against the per-part objective | Met | `results/evaluation/batch_results.csv`; three arms over 30 batches of ten parts, with the tool change costed at 500 |
 
 ---
@@ -677,7 +729,8 @@ that the documentation quotes.
 | 6. Controller initialization | `MillingDT/agent/controller_init.py`, `experiments/controller_experiment.py` | `results/evaluation/controller_init_results.csv` | Three arms on the same 100 randomized scenarios at $w_2 = 0.4$. The initialization is actively harmful: the initialized policy cuts a part in 42.6 s against the controller's 17.1 s and the from-scratch policy's 11.4 s, and it exceeds the flank wear limit on 9% of the parts, which the other two arms never do. |
 | 7. Reward scale, controller and wear calibration | `MillingDT/config/physics_constants.yaml`, `MillingDT/baselines/receding_horizon.py` | `results/evaluation/robustness_results.csv`, `results/evaluation/controller_init_results.csv` | The three defects of the comparison against the controller, fixed and re-measured: the reward counts the throughput, the controller optimizes the same expected episode reward, and the wear coefficient is anchored on a tool life. Section 11. |
 | 8. Robustness experiment | `experiments/robustness_experiment.py` | `results/evaluation/robustness_results.csv` | Three regimes. Inside a perfect digital twin the controller scores 248.9 against the policy's 233.6, a gap inside the noise. With a wrong model of the material the controller falls to 63.5 and the policy holds at 226.9. With a noisy wear measurement the controller falls to 181.3 and the policy trained with the same noise keeps 213.6. Section 12. |
-| 9. Batch experiment | `MillingDT/env/milling_batch_env.py`, `experiments/batch_experiment.py` | `results/evaluation/batch_results.csv` | A batch of ten parts cut with one tool, over 30 batches. The batch-aware policy replaces the tool 8% less often and uses 3.5% less energy than the same policy without the batch context, and cuts the batch in 113.8 s against the per-part controller's 207.5 s. Section 13. |
+| 9. Batch experiment | `MillingDT/env/milling_batch_env.py`, `experiments/batch_experiment.py` | `results/evaluation/batch_results.csv` | A batch of ten parts cut with one tool, over 30 batches. The batch context is worth 24% fewer tool changes and 9.5% less energy at the same completion, and the batch-aware policy cuts the batch in 113.1 s against the per-part controller's 207.5 s. Section 13. |
+| 10. Reward sensitivity | `experiments/reward_sensitivity.py` | `results/evaluation/reward_sensitivity.csv` | How much of the comparison against the controller the reward decides. The reward credits the removal rate of every pass, so the controller, which takes 5.85 passes against the policy's 4.00, collects 27% more objective credit for the same material, and about nine of the fifteen points between the two arms in the ideal case are that artifact. Part 1, section 5, and section 5.9 of Part 3. |
 
 Four results contradict what the plan expected, and they are reported as they
 came out.
@@ -805,15 +858,21 @@ The artifact is `results/evaluation/robustness_results.csv` and the tables are
 in section 5.7 of
 [Part 3, Literature Comparison](#part-3-literature-comparison). The reading is
 short: inside a perfect digital twin the controller scores 248.9 against the
-policy's 233.6 and the gap is inside the noise. With a wrong model of the
-material the controller falls to 63.5 and the policy holds at 226.9. With a
-noisy wear measurement the controller falls to 181.3 and the policy trained
-with the same noise keeps 213.6.
+policy's 233.6 and the gap is inside the noise, and about nine of those
+fifteen points are the artifact of the reward, which credits the removal rate
+of every pass (Part 1, section 5). With a wrong model of the material the
+controller falls to 63.5 and the policy holds at 226.9. With a noisy wear
+measurement the controller falls to 181.3 and the policy trained with the same
+noise keeps 213.6.
 
 The claim is not that reinforcement learning beats a model-based controller on
-the objective. It is that the learned policy is the better throughput operator,
-and that its advantage appears where the controller's information advantage
-disappears.
+the objective inside a perfect digital twin. The two methods are comparable
+there, and the comparison is biased against the learned policy, because the
+reward pays the controller for the passes it takes. The claim is that the
+learned policy is the better throughput operator, and that its advantage
+appears where the controller's information advantage disappears. The
+measurement of how much of the nominal gap the reward decides is section 5.9
+of [Part 3, Literature Comparison](#part-3-literature-comparison).
 
 ---
 
@@ -850,10 +909,9 @@ context is worth.
 The artifact is `results/evaluation/batch_results.csv` and the table is in
 section 5.8 of
 [Part 3, Literature Comparison](#part-3-literature-comparison). The reading is
-short: the batch context replaces the tool 8% less often and uses 3.5% less
-energy than the same policy without it, at the same completion, and the
-per-part controller needs 207.5 s of machine time for the batch against the
-batch-aware policy's 113.8 s.
+short: the batch context is worth 24% fewer tool changes and 9.5% less energy
+at the same completion, and the per-part controller needs 207.5 s of machine
+time for the batch against the batch-aware policy's 113.1 s.
 
 ---
 
@@ -986,6 +1044,13 @@ can run out of.
    the tool life is the resource the parts share and the tool change is paid
    for. The batch-aware policy is measured against the same policy without the
    batch context and against the per-part controller.
+11. A reward sensitivity study of the comparison against the controller. The
+   reward credits the removal rate of every pass, so a plan that cuts the same
+   part in more, shallower passes collects more credit. The two arms are
+   measured over a range of objective scales and under a second form of the
+   objective term, and the measurement shows that the ideal case comparison
+   is biased against the learned policy by about nine of the fifteen points
+   that separate the two arms.
 
 **Does not add**
 
@@ -1280,11 +1345,15 @@ slightly better than the one that is told the truth, 215.1.
 
 Four readings:
 
-1. Inside a perfect digital twin there is no reinforcement learning
-   advantage. The controller plans the part with the exact model, the exact
-   state and the material in its hand, and it scores 248.9 against the policy's
-   233.6. The gap is inside the noise: the standard error of the mean is about
-   8 for both arms, so a difference of 15 has a t of about 1.4.
+1. Inside a perfect digital twin the two methods are comparable, and the
+   measured gap is partly the reward's artifact. The controller plans the part
+   with the exact model, the exact state and the material in its hand, and it
+   scores 248.9 against the policy's 233.6. The gap is inside the noise: the
+   standard error of the mean is about 8 for both arms, so a difference of 15
+   has a t of about 1.4. About nine of those fifteen points come from the
+   reward crediting the removal rate of every pass: the controller takes 5.85
+   passes against the policy's 4.00, so it collects 27% more objective credit
+   for the same material. Section 5.9 is the measurement of that.
 2. The learned policy is the better throughput operator. It removes 22% more
    material per minute (1608 against 1318), finishes a part in a third less
    time (11.4 against 17.1 s) and spends 3.7% less energy. It pays for that
@@ -1302,9 +1371,12 @@ Four readings:
 
 The claim is not that reinforcement learning beats a model-based controller on
 the objective inside a perfect digital twin, because the controller computes
-the optimum of the same objective with strictly more information. It is that
-the learned policy is the better throughput operator, and that its advantage
-appears where that information advantage disappears.
+the optimum of the same objective with strictly more information, and because
+the reward pays the controller for the passes it takes. In the ideal case the
+two methods are comparable, with the policy ahead on the physical metrics and
+behind on the tool breakage. The claim is that the learned policy is the
+better throughput operator, and that its advantage appears where that
+information advantage disappears.
 
 #### 5.8 The batch against the part
 
@@ -1316,15 +1388,64 @@ reaches its wear limit, and the replacement costs 500 reward units against the
 
 | Arm | Batch reward | Std | Mean reward per part | Tool changes per batch | Parts cut | Batch time (s) | Batch energy (kJ) |
 | :--- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| PPO, batch aware | 1772.3 | 358.3 | 169.0 | 0.77 | 10.0 | 113.8 | 632.7 |
-| PPO, per part | 1694.6 | 352.3 | 171.7 | 0.83 | 10.0 | 110.8 | 655.7 |
+| PPO, batch aware | 1817.0 | 477.8 | 166.8 | 0.63 | 10.0 | 113.1 | 610.4 |
+| PPO, per part | 1709.9 | 366.2 | 169.4 | 0.83 | 10.0 | 114.7 | 674.3 |
 | Receding-horizon controller, per part | 1859.9 | 328.8 | 173.7 | 0.83 | 10.0 | 207.5 | 692.0 |
 
-The batch context is worth a small amount: the policy that sees the tool life
-and the batch that is left replaces the tool 8% less often and uses 3.5% less
-energy than the same policy without that context, at the same completion. The
-per-part controller gets the highest batch reward, but it needs 207.5 s of
-machine time for the batch against the batch-aware policy's 113.8 s.
+The batch context is worth 24% fewer tool changes and 9.5% less energy at the
+same completion, and the batch-aware policy also collects the higher batch
+reward, 1817.0 against 1709.9, at a lower reward per part. The per-part
+controller gets the highest batch reward, but it needs 207.5 s of machine time
+for the batch against the batch-aware policy's 113.1 s.
+
+#### 5.9 The reward sensitivity of the comparison against the controller
+
+Artifact: `results/evaluation/reward_sensitivity.csv`
+
+The reward credits the removal rate of every pass, which is the standard way
+to express a rate in a reward that is paid per pass. The total credit then
+grows with the number of passes a plan takes, so a plan that cuts the same
+part in more, shallower passes is paid more for it. The two arms are rolled
+out on the same 100 randomized scenarios at $w_2 = 0.4$, and the reward terms
+are accumulated in a form that lets the accounting be varied afterwards.
+
+| | The controller | The policy |
+| :--- | ---: | ---: |
+| Passes per part | 5.85 | 4.00 |
+| Objective credit collected | +0.413 | +0.326 |
+| Mean reward | 248.9 | 233.6 |
+
+The two plans remove the same stock allowance. The controller takes more
+passes, so it collects 27% more objective credit for the same material, and at
+the objective scale of the configuration that is about nine of the fifteen
+reward points that separate the two arms in the ideal case. The ideal case
+comparison is therefore biased against the learned policy, and the defensible
+reading of it is that the two methods are comparable, with the policy ahead on
+the physical metrics and behind on the tool breakage.
+
+Three things were checked:
+
+1. The objective scale is not the lever. The controller wins at every scale
+   from 5 to 4000, and the gap only grows with it, from 7.1 points at 5 to
+   352 points at 4000. The sign never flips.
+2. The part level alternative was implemented and rejected. Crediting the
+   material of the part against the energy of the part removes the pass count
+   from the accounting, and under it the gap at the current scale is 5.0
+   points instead of 15.3, and the policy is ahead at the two largest scales.
+   It is not the right fix, because the material a part gives up is fixed by
+   its stock: the volume of a part is `pi * D * kappa * L_cut / 1000`,
+   independent of every cutting parameter. The throughput weight would then be
+   inert, the reward would be an energy objective with a throughput weight that
+   does nothing, and the weight sweep would stop measuring what it claims to
+   measure.
+3. What a correct formulation would need. The removal rate of a part is the
+   ratio of a fixed volume to the part's time, and a rate cannot be
+   accumulated over a part without becoming a volume. A correct reward has to
+   price the cycle time directly, or compare the part's average rate to a
+   reference at the end of the part. Both change the meaning of the weights,
+   and the second makes the objective sparse and the credit assignment poor.
+   Neither was adopted, and the reward as shipped carries the artifact
+   instead, documented rather than hidden.
 
 ---
 
@@ -1370,6 +1491,9 @@ python -m experiments.train_rl --steps 1000000 --seed 42 --randomize --randomize
 # The batch against the part
 python -m experiments.batch_experiment
 
+# The reward sensitivity of the comparison against the controller
+python -m experiments.reward_sensitivity
+
 # Rebuild the result tables
 python -m experiments.summarize_results
 ```
@@ -1385,6 +1509,17 @@ python -m experiments.summarize_results
    measured energy per part against the digital twin prediction.
 3. Extend the wear model from a single flank wear value to the separate
    roughing and finishing thresholds used by Mo et al. (2025).
+4. Publish the reward sensitivity alongside the comparison against a
+   model-based controller. The comparison is sensitive to how the reward pays
+   for a rate: the reward as shipped credits the removal rate of every pass,
+   and therefore pays for the number of passes a plan takes, which biases the
+   ideal case comparison against the learned policy by about nine of the
+   fifteen points that separate the two arms. The sensitivity has to be
+   published alongside the result. A reward that prices the cycle time
+   directly, or that compares the part's average rate to a reference at the
+   end of the part, would remove the artifact, but both change the meaning of
+   the weights and the second makes the objective sparse and the credit
+   assignment poor.
 
 ---
 
