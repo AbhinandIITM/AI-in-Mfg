@@ -6,8 +6,8 @@ Built with Streamlit & Plotly.
 Adheres strictly to Anti-Slop Industrial Instrument Guidelines:
 - No generic AI slop, no purple gradient glow, authentic industrial telemetry.
 - 2D Cross-sectional material removal stock depletion visualizer.
-- Feed mark micrXtopography & surface roughness profile generator.
-- Multi-controller head-tXhead comparison (PPO vs NSGA-II vs Rule-Based vs Constant-High).
+- Feed mark micro-topography & surface roughness profile generator.
+- Autonomous PPO Gym milling process animation with real-time telemetry HUD.
 - ISO 6983 Fanuc/Siemens G-code synthesizer and exporter.
 """
 
@@ -69,7 +69,7 @@ st.markdown("""
     }
     div[data-testid="stMetricValue"] {
         color: #38bdf8;
-        font-family: "JetBrains MonOK, Consolas, monospace;
+        font-family: "JetBrains Mono", Consolas, monospace;
         font-size: 1.6rem;
         font-weight: 600;
     }
@@ -124,21 +124,21 @@ def get_model():
 # Sidebar: Machining Process Parameters
 # -----------------------------------------------------------------------------
 with st.sidebar:
-    st.markdown("###  Machine & Workpiece Setup")
+    st.markdown("### Machine & Workpiece Setup")
     st.caption("Configured for 3-Axis Vertical Machining Center (VMC)")
-    
+
     st.markdown("#### 1. Workpiece Billet")
     kappa_total = st.slider("Total Allowance $\\kappa$ (mm)", min_value=1.0, max_value=8.0, value=5.0, step=0.5,
                             help="Total depth of stock material to be removed across multi-pass cuts.")
     L_cut = st.slider("Cut Length $L_{\\text{cut}}$ (mm)", min_value=50.0, max_value=200.0, value=100.0, step=10.0)
     D = st.number_input("Cutter Diameter $D$ (mm)", min_value=10.0, max_value=100.0, value=50.0, step=5.0)
-    
+
     st.markdown("#### 2. Cutting Tool Initial Condition")
     VB_0 = st.slider("Initial Flank Wear $VB_0$ (mm)", min_value=0.00, max_value=0.25, value=0.02, step=0.01,
                      help="Instantaneous tool flank wear at start of pass. Hard failure ceiling is 0.30 mm.")
-    
+
     st.markdown("#### 3. DRL Optimization Weights")
-    w2 = st.select_slider("Energy Weight $ (Green Slider)", options=WEIGHTS, value=0.5,
+    w2 = st.select_slider("Energy Weight $w_2$", options=WEIGHTS, value=0.5,
                      help="The weight the part is optimized for. It travels in the observation, so one "
                           "policy answers the whole range. "
                           "0.0: Max Throughput | 0.5: Balanced | 1.0: Max Energy Efficiency")
@@ -205,10 +205,10 @@ if not df_ppo.empty:
     # Multi-Tab Workstation
     # -------------------------------------------------------------------------
     tab1, tab2, tab3, tab4 = st.tabs([
-        " Material Removal & Tool Engagement",
-        " Micro-Topography & Flank Wear",
-        " Controller Benchmark (PPO vs Baselines)",
-        " Fanuc / Siemens G-Code Program"
+        "Material Removal & Tool Engagement",
+        "Micro-Topography & Flank Wear",
+        "Milling Process Animation (PPO Gym)",
+        "Fanuc / Siemens G-Code Program"
     ])
 
     # -------------------------------------------------------------------------
@@ -375,79 +375,70 @@ if not df_ppo.empty:
             st.caption(f"End-of-cut $VB = {final_vb:.4f}\\text{{ mm}}$ (Remaining Tool Life Margin: **{(1.0 - final_vb/0.30)*100:.1f}%**)")
 
     # -------------------------------------------------------------------------
-    # TAB 3: Multi-Controller Head-to-Head Benchmark
+    # TAB 3: Milling Process Animation (PPO Gym Simulation)
     # -------------------------------------------------------------------------
     with tab3:
-        st.subheader("Head-to-Head Controller Benchmark Under Identical Physical Stock")
-        st.caption("Simulates identical stock and tool wear simultaneously across DRL and traditional industrial controllers.")
+        st.subheader("Autonomous Milling Process Animation (PPO Dynamic Optimization)")
+        st.caption("Physics-grounded 2D digital twin animation showing the rotating milling cutter, multi-pass stock depletion, chip formation, and real-time physical telemetry HUD.")
 
-        with st.spinner("Running comparative controllers..."):
-            policies = ["PPO", "NSGA-II", "Rule-Based", "Constant-High"]
-            comp_records = []
-            
-            for pol in policies:
-                df_c = run_single_simulation(
-                    policy_type=pol,
-                    kappa_total=kappa_total,
-                    VB_0=VB_0,
-                    D=D,
-                    L_cut=L_cut,
-                    w2=w2,
-                    ppo_model_tuple=ppo_model_tuple
-                )
-                comp_records.append({
-                    "Policy": pol,
-                    "Total Passes": len(df_c),
-                    "Cycle Time (s)": df_c["cum_time_s"].iloc[-1],
-                    "Mean MRR (mm/min)": df_c["MRR_mm3_min"].mean(),
-                    "Total Energy (kJ)": df_c["cum_energy_kJ"].iloc[-1],
-                    "Final Ra (um)": df_c["Ra_um"].iloc[-1],
-                    "Final VB (mm)": df_c["VB_mm"].iloc[-1],
-                    "Ra Compliant": " Yes" if df_c["Ra_um"].iloc[-1] <= 1.6 else " Out of Spec",
-                })
-            
-            df_comp = pd.DataFrame(comp_records)
+        anim_mp4_path = Path("assets/ppo_milling_animation.mp4")
+        anim_gif_path = Path("assets/ppo_milling_animation.gif")
 
-        # Bar charts
-        fig_bar = make_subplots(rows=1, cols=3, subplot_titles=["Cycle Time (s)", "Total Energy (kJ)", "Final Surface Ra (um)"])
-        
-        fig_bar.add_trace(go.Bar(
-            x=df_comp["Policy"], y=df_comp["Cycle Time (s)"],
-            marker_color=["#0284c7", "#0d9488", "#f59e0b", "#ef4444"],
-            name="Cycle Time"
-        ), row=1, col=1)
-        
-        fig_bar.add_trace(go.Bar(
-            x=df_comp["Policy"], y=df_comp["Total Energy (kJ)"],
-            marker_color=["#0284c7", "#0d9488", "#f59e0b", "#ef4444"],
-            name="Energy"
-        ), row=1, col=2)
-        
-        fig_bar.add_trace(go.Bar(
-            x=df_comp["Policy"], y=df_comp["Final Ra (um)"],
-            marker_color=["#0284c7", "#0d9488", "#f59e0b", "#ef4444"],
-            name="Roughness"
-        ), row=1, col=3)
-        
-        fig_bar.add_hline(y=1.60, line=dict(color="#ef4444", dash="solid"), row=1, col=3)
-        fig_bar.add_hline(y=1.36, line=dict(color="#f59e0b", dash="dash"), row=1, col=3)
+        c_vid, c_info = st.columns([1.8, 1.0])
 
-        fig_bar.update_layout(
-            height=340,
-            showlegend=False,
-            plot_bgcolor="#0c131f",
-            paper_bgcolor="#0c131f",
-            margin=dict(l=40, r=40, t=40, b=40)
-        )
-        st.plotly_chart(fig_bar, width="stretch")
+        with c_vid:
+            if anim_mp4_path.exists():
+                st.video(str(anim_mp4_path))
+            elif anim_gif_path.exists():
+                st.image(str(anim_gif_path), caption="PPO Milling Simulation Animation")
+            else:
+                st.info("Animation video not found. Click below to generate.")
 
-        st.dataframe(df_comp.style.format({
-            "Cycle Time (s)": "{:.1f}",
-            "Mean MRR (mm/min)": "{:.1f}",
-            "Total Energy (kJ)": "{:.2f}",
-            "Final Ra (um)": "{:.3f}",
-            "Final VB (mm)": "{:.4f}"
-        }), width="stretch")
+            c_btn1, c_btn2 = st.columns(2)
+            with c_btn1:
+                if anim_mp4_path.exists():
+                    with open(anim_mp4_path, "rb") as f_mp4:
+                        st.download_button(
+                            label="Download MP4 Video",
+                            data=f_mp4.read(),
+                            file_name="ppo_milling_animation.mp4",
+                            mime="video/mp4"
+                        )
+            with c_btn2:
+                if anim_gif_path.exists():
+                    with open(anim_gif_path, "rb") as f_gif:
+                        st.download_button(
+                            label="Download Animated GIF",
+                            data=f_gif.read(),
+                            file_name="ppo_milling_animation.gif",
+                            mime="image/gif"
+                        )
+
+        with c_info:
+            st.markdown("##### Kinematic & Process Annotations")
+            st.markdown(r"""
+            - **Cutter Body & Flutes**: Face mill cutter body ($\varnothing 50$ mm) with 4 indexable carbide inserts rotating at dynamic spindle speed $n$ RPM ($6,000 - 8,000$ RPM).
+            - **Feed Kinematics**: Horizontal feed rate $v_f = n \cdot f_r$ mm/min along longitudinal $X$-axis.
+            - **Multi-Pass Stock Removal**: Progressive material layer removal matching PPO recommended cut depths ($a_p$).
+            - **Rapid Retract ($G00$)**: 4 mm vertical lift and high-speed traverse repositioning between successive passes.
+            - **Active Shear Zone**: Animated glowing chip ejection modeled at tool-workpiece interface.
+            - **Telemetry & Safety Gauges**: Real-time HUD tracking $n, f_r, a_p, v_c, \mathrm{MRR}, P, E$ alongside safety threshold margins for Flank Wear ($V_B < 0.255$ mm) and Surface Roughness ($R_a \le 1.60\ \mu\text{m}$).
+            """)
+
+            with st.expander("Re-render Custom Animation for Current Parameters"):
+                st.caption(f"Will simulate PPO with: $\\kappa = {kappa_total:.1f}$ mm, $VB_0 = {VB_0:.2f}$ mm, $w_2 = {w2:.1f}$.")
+                if st.button("Generate Updated Video"):
+                    with st.spinner("Simulating and rendering animation frames..."):
+                        from viz.generate_milling_animation import generate_animation
+                        generate_animation(
+                            kappa_total=kappa_total,
+                            VB_0=VB_0,
+                            D=D,
+                            L_cut=L_cut,
+                            w2=w2
+                        )
+                    st.success("Animation video updated successfully!")
+                    st.rerun()
 
     # -------------------------------------------------------------------------
     # TAB 4: ISO 6983 Fanuc/Siemens G-Code Synthesis
@@ -460,7 +451,7 @@ if not df_ppo.empty:
                                        tool_diameter=D)
         
         st.download_button(
-            label=" Download CNC Program (.NC File)",
+            label="Download CNC Program (.NC File)",
             data=gcode_text,
             file_name="O1001_PPO_ADAPTIVE.NC",
             mime="text/plain"

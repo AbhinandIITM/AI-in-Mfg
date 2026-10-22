@@ -62,7 +62,11 @@ venv.bak/
 
 # The trained policies. The weights are binaries and stay out of the
 # repository; every table and every figure of a run is committed.
+# The primary production model is tracked so the Streamlit app can be deployed.
 results/run_*/models/
+!results/run_PPO_seed42/models/
+!results/run_PPO_seed42/models/final_model.zip
+!results/run_PPO_seed42/models/vecnormalize.pkl
 results/workers/
 
 # Jupyter Notebook
@@ -74,12 +78,10 @@ results/workers/
 *.swp
 *.swo
 *.mp4
+!assets/ppo_milling_animation.mp4
 *.ini
 .agents/
 .claude/
 logs/*/
 /docs/ppts/
-*.mp4
-.agents/
-.claude/
 events.out*
